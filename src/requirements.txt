@@ -1,0 +1,10 @@
+streamlit
+openai
+pandas
+python-dotenv
+yfinance
+pillow
+tqdm
+pyfiglet
+colorama
+halo

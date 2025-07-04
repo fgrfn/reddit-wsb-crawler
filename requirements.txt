@@ -1,0 +1,14 @@
+praw
+python-dotenv
+requests
+pandas
+openpyxl
+colorama
+pyfiglet
+halo
+streamlit
+openai
+pandas
+yfinance
+pillow
+tqdm
