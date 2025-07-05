@@ -8,7 +8,6 @@ pyfiglet
 halo
 streamlit
 openai
-pandas
 yfinance
 pillow
 tqdm
