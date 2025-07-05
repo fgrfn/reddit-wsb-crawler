@@ -57,6 +57,7 @@ def fetch_name_with_retry(symbol, retries=3, delay=2):
         pass
     return symbol, None
 
+os.makedirs("logs", exist_ok=True)
 # Logging mit Emoji direkt im String
 logging.basicConfig(
     level=logging.INFO,
