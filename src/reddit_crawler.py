@@ -3,7 +3,6 @@ import re
 import pickle
 import praw
 import pandas as pd
-import logging
 import time
 import requests
 import yfinance as yf
@@ -13,12 +12,15 @@ from datetime import datetime, timedelta, timezone
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
+import logging
 
 # 📁 Pfade
 TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
 TICKER_CSV_PATH = os.path.join("data", "input", "ticker_name_map.csv")
 SYMBOLS_PATH = os.path.join("data", "input", "symbols_list.pkl")
 LATEST_HITS_PATH = os.path.join("data", "output", "latest_ticker_hits.pkl")
+
+logger = logging.getLogger(__name__)
 
 # 🧠 Cache laden/speichern
 def load_ticker_name_map():
@@ -56,19 +58,6 @@ def fetch_name_with_retry(symbol, retries=3, delay=2):
     except Exception:
         pass
     return symbol, None
-
-os.makedirs("logs", exist_ok=True)
-# Logging mit Emoji direkt im String
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler("logs/crawler.log", encoding="utf-8"),
-        logging.StreamHandler()
-    ]
-)
-
-logger = logging.getLogger(__name__)
 
 # 🕷️ Reddit-Crawler
 def reddit_crawler():
