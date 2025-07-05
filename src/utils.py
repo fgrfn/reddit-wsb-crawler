@@ -9,6 +9,9 @@ NYSE_URL = "https://ftp.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 TICKER_CSV = Path("data/input/all_tickers.csv")
 
 def update_dotenv_variable(key: str, value: str, dotenv_path: Path):
+    import os
+    os.makedirs(os.path.dirname(dotenv_path), exist_ok=True)  # <--- Diese Zeile hinzufügen
+
     lines = []
     if dotenv_path.exists():
         with open(dotenv_path, "r", encoding="utf-8") as f:
