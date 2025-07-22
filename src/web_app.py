@@ -1,28 +1,18 @@
 import os
-import re
 import sys
-import time
-import pickle
 import subprocess
-import datetime
-import pandas as pd
-import streamlit as st
-from reddit_crawler import reddit_crawler
-from pathlib import Path
-from collections import Counter
-from PIL import Image
 import threading
-import schedule
+import time
+import datetime
 import json
+import glob
 import psutil
-BASE_DIR = Path(__file__).resolve().parent.parent
-PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
-SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
-CHART_DIR = BASE_DIR / "data" / "output" / "charts"
-EXCEL_PATH = BASE_DIR / "data" / "output" / "excel" / "ticker_sentiment_summary.xlsx"
-LOG_PATH = BASE_DIR / "logs" / "crawler.log"
-ARCHIVE_DIR = LOG_PATH.parent / "archive"
-from dotenv import load_dotenv
+import pandas as pd
+import schedule
+from PIL import Image
+import streamlit as st
+
+from reddit_crawler import reddit_crawler
 from utils import (
     update_dotenv_variable,
     list_pickle_files,
@@ -34,16 +24,19 @@ from utils import (
     load_ticker_names
 )
 from log_utils import archive_log
-import summarizer
 from discord_utils import send_discord_notification
+import summarizer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
+SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
+CHART_DIR = BASE_DIR / "data" / "output" / "charts"
+EXCEL_PATH = BASE_DIR / "data" / "output" / "excel" / "ticker_sentiment_summary.xlsx"
+LOG_PATH = BASE_DIR / "logs" / "crawler.log"
+ARCHIVE_DIR = LOG_PATH.parent / "archive"
 ENV_PATH = BASE_DIR / "config" / ".env"
 TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
 name_map = load_ticker_names(TICKER_NAME_PATH)
-
-load_dotenv(dotenv_path=ENV_PATH)
-
 SCHEDULE_CONFIG_PATH = BASE_DIR / "config" / "schedule.json"
 
 def save_schedule_config(interval_type, interval_value, crawl_time):
@@ -62,66 +55,13 @@ def load_schedule_config():
     with open(SCHEDULE_CONFIG_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
-def build_env_editor():
-    st.sidebar.markdown("---")
-    with st.sidebar.expander("⚙️ Einstellungen", expanded=False):
-        openai_key = st.text_input(
-            "🔑 OpenAI API Key",
-            type="password",
-            value=os.getenv("OPENAI_API_KEY", ""),
-            key="openai_api_key_input"
-        )
-        reddit_client_id = st.text_input(
-            "📘 Reddit Client ID",
-            value=os.getenv("REDDIT_CLIENT_ID", ""),
-            key="reddit_client_id_input"
-        )
-        reddit_secret = st.text_input(
-            "📘 Reddit Secret",
-            type="password",
-            value=os.getenv("REDDIT_CLIENT_SECRET", ""),
-            key="reddit_secret_input"
-        )
-        reddit_agent = st.text_input(
-            "📘 Reddit User Agent",
-            value=os.getenv("REDDIT_USER_AGENT", ""),
-            key="reddit_agent_input"
-        )
-        subreddits = st.text_input(
-            "📋 Subreddits",
-            value=os.getenv("SUBREDDITS", "wallstreetbets"),
-            key="subreddits_input"
-        )
-        gsheet_url = st.text_input(
-            "🔗 Google Sheet URL",
-            value=os.getenv("GSHEET_URL", ""),
-            key="gsheet_url_input"
-        )
-        alpha_key = st.text_input(
-            "Alpha Vantage API Key",
-            value=os.getenv("ALPHAVANTAGE_API_KEY", ""),
-            key="alpha_key_input"
-        )
-        discord_webhook = st.text_input(
-            "📣 Discord Webhook URL",
-            value=os.getenv("DISCORD_WEBHOOK_URL", ""),
-            key="discord_webhook_input"
-        )
-
-        if st.button("💾 Einstellungen speichern", key="save_env_settings_btn"):
-            update_dotenv_variable("OPENAI_API_KEY", openai_key, ENV_PATH)
-            update_dotenv_variable("REDDIT_CLIENT_ID", reddit_client_id, ENV_PATH)
-            update_dotenv_variable("REDDIT_CLIENT_SECRET", reddit_secret, ENV_PATH)
-            update_dotenv_variable("REDDIT_USER_AGENT", reddit_agent, ENV_PATH)
-            update_dotenv_variable("SUBREDDITS", subreddits, ENV_PATH)
-            update_dotenv_variable("GSHEET_URL", gsheet_url, ENV_PATH)
-            update_dotenv_variable("DISCORD_WEBHOOK_URL", discord_webhook, ENV_PATH)
-            update_dotenv_variable("ALPHAVANTAGE_API_KEY", alpha_key, ENV_PATH)
-            st.success("✅ Einstellungen gespeichert.")
-
 def start_crawler_and_wait():
+    if st.session_state.get("crawl_running", False):
+        log_event("Crawler läuft bereits.", "WARNING", True)
+        return
+
     st.session_state["crawl_running"] = True
-    st.rerun()  # UI sofort aktualisieren, damit die gelbe Meldung direkt erscheint
+    log_event("🕷️ Crawl gestartet ...", "INFO", True)
 
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -130,33 +70,31 @@ def start_crawler_and_wait():
 
         with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
             crawler_proc = subprocess.Popen(
-                [sys.executable, "src/main_crawler.py"],
+                [sys.executable, os.path.join("src", "main_crawler.py")],
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=os.environ.copy(),
                 cwd=str(BASE_DIR),
                 close_fds=True
             )
-            st.session_state["crawler_pid"] = crawler_proc.pid  # PID speichern
+            st.session_state["crawler_pid"] = crawler_proc.pid
+        log_event(f"Crawler-Prozess gestartet (PID: {crawler_proc.pid})", "INFO", True)
 
         status = st.status("🕷️ Crawler läuft ...", expanded=True)
         with st.expander("📜 Crawl-Log anzeigen", expanded=True):
             log_view = st.empty()
             log_content = ""
-
             existing = set(list_pickle_files(PICKLE_DIR))
             timeout = 300
             start_time = time.time()
-
             new_pickle = None
             while time.time() - start_time < timeout:
                 if LOG_PATH.exists():
                     try:
                         with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
                             log_content = f.read()
-                    except Exception as e:
-                        log_content = f"Fehler beim Lesen des Logs: {e}"
-
+                    except Exception:
+                        log_content = ""
                     log_view.code(log_content, language="bash", height=400)
                     st.session_state["last_log"] = log_content
 
@@ -171,9 +109,8 @@ def start_crawler_and_wait():
                     break
 
                 if crawler_proc.poll() is not None:
-                    # Prozess ist fertig, aber keine neue Datei gefunden
                     if not new_pickle and current:
-                        new_pickle = sorted(current)[-1]  # letzte Datei nehmen
+                        new_pickle = sorted(current)[-1]
                     break
 
                 time.sleep(2)
@@ -185,8 +122,7 @@ def start_crawler_and_wait():
                     st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
                     return
                 new_pickle = sorted(pickle_files)[-1]
-           
-            # Robust: Logfile mehrfach versuchen zu archivieren
+
             for _ in range(5):
                 try:
                     archive_log(LOG_PATH, ARCHIVE_DIR)
@@ -196,13 +132,11 @@ def start_crawler_and_wait():
             else:
                 st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
 
-            # --- Discord-Benachrichtigung immer senden, auch wenn keine neue Datei ---
             try:
-                # Wähle die zuletzt vorhandene Pickle-Datei, falls keine neue erzeugt wurde
                 if not new_pickle:
                     pickle_files = list_pickle_files(PICKLE_DIR)
                     if not pickle_files:
-                        st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                        st.error("Keine Pickle-Datei gefunden.")
                         return
                     new_pickle = sorted(pickle_files)[-1]
 
@@ -210,10 +144,7 @@ def start_crawler_and_wait():
                 df_rows = []
                 for subreddit, srdata in result.get("subreddits", {}).items():
                     for symbol, count in srdata["symbol_hits"].items():
-                        df_rows.append({
-                            "Ticker": symbol,
-                            "Nennungen": count
-                        })
+                        df_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
                 df = pd.DataFrame(df_rows)
                 top3 = (
                     df.groupby("Ticker")["Nennungen"]
@@ -252,10 +183,7 @@ def start_crawler_and_wait():
                     prev_rows = []
                     for subreddit, srdata in prev_result.get("subreddits", {}).items():
                         for symbol, count in srdata["symbol_hits"].items():
-                            prev_rows.append({
-                                "Ticker": symbol,
-                                "Nennungen": count
-                            })
+                            prev_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
                     prev_df = pd.DataFrame(prev_rows)
                     prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
                 msg = (
@@ -272,19 +200,8 @@ def start_crawler_and_wait():
                     prev = prev_counts.get(ticker, 0)
                     delta = nennungen - prev
                     delta_percent = f" ({(delta/prev*100):+.1f}%)" if prev > 0 else ""
-                    if prev > 0:
-                        if delta > 0:
-                            delta_str = f"▲ +{delta}{delta_percent}"
-                            delta_emoji = "🟢"
-                        elif delta < 0:
-                            delta_str = f"▼ {delta}{delta_percent}"
-                            delta_emoji = "🔴"
-                        else:
-                            delta_str = "–"
-                            delta_emoji = "⚪"
-                    else:
-                        delta_str = "neu"
-                        delta_emoji = "🆕"
+                    delta_emoji = "🔺" if delta > 0 else ("🔻" if delta < 0 else "⏸️")
+                    delta_str = f"{delta:+d}{delta_percent}" if prev > 0 else ""
                     unternehmen = name_map.get(ticker, "")
                     summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
                     wc_base = new_pickle.split("_")[0]
@@ -309,7 +226,7 @@ def start_crawler_and_wait():
                         log_handle.write("✅ Discord-Benachrichtigung gesendet.\n")
                 except Exception as e:
                     with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                        log_handle.write(f"❌ Fehler beim Senden der Discord-Benachrichtigung: {e}\n")
+                        log_handle.write(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}\n")
                     st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
@@ -317,7 +234,6 @@ def start_crawler_and_wait():
                 st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
-            # Am Ende, nach Abschluss:
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             st.rerun()
@@ -449,6 +365,24 @@ def find_log_for_pickle(pickle_filename):
     pattern = str(ARCHIVE_DIR / f"{ts}_*.log")
     matches = glob.glob(pattern)
     return matches[0] if matches else None
+
+def log_event(message, level="INFO", show_in_ui=False):
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    log_line = f"[{timestamp}] [{level}] {message}\n"
+    try:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception as e:
+        print(f"Fehler beim Schreiben ins Log: {e}")
+    if show_in_ui:
+        if level == "ERROR":
+            st.error(message)
+        elif level == "WARNING":
+            st.warning(message)
+        elif level == "SUCCESS":
+            st.success(message)
+        else:
+            st.info(message)
 
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
