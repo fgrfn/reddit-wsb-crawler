@@ -11,7 +11,6 @@ from reddit_crawler import reddit_crawler
 from pathlib import Path
 from collections import Counter
 from PIL import Image
-from pathlib import Path
 import threading
 import schedule
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -34,6 +33,7 @@ from utils import (
 )
 from log_utils import archive_log
 import summarizer
+from discord_utils import send_discord_notification
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ENV_PATH = BASE_DIR / "config" / ".env"
@@ -153,6 +153,38 @@ def start_crawler_and_wait():
                 else:
                     st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
 
+                # Discord-Benachrichtigung mit Top 3 Zusammenfassungen
+                try:
+                    result = load_pickle(PICKLE_DIR / new_pickle)
+                    summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
+                    summary_dict = {}
+                    if summary_path and summary_path.exists():
+                        summary_text = load_summary(summary_path)
+                        summary_dict = parse_summary_md(summary_text)
+                    # Top 3 Ticker nach Nennungen
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({
+                                "Ticker": symbol,
+                                "Nennungen": count
+                            })
+                    df = pd.DataFrame(df_rows)
+                    top3 = (
+                        df.groupby("Ticker")["Nennungen"]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(3)
+                        .index.tolist()
+                    )
+                    msg = f"🕷️ Crawl abgeschlossen: Neue Analyse `{new_pickle}` ist verfügbar.\n"
+                    for ticker in top3:
+                        summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
+                        msg += f"\n**{ticker}**:\n{summary}\n"
+                    send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
+                except Exception as e:
+                    print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+
                 st.rerun()
                 break
 
@@ -247,9 +279,19 @@ def get_schedule_description():
         return "Kein Zeitplan aktiv."
     descs = []
     for job in jobs:
-        # schedule.Job repr enthält z.B. "Every 1 hour do job() (last run: ..., next run: ...)"
-        descs.append(f"• {job}")
+        next_run = job.next_run.strftime("%d.%m.%Y %H:%M:%S") if job.next_run else "unbekannt"
+        if job.unit == "days":
+            descs.append(f"Täglich um {job.at_time.strftime('%H:%M')} (nächster Lauf: {next_run})")
+        elif job.unit == "hours":
+            descs.append(f"Alle {job.interval} Stunde(n) (nächster Lauf: {next_run})")
+        elif job.unit == "minutes":
+            descs.append(f"Alle {job.interval} Minute(n) (nächster Lauf: {next_run})")
+        else:
+            descs.append(f"{str(job)} (nächster Lauf: {next_run})")
     return "\n".join(descs)
+
+def clear_schedule():
+    schedule.clear()
 
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
@@ -261,8 +303,11 @@ def main():
         with st.expander("🕒 Zeitplanung", expanded=True):
             st.markdown("Hier kannst du den automatischen Start des Crawlers planen.")
 
-            # Aktuellen Zeitplan anzeigen
             st.info("**Aktueller Zeitplan:**\n" + get_schedule_description())
+
+            if st.button("🗑️ Zeitplan löschen"):
+                clear_schedule()
+                st.success("Zeitplan wurde gelöscht.")
 
             interval_type = st.selectbox("Modus wählen", ["Täglich", "Stündlich", "Minütlich"])
             interval_value = 1
@@ -383,6 +428,15 @@ def main():
         selected_pickle = label_map.get(selected_label)
         result = load_pickle(PICKLE_DIR / selected_pickle)
 
+        # Logfile zum gewählten Run anzeigen
+        logfile_path = find_log_for_pickle(selected_pickle)
+        if logfile_path and os.path.exists(logfile_path):
+            with st.expander("📜 Log dieses Crawls anzeigen", expanded=False):
+                with open(logfile_path, "r", encoding="utf-8", errors="replace") as f:
+                    st.code(f.read(), language="bash")
+        else:
+            st.info("Kein Logfile für diesen Crawl gefunden.")
+
         # Lösch-Button für die aktuell ausgewählte Analyse
         if st.sidebar.button("🗑️ Analyse löschen"):
             to_delete = PICKLE_DIR / selected_pickle
@@ -416,7 +470,7 @@ def main():
         df = df[["Ticker", "Unternehmen", "Subreddit", "Nennungen", "Posts gecheckt"]]
 
         df = df[df["Subreddit"].isin(selected_subs)]
-        selected_tickers = st.sidebar.multiselect("🎯 Ticker auswählen:", sorted(df["Ticker"].unique()), default=sorted(df["Ticker"].unique()))
+        selected_tickers = st.sidebar.multiselect("🎯 Ticker filtern:", sorted(df["Ticker"].unique()), default=sorted(df["Ticker"].unique()))
         df = df[df["Ticker"].isin(selected_tickers)]
 
         if df.empty:
@@ -524,3 +578,13 @@ def update_dotenv_variable(key, value, dotenv_path):
     with open(dotenv_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
     # ...existing code...
+
+import glob
+
+def find_log_for_pickle(pickle_filename):
+    # Extrahiere Zeitstempel aus Pickle-Dateiname
+    ts = pickle_filename.split("_")[0]
+    # Suche nach Logfile mit gleichem Zeitstempel im Archiv
+    pattern = str(ARCHIVE_DIR / f"{ts}_*.log")
+    matches = glob.glob(pattern)
+    return matches[0] if matches else None
