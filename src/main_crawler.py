@@ -29,8 +29,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[
-        logging.FileHandler(logfile, encoding="utf-8"),
-        logging.StreamHandler()
+        logging.FileHandler(logfile, encoding="utf-8")
+        # StreamHandler entfernt, um doppelte Logs zu vermeiden
     ]
 )
 logger = logging.getLogger(__name__)

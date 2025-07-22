@@ -155,8 +155,20 @@ def start_crawler_and_wait():
                 time.sleep(2)
             else:
                 status.update(label="⚠️ Timeout – keine neue Datei gefunden", state="error")
-                st.error("Der Crawler hat keine neue Analyse erzeugt.")
-                return
+                st.warning("Der Crawler hat keine neue Analyse erzeugt – benutze letzte vorhandene Datei für Discord.")
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if not pickle_files:
+                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                    return
+                new_pickle = sorted(pickle_files)[-1]
+            else:
+                status.update(label="⚠️ Timeout – keine neue Datei gefunden", state="error")
+                st.warning("Der Crawler hat keine neue Analyse erzeugt – benutze letzte vorhandene Datei für Discord.")
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if not pickle_files:
+                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                    return
+                new_pickle = sorted(pickle_files)[-1]
 
             # Robust: Logfile mehrfach versuchen zu archivieren
             for _ in range(5):
@@ -631,29 +643,6 @@ def main():
         if sentiment_path.exists():
             st.markdown("### 📉 Gesamt-Sentiment")
             st.image(sentiment_path, use_column_width=True)
-
-        st.markdown("### 📁 Datenexport")
-        col1, col2 = st.columns(2)
-
-        if EXCEL_PATH.exists():
-            with open(EXCEL_PATH, "rb") as f:
-                col1.download_button(
-                    label="⬇️ Excel-Datei herunterladen",
-                    data=f,
-                    file_name="sentiment_summary.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-        else:
-            col1.info("📄 Keine Excel-Datei gefunden.")
-
-        sheet_url = os.getenv("GSHEET_URL", "")
-        if sheet_url:
-            col2.link_button("🔗 Google Sheet öffnen", url=sheet_url)
-        else:
-            col2.info("🔗 Kein Google Sheet konfiguriert.")
-
-        st.caption(f"📂 Datenbasis: {selected_pickle}")
-
 
 if __name__ == "__main__":
     main()
