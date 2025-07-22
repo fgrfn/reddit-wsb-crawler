@@ -55,23 +55,14 @@ def main():
     tickers = download_and_clean_tickerlist()  # Listen immer neu laden und loggen
     ensure_symbols_list(tickers)
     start_time = time.time()
- 
+
     try:
         print("🕷️ Starte Reddit-Crawler ...")
     except UnicodeEncodeError:
         print("Starte Reddit-Crawler ...")
 
     try:
-        with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-            crawler_proc = subprocess.Popen(
-                [sys.executable, "src/main_crawler.py"],
-                stdout=log_handle,
-                stderr=subprocess.STDOUT,
-                env=os.environ.copy(),
-                cwd=str(BASE_DIR),  # <--- Arbeitsverzeichnis explizit setzen!
-                close_fds=True
-            )
-            st.session_state["crawler_pid"] = crawler_proc.pid  # PID speichern
+        reddit_crawler()  # <-- Hier direkt die Crawl-Logik aufrufen!
     except Exception:
         logger.exception("❌ Fehler beim Reddit-Crawl")
         return

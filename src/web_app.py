@@ -134,6 +134,7 @@ def start_crawler_and_wait():
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=os.environ.copy(),
+                cwd=str(BASE_DIR),
                 close_fds=True
             )
             st.session_state["crawler_pid"] = crawler_proc.pid  # PID speichern
