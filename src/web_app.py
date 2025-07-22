@@ -352,6 +352,7 @@ def main():
             if st.button("🗓️ Zeitplan speichern"):
                 start_scheduler(interval_type, interval_value, crawl_time)
                 st.success("Zeitplan gespeichert und aktiviert.")
+                st.rerun()
 
         with st.expander("⚙️ Einstellungen", expanded=False):
             openai_key = st.text_input(
