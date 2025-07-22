@@ -12,3 +12,4 @@ yfinance
 pillow
 tqdm
 schedule
+psutil

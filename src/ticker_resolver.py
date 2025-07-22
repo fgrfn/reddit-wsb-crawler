@@ -4,6 +4,7 @@ import pickle
 import requests
 import yfinance as yf
 import pandas as pd
+import logging
 from pathlib import Path
 
 TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
@@ -49,8 +50,8 @@ def resolve_ticker_name(symbol, cache=None):
             cache[symbol] = name
             save_ticker_name_map(cache)
             return symbol, name
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"yfinance-Fehler für {symbol}: {e}")
 
     # 🛟 Versuch 2: Yahoo Search API
     try:
@@ -65,8 +66,8 @@ def resolve_ticker_name(symbol, cache=None):
                     cache[symbol] = name
                     save_ticker_name_map(cache)
                     return symbol, name
-    except Exception:
-        pass
+    except Exception as e:
+        logging.warning(f"Yahoo-API-Fehler für {symbol}: {e}")
 
     # 🔄 Versuch 3: Alpha Vantage (wenn API-Key gesetzt)
     ALPHA_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
@@ -82,8 +83,8 @@ def resolve_ticker_name(symbol, cache=None):
                         cache[symbol] = name
                         save_ticker_name_map(cache)
                         return symbol, name
-        except Exception:
-            pass
+        except Exception as e:
+            logging.warning(f"AlphaVantage-Fehler für {symbol}: {e}")
 
     # ❌ Nichts gefunden
     return symbol, None

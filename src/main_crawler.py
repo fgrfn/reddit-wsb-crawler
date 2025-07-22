@@ -56,8 +56,7 @@ def main():
     tickers = download_and_clean_tickerlist()  # Listen immer neu laden und loggen
     ensure_symbols_list(tickers)
     start_time = time.time()
-    logger.info("🕷️ Crawl gestartet")
-
+ 
     # Emoji direkt im String verwenden, nicht als Unicode-Escape!
     try:
         print("🕷️ Starte Reddit-Crawler ...")

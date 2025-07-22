@@ -14,6 +14,7 @@ from PIL import Image
 import threading
 import schedule
 import json
+import psutil
 BASE_DIR = Path(__file__).resolve().parent.parent
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
@@ -120,6 +121,8 @@ def build_env_editor():
 
 def start_crawler_and_wait():
     st.session_state["crawl_running"] = True
+    st.rerun()  # UI sofort aktualisieren, damit die gelbe Meldung direkt erscheint
+
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(LOG_PATH, "w", encoding="utf-8") as f:
@@ -133,6 +136,7 @@ def start_crawler_and_wait():
                 env=os.environ.copy(),
                 close_fds=True
             )
+            st.session_state["crawler_pid"] = crawler_proc.pid  # PID speichern
 
         status = st.status("🕷️ Crawler läuft ...", expanded=True)
         with st.expander("📜 Crawl-Log anzeigen", expanded=True):
@@ -218,13 +222,18 @@ def start_crawler_and_wait():
                     .index.tolist()
                 )
 
-                import summarizer
+                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                    log_handle.write("🔄 Starte KI-Zusammenfassung...\n")
+
                 summarizer.generate_summary(
                     pickle_path=PICKLE_DIR / new_pickle,
                     include_all=False,
                     streamlit_out=None,
                     only_symbols=top3
                 )
+
+                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                    log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
 
                 summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
                 summary_dict = {}
@@ -289,15 +298,49 @@ def start_crawler_and_wait():
                         f">━━━━━━━━━━━━━━━━━━━━━━━━━━━<\n"
                     )
                 msg += f"\n**Gesamtnennungen (Top 3):** {total_mentions}"
-                send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
+
+                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                    log_handle.write("🔄 Sende Discord-Benachrichtigung...\n")
+
+                try:
+                    send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
+                    with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                        log_handle.write("✅ Discord-Benachrichtigung gesendet.\n")
+                except Exception as e:
+                    with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                        log_handle.write(f"❌ Fehler beim Senden der Discord-Benachrichtigung: {e}\n")
+                    st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+                    print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+
             except Exception as e:
                 st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
+            # Am Ende, nach Abschluss:
+            st.session_state.pop("crawler_pid", None)
+            st.session_state["crawl_running"] = False
             st.rerun()
     except Exception as e:
         st.session_state["crawl_running"] = False
+        st.session_state.pop("crawler_pid", None)
         raise
+
+def stop_crawler():
+    pid = st.session_state.get("crawler_pid")
+    if pid:
+        try:
+            p = psutil.Process(pid)
+            p.terminate()
+            try:
+                p.wait(timeout=5)
+            except psutil.TimeoutExpired:
+                p.kill()
+            st.success("Crawl-Prozess wurde gestoppt.")
+        except Exception as e:
+            st.error(f"Fehler beim Stoppen des Prozesses: {e}")
+        st.session_state["crawl_running"] = False
+        st.session_state.pop("crawler_pid", None)
+        st.rerun()
 
 def run_resolver_ui():
     st.header("📡 Ticker-Namen auflösen")
@@ -414,6 +457,9 @@ def main():
 
     if st.session_state.get("crawl_running", False):
         st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
+        if st.sidebar.button("🛑 Crawl stoppen"):
+            stop_crawler()
+            st.stop()
 
     col_dashboard, col_settings = st.columns([3, 1])
 
@@ -586,6 +632,7 @@ def main():
             st.warning("😶 Keine Ticker-Daten.")
             return
 
+        # Hier wird das aktuelle Mapping verwendet!
         df["Unternehmen"] = df["Ticker"].map(name_map)
         df = df[["Ticker", "Unternehmen", "Subreddit", "Nennungen", "Posts gecheckt"]]
 
@@ -657,6 +704,44 @@ def main():
         if sentiment_path.exists():
             st.markdown("### 📉 Gesamt-Sentiment")
             st.image(sentiment_path, use_column_width=True)
+
+        # Neue Sektion: Detaillierte Subreddit-Analyse für jeden Ticker
+        st.subheader("🔍 Detaillierte Subreddit-Analyse")
+        for ticker in sorted(df["Ticker"].unique()):
+            ticker_df = df[df["Ticker"] == ticker]
+            subreddit_counts = (
+                ticker_df.groupby("Subreddit")["Nennungen"].sum().sort_values(ascending=False)
+            )
+            subreddit_str = " | ".join(
+                f"{sub} ({count})" for sub, count in subreddit_counts.items()
+            )
+            st.markdown(f"### {ticker}")
+            st.markdown(f"**Subreddits:** {subreddit_str}")
+
+            # Zusammenfassung anzeigen
+            summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
+            summary_dict = {}
+            if summary_path and summary_path.exists():
+                summary_text = load_summary(summary_path)
+                summary_dict = parse_summary_md(summary_text)
+                if ticker in summary_dict:
+                    st.success(summary_dict[ticker])
+                else:
+                    st.info("Keine Ticker-spezifische Zusammenfassung vorhanden.")
+            else:
+                st.info("Noch keine Zusammenfassung für dieses Crawl-Ergebnis.")
+
+            # Wordcloud anzeigen
+            wc_base = selected_pickle.split("_")[0]
+            wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
+            fallback_wc = CHART_DIR / f"{ticker}_wordcloud.png"
+            image_path = wc_path if wc_path.exists() else fallback_wc
+            if image_path.exists():
+                st.image(Image.open(image_path), caption=f"Wordcloud für {ticker}", use_column_width=True)
+            else:
+                st.info("Keine Wordcloud vorhanden.")
+
+            st.markdown("---")
 
 if __name__ == "__main__":
     main()

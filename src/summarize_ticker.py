@@ -4,6 +4,7 @@ import pickle
 from dotenv import load_dotenv
 from datetime import datetime
 from collections import defaultdict
+import logging
 
 openai.api_key = None
 
@@ -51,6 +52,7 @@ def summarize_ticker(ticker, context):
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
+        logging.error(f"OpenAI-Fehler für {ticker}: {e}")
         return f"❌ Fehler für {ticker}: {e}"
 
 def main():

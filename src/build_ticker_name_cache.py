@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 from colorama import Fore, Style, init
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from resolver_utils import resolve_symbol_parallel
+import sys
 
 # 🟢 Farbunterstützung
 init(autoreset=True)
@@ -40,7 +41,7 @@ def save_cache(cache):
 def main():
     if not SYMBOLS_PATH.exists():
         logger.warning(f"{Fore.RED}⚠️ symbols_list.pkl fehlt unter: {SYMBOLS_PATH}")
-        return
+        sys.exit(1)  # Fehlercode zurückgeben
 
     with open(SYMBOLS_PATH, "rb") as f:
         symbols = set(pickle.load(f))
@@ -57,21 +58,40 @@ def main():
     resolved = {}
     with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(resolve_symbol_parallel, s): s for s in to_resolve}
-        for future in tqdm(as_completed(futures), total=len(to_resolve), desc="🔎 Auflösung", ncols=80):
-            sym, name, provider = future.result()
-            if name:
-                print(f"{Fore.GREEN}✅ {sym:<6}{Style.RESET_ALL} → {name} {Fore.LIGHTBLACK_EX}[{provider}]")
-                resolved[sym] = name
-            else:
-                print(f"{Fore.LIGHTBLACK_EX}🕳️ {sym:<6} konnte nicht aufgelöst werden")
+        success_count = 0
+        with tqdm(
+            as_completed(futures),
+            total=len(to_resolve),
+            desc=f"🔎 Auflösung (0/{len(to_resolve)})",
+            ncols=80
+        ) as pbar:
+            for future in pbar:
+                try:
+                    sym, name, provider = future.result()
+                    if name:
+                        logger.info(f"✅ {sym:<6} → {name} [{provider}]")
+                        print(f"{Fore.GREEN}✅ {sym:<6}{Style.RESET_ALL} → {name} {Fore.LIGHTBLACK_EX}[{provider}]")
+                        resolved[sym] = name
+                        success_count += 1
+                    else:
+                        logger.warning(f"🕳️ {sym:<6} konnte nicht aufgelöst werden")
+                        print(f"{Fore.LIGHTBLACK_EX}🕳️ {sym:<6} konnte nicht aufgelöst werden")
+                except Exception as e:
+                    sym = futures[future]
+                    logger.error(f"❌ Fehler bei {sym}: {e}")
+                    print(f"{Fore.RED}❌ Fehler bei {sym}: {e}")
+                pbar.set_description(f"🔎 Auflösung ({success_count}/{len(to_resolve)})")
 
     if resolved:
         cache.update(resolved)
         save_cache(cache)
         print(f"\n{Fore.GREEN}💾 Cache aktualisiert mit {len(resolved)} neuen Namen.")
         print(f"{Fore.BLUE}📎 Exportiert nach: {CSV_PATH}")
+        return len(resolved)
     else:
         print(f"\n{Fore.YELLOW}⚪️ Keine neuen Namen auflösbar.")
+        return 0
 
 if __name__ == "__main__":
-    main()
+    count = main()
+    sys.exit(0 if count is not None else 1)

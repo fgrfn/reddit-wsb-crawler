@@ -85,6 +85,8 @@ def reddit_crawler():
     subreddits = [s.strip() for s in os.getenv("SUBREDDITS", "wallstreetbets").split(",")]
     cutoff = datetime.now(timezone.utc) - timedelta(days=1)
     run_id = datetime.now().strftime("%y%m%d-%H%M%S")
+    os.makedirs("data/output/pickle", exist_ok=True)
+    out_path = f"data/output/pickle/{run_id}_ticker_hits.pkl"
     logger.info(f"Run-ID: {run_id}")
 
     results = {}

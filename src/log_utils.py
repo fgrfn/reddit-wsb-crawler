@@ -18,15 +18,23 @@ def archive_log(log_path: Path, archive_dir: Path, zip_old_logs: bool = False, k
     archive_file = archive_dir / f"{base_name}_{timestamp}.log"
 
     # 🧠 Deduplizieren: Falls identischer Hash schon im Archiv, abbrechen
-    with open(log_path, "rb") as f:
-        log_data = f.read()
-        current_hash = hashlib.sha256(log_data).hexdigest()
+    def file_hash(path, chunk_size=1024*1024):
+        size = path.stat().st_size
+        with open(path, "rb") as f:
+            if size > 2 * chunk_size:
+                start = f.read(chunk_size)
+                f.seek(-chunk_size, os.SEEK_END)
+                end = f.read(chunk_size)
+                data = start + end
+            else:
+                data = f.read()
+        return hashlib.sha256(data).hexdigest()
 
+    current_hash = file_hash(log_path)
     for existing_log in archive_dir.glob(f"{base_name}_*.log"):
-        with open(existing_log, "rb") as f:
-            if hashlib.sha256(f.read()).hexdigest() == current_hash:
-                print("⚠️ Identisches Logfile existiert bereits im Archiv. Kein Duplikat gespeichert.")
-                return
+        if file_hash(existing_log) == current_hash:
+            print("⚠️ Identisches Logfile existiert bereits im Archiv. Kein Duplikat gespeichert.")
+            return
 
     shutil.move(str(log_path), str(archive_file))
     print(f"✅ Logfile archiviert unter: {archive_file}")
