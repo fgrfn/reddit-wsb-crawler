@@ -17,7 +17,6 @@ LOG_PATH = BASE_DIR / "logs" / "crawler.log"
 RESOLVER_LOG = BASE_DIR / "logs" / "resolver.log"
 ARCHIVE_DIR = BASE_DIR / "logs" / "archive"
 NAME_RESOLVER_SCRIPT = BASE_DIR / "resolve_latest_hits.py"
-LATEST_HITS_FILE = BASE_DIR / "data" / "output" / "latest_ticker_hits.pkl"
 
 # 🗂️ Verzeichnisse sicherstellen
 for path in [LOG_PATH.parent, ARCHIVE_DIR]:
@@ -70,10 +69,7 @@ def main():
     duration = round(time.time() - start_time, 2)
     logger.info(f"✅ Crawl abgeschlossen – Dauer: {duration} Sekunden")
 
-    if not wait_for_file(LATEST_HITS_FILE, timeout=12):
-        logger.error("⚠️ Timeout – keine neue Trefferdatei gefunden")
-        return
-
+    # 📦 Ticker-Namensauflösung
     logger.info("📡 Starte Ticker-Namensauflösung ...")
     try:
         logger.info(f"Starte Resolver: {NAME_RESOLVER_SCRIPT} (cwd={os.getcwd()})")
