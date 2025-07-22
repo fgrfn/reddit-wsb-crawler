@@ -156,6 +156,35 @@ def start_crawler_and_wait():
                 # Discord-Benachrichtigung mit Top 3 Zusammenfassungen und Nennungs-Delta
                 try:
                     result = load_pickle(PICKLE_DIR / new_pickle)
+
+                    # Top 3 Ticker nach Nennungen bestimmen (wie gehabt)
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({
+                                "Ticker": symbol,
+                                "Nennungen": count
+                            })
+                    df = pd.DataFrame(df_rows)
+                    top3 = (
+                        df.groupby("Ticker")["Nennungen"]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(3)
+                        .index.tolist()
+                    )
+
+                    # --- NEU: Zusammenfassungen für die Top 3 Ticker generieren ---
+                    import summarizer
+                    summarizer.generate_summary(
+                        pickle_path=PICKLE_DIR / new_pickle,
+                        include_all=False,  # oder True, falls du alle willst
+                        streamlit_out=None, # kein Streamlit-Ausgabeobjekt
+                        only_symbols=top3   # nur Top 3 Ticker
+                    )
+                    # --- ENDE NEU ---
+
+                    # Jetzt wie gehabt die Zusammenfassungen laden und Discord-Benachrichtigung verschicken
                     summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
                     summary_dict = {}
                     if summary_path and summary_path.exists():
@@ -194,7 +223,13 @@ def start_crawler_and_wait():
                                 })
                         prev_df = pd.DataFrame(prev_rows)
                         prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
-                    msg = f"🕷️ Crawl abgeschlossen: Neue Analyse `{new_pickle}` ist verfügbar.\n"
+                    msg = (
+                        f"🕷️ **Crawl abgeschlossen!**\n"
+                        f"**Datei:** `{new_pickle}`\n"
+                        f"**Zeitpunkt:** {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+                        f"**Top 3 Ticker:**\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    )
                     for ticker in top3:
                         nennungen = int(df[df["Ticker"] == ticker]["Nennungen"].sum())
                         prev = prev_counts.get(ticker, 0)
@@ -209,8 +244,18 @@ def start_crawler_and_wait():
                                 delta_str = " (–)"
                         else:
                             delta_str = " (neu)"
+                        unternehmen = name_map.get(ticker, "")
                         summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
-                        msg += f"\n**{ticker}**: {nennungen} Nennungen{delta_str}\n{summary}\n"
+                        wc_base = new_pickle.split("_")[0]
+                        wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
+                        wc_url = f"[Wordcloud]({wc_path})" if wc_path.exists() else ""
+                        msg += (
+                            f"**{ticker}** {f'({unternehmen})' if unternehmen else ''}\n"
+                            f"• Nennungen: **{nennungen}**{delta_str}\n"
+                            f"{summary}\n"
+                            f"{wc_url}\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                        )
                     send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
                 except Exception as e:
                     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
