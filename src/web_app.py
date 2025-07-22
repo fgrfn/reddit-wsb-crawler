@@ -12,6 +12,8 @@ from pathlib import Path
 from collections import Counter
 from PIL import Image
 from pathlib import Path
+import threading
+import schedule
 BASE_DIR = Path(__file__).resolve().parent.parent
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
@@ -208,9 +210,6 @@ def run_resolver_ui():
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Als CSV herunterladen", csv, "ticker_results.csv", "text/csv")
 
-import threading
-import schedule
-
 scheduler_thread = None
 
 def run_scheduled_crawler(interval_type, interval_value, crawl_time=None):
@@ -242,16 +241,29 @@ def start_scheduler(interval_type, interval_value, crawl_time=None):
     scheduler_thread.start()
     st.success("Zeitplaner gestartet.")
 
+def get_schedule_description():
+    jobs = schedule.get_jobs()
+    if not jobs:
+        return "Kein Zeitplan aktiv."
+    descs = []
+    for job in jobs:
+        # schedule.Job repr enthält z.B. "Every 1 hour do job() (last run: ..., next run: ...)"
+        descs.append(f"• {job}")
+    return "\n".join(descs)
+
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
 
-    # Zwei Spalten: links Dashboard, rechts Einstellungen
     col_dashboard, col_settings = st.columns([3, 1])
 
     with col_settings:
         with st.expander("🕒 Zeitplanung", expanded=True):
             st.markdown("Hier kannst du den automatischen Start des Crawlers planen.")
+
+            # Aktuellen Zeitplan anzeigen
+            st.info("**Aktueller Zeitplan:**\n" + get_schedule_description())
+
             interval_type = st.selectbox("Modus wählen", ["Täglich", "Stündlich", "Minütlich"])
             interval_value = 1
             crawl_time = None
