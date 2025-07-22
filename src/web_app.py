@@ -11,6 +11,7 @@ import pandas as pd
 import schedule
 from PIL import Image
 import streamlit as st
+from pathlib import Path
 
 from reddit_crawler import reddit_crawler
 from utils import (
