@@ -29,8 +29,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
     handlers=[
-        logging.FileHandler(logfile, encoding="utf-8")
-        # StreamHandler entfernt, um doppelte Logs zu vermeiden
+        logging.FileHandler("logs/crawler.log", encoding="utf-8", delay=False)
     ]
 )
 logger = logging.getLogger(__name__)

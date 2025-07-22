@@ -125,7 +125,7 @@ def start_crawler_and_wait():
 
     try:
         LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(LOG_PATH, "w", encoding="utf-8") as f:
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
             f.write("🕷️ Crawl gestartet ...\n")
 
         with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
