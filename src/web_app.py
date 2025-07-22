@@ -323,6 +323,16 @@ def get_schedule_description():
 def clear_schedule():
     schedule.clear()
 
+import glob
+
+def find_log_for_pickle(pickle_filename):
+    # Extrahiere Zeitstempel aus Pickle-Dateiname
+    ts = pickle_filename.split("_")[0]
+    # Suche nach Logfile mit gleichem Zeitstempel im Archiv
+    pattern = str(ARCHIVE_DIR / f"{ts}_*.log")
+    matches = glob.glob(pattern)
+    return matches[0] if matches else None
+
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
@@ -610,12 +620,9 @@ def update_dotenv_variable(key, value, dotenv_path):
         lines = f.readlines()
     # ...existing code...
 
-import glob
+# ... alle anderen Hilfsfunktionen ...
 
-def find_log_for_pickle(pickle_filename):
-    # Extrahiere Zeitstempel aus Pickle-Dateiname
-    ts = pickle_filename.split("_")[0]
-    # Suche nach Logfile mit gleichem Zeitstempel im Archiv
-    pattern = str(ARCHIVE_DIR / f"{ts}_*.log")
-    matches = glob.glob(pattern)
-    return matches[0] if matches else None
+def main():
+    # ... wie gehabt ...
+    logfile_path = find_log_for_pickle(selected_pickle)
+    # ...
