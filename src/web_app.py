@@ -208,6 +208,40 @@ def run_resolver_ui():
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button("⬇️ Als CSV herunterladen", csv, "ticker_results.csv", "text/csv")
 
+import threading
+import schedule
+
+scheduler_thread = None
+
+def run_scheduled_crawler(interval_type, interval_value, crawl_time=None):
+    def job():
+        start_crawler_and_wait()
+
+    schedule.clear()
+    if interval_type == "Täglich" and crawl_time:
+        schedule.every().day.at(crawl_time.strftime("%H:%M")).do(job)
+    elif interval_type == "Stündlich":
+        schedule.every(interval_value).hours.do(job)
+    elif interval_type == "Minütlich":
+        schedule.every(interval_value).minutes.do(job)
+
+    while True:
+        schedule.run_pending()
+        time.sleep(10)
+
+def start_scheduler(interval_type, interval_value, crawl_time=None):
+    global scheduler_thread
+    if scheduler_thread and scheduler_thread.is_alive():
+        st.warning("Zeitplaner läuft bereits.")
+        return
+    scheduler_thread = threading.Thread(
+        target=run_scheduled_crawler,
+        args=(interval_type, interval_value, crawl_time),
+        daemon=True
+    )
+    scheduler_thread.start()
+    st.success("Zeitplaner gestartet.")
+
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
@@ -218,16 +252,19 @@ def main():
     with col_settings:
         with st.expander("🕒 Zeitplanung", expanded=True):
             st.markdown("Hier kannst du den automatischen Start des Crawlers planen.")
-            schedule_type = st.selectbox("Modus wählen", ["Täglich", "Alle X Stunden", "Alle X Minuten"])
-            if schedule_type == "Täglich":
+            interval_type = st.selectbox("Modus wählen", ["Täglich", "Stündlich", "Minütlich"])
+            interval_value = 1
+            crawl_time = None
+            if interval_type == "Täglich":
                 crawl_time = st.time_input("Uhrzeit für täglichen Crawl", value=datetime.time(2, 0))
-            elif schedule_type == "Alle X Stunden":
-                crawl_hours = st.number_input("Alle wie viele Stunden?", min_value=1, max_value=24, value=6)
-            else:
-                crawl_minutes = st.number_input("Alle wie viele Minuten?", min_value=5, max_value=60, value=30)
+            elif interval_type == "Stündlich":
+                interval_value = st.number_input("Alle wie viele Stunden?", min_value=1, max_value=24, value=1)
+            elif interval_type == "Minütlich":
+                interval_value = st.number_input("Alle wie viele Minuten?", min_value=1, max_value=60, value=15)
 
             if st.button("🗓️ Zeitplan speichern"):
-                st.success("Zeitplan gespeichert (Demo, keine echte Automatisierung).")
+                start_scheduler(interval_type, interval_value, crawl_time)
+                st.success("Zeitplan gespeichert und aktiviert.")
 
         with st.expander("⚙️ Einstellungen", expanded=False):
             openai_key = st.text_input(
