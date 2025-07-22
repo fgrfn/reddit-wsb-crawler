@@ -18,7 +18,6 @@ import logging
 TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
 TICKER_CSV_PATH = os.path.join("data", "input", "ticker_name_map.csv")
 SYMBOLS_PATH = os.path.join("data", "input", "symbols_list.pkl")
-LATEST_HITS_PATH = os.path.join("data", "output", "latest_ticker_hits.pkl")
 
 logger = logging.getLogger(__name__)
 
@@ -121,10 +120,6 @@ def reddit_crawler():
 
     # 🧠 Speichere Treffer für spätere Namensauflösung
     os.makedirs("data/output", exist_ok=True)
-    with open(LATEST_HITS_PATH, "wb") as f:
-        pickle.dump(total_counter, f)
-    logger.info(f"Treffer gespeichert in: {LATEST_HITS_PATH}")
-
     relevant = {sym: count for sym, count in total_counter.items() if count > 5}
 
     os.makedirs("data/output/pickle", exist_ok=True)
@@ -136,7 +131,6 @@ def reddit_crawler():
             "relevant": relevant,
             "total_posts": sum(r["posts_checked"] for r in results.values())
         }, f)
-
     logger.info(f"Ergebnis gespeichert: {out_path}")
     if relevant:
         logger.info("Relevante Ticker:")
