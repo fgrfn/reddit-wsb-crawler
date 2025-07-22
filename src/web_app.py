@@ -153,7 +153,7 @@ def start_crawler_and_wait():
                 else:
                     st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
 
-                # Discord-Benachrichtigung mit Top 3 Zusammenfassungen
+                # Discord-Benachrichtigung mit Top 3 Zusammenfassungen und Nennungs-Delta
                 try:
                     result = load_pickle(PICKLE_DIR / new_pickle)
                     summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
@@ -177,10 +177,40 @@ def start_crawler_and_wait():
                         .head(3)
                         .index.tolist()
                     )
+                    # Vorherigen Crawl laden (sofern vorhanden)
+                    pickle_files = list_pickle_files(PICKLE_DIR)
+                    prev_pickle = None
+                    if len(pickle_files) > 1:
+                        prev_pickle = sorted([f for f in pickle_files if f != new_pickle], reverse=True)[0]
+                    prev_counts = {}
+                    if prev_pickle:
+                        prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+                        prev_rows = []
+                        for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                            for symbol, count in srdata["symbol_hits"].items():
+                                prev_rows.append({
+                                    "Ticker": symbol,
+                                    "Nennungen": count
+                                })
+                        prev_df = pd.DataFrame(prev_rows)
+                        prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
                     msg = f"🕷️ Crawl abgeschlossen: Neue Analyse `{new_pickle}` ist verfügbar.\n"
                     for ticker in top3:
+                        nennungen = int(df[df["Ticker"] == ticker]["Nennungen"].sum())
+                        prev = prev_counts.get(ticker, 0)
+                        delta = nennungen - prev
+                        delta_str = ""
+                        if prev > 0:
+                            if delta > 0:
+                                delta_str = f" (▲ +{delta})"
+                            elif delta < 0:
+                                delta_str = f" (▼ {delta})"
+                            else:
+                                delta_str = " (–)"
+                        else:
+                            delta_str = " (neu)"
                         summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
-                        msg += f"\n**{ticker}**:\n{summary}\n"
+                        msg += f"\n**{ticker}**: {nennungen} Nennungen{delta_str}\n{summary}\n"
                     send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
                 except Exception as e:
                     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
