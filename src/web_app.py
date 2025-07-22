@@ -100,176 +100,176 @@ def build_env_editor():
             st.success("✅ Einstellungen gespeichert.")
 
 def start_crawler_and_wait():
-    LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(LOG_PATH, "w", encoding="utf-8") as f:
-        f.write("🕷️ Crawl gestartet ...\n")
+    st.session_state["crawl_running"] = True
+    try:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_PATH, "w", encoding="utf-8") as f:
+            f.write("🕷️ Crawl gestartet ...\n")
 
-    # Logfile-Handle sofort wieder schließen!
-    with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-        crawler_proc = subprocess.Popen(
-            [sys.executable, "src/main_crawler.py"],
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
-            close_fds=True  # wichtig für Windows!
-        )
+        with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+            crawler_proc = subprocess.Popen(
+                [sys.executable, "src/main_crawler.py"],
+                stdout=log_handle,
+                stderr=subprocess.STDOUT,
+                env=os.environ.copy(),
+                close_fds=True
+            )
 
-    status = st.status("🕷️ Crawler läuft ...", expanded=True)
-    with st.expander("📜 Crawl-Log anzeigen", expanded=True):
-        log_view = st.empty()
-        log_content = ""
+        status = st.status("🕷️ Crawler läuft ...", expanded=True)
+        with st.expander("📜 Crawl-Log anzeigen", expanded=True):
+            log_view = st.empty()
+            log_content = ""
 
-        existing = set(list_pickle_files(PICKLE_DIR))
-        timeout = 300
-        start_time = time.time()
+            existing = set(list_pickle_files(PICKLE_DIR))
+            timeout = 300
+            start_time = time.time()
 
-        while time.time() - start_time < timeout:
-            if LOG_PATH.exists():
-                try:
-                    with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
-                        log_content = f.read()
-                except Exception as e:
-                    log_content = f"Fehler beim Lesen des Logs: {e}"
-
-                log_view.code(log_content, language="bash", height=400)
-                st.session_state["last_log"] = log_content
-
-            current = set(list_pickle_files(PICKLE_DIR))
-            diff = current - existing
-            if diff:
-                new_pickle = sorted(diff)[0]
-                status.update(label="✅ Crawl abgeschlossen", state="complete")
-                st.success(f"Neue Analyse geladen: `{new_pickle}`")
-                crawler_proc.wait()
-                time.sleep(0.5)  # Kurze Pause
-
-                # Robust: Logfile mehrfach versuchen zu archivieren
-                for _ in range(5):
+            new_pickle = None
+            while time.time() - start_time < timeout:
+                if LOG_PATH.exists():
                     try:
-                        archive_log(LOG_PATH, ARCHIVE_DIR)
-                        break
-                    except PermissionError:
-                        time.sleep(0.5)
-                else:
-                    st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
+                        with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                            log_content = f.read()
+                    except Exception as e:
+                        log_content = f"Fehler beim Lesen des Logs: {e}"
 
-                # Discord-Benachrichtigung mit Top 3 Zusammenfassungen und Nennungs-Delta
+                    log_view.code(log_content, language="bash", height=400)
+                    st.session_state["last_log"] = log_content
+
+                current = set(list_pickle_files(PICKLE_DIR))
+                diff = current - existing
+                if diff:
+                    new_pickle = sorted(diff)[0]
+                    status.update(label="✅ Crawl abgeschlossen", state="complete")
+                    st.success(f"Neue Analyse geladen: `{new_pickle}`")
+                    crawler_proc.wait()
+                    time.sleep(0.5)
+                    break
+
+                if crawler_proc.poll() is not None:
+                    # Prozess ist fertig, aber keine neue Datei gefunden
+                    if not new_pickle and current:
+                        new_pickle = sorted(current)[-1]  # letzte Datei nehmen
+                    break
+
+                time.sleep(2)
+            else:
+                status.update(label="⚠️ Timeout – keine neue Datei gefunden", state="error")
+                st.error("Der Crawler hat keine neue Analyse erzeugt.")
+                return
+
+            # Robust: Logfile mehrfach versuchen zu archivieren
+            for _ in range(5):
                 try:
-                    result = load_pickle(PICKLE_DIR / new_pickle)
+                    archive_log(LOG_PATH, ARCHIVE_DIR)
+                    break
+                except PermissionError:
+                    time.sleep(0.5)
+            else:
+                st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
 
-                    # Top 3 Ticker nach Nennungen bestimmen (wie gehabt)
-                    df_rows = []
-                    for subreddit, srdata in result.get("subreddits", {}).items():
+            # --- Discord-Benachrichtigung immer senden, auch wenn keine neue Datei ---
+            try:
+                if not new_pickle:
+                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                    return
+
+                result = load_pickle(PICKLE_DIR / new_pickle)
+                df_rows = []
+                for subreddit, srdata in result.get("subreddits", {}).items():
+                    for symbol, count in srdata["symbol_hits"].items():
+                        df_rows.append({
+                            "Ticker": symbol,
+                            "Nennungen": count
+                        })
+                df = pd.DataFrame(df_rows)
+                top3 = (
+                    df.groupby("Ticker")["Nennungen"]
+                    .sum()
+                    .sort_values(ascending=False)
+                    .head(3)
+                    .index.tolist()
+                )
+
+                import summarizer
+                summarizer.generate_summary(
+                    pickle_path=PICKLE_DIR / new_pickle,
+                    include_all=False,
+                    streamlit_out=None,
+                    only_symbols=top3
+                )
+
+                summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
+                summary_dict = {}
+                if summary_path and summary_path.exists():
+                    summary_text = load_summary(summary_path)
+                    summary_dict = parse_summary_md(summary_text)
+
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                prev_pickle = None
+                if len(pickle_files) > 1:
+                    prev_pickle = sorted([f for f in pickle_files if f != new_pickle], reverse=True)[0]
+                prev_counts = {}
+                if prev_pickle:
+                    prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+                    prev_rows = []
+                    for subreddit, srdata in prev_result.get("subreddits", {}).items():
                         for symbol, count in srdata["symbol_hits"].items():
-                            df_rows.append({
+                            prev_rows.append({
                                 "Ticker": symbol,
                                 "Nennungen": count
                             })
-                    df = pd.DataFrame(df_rows)
-                    top3 = (
-                        df.groupby("Ticker")["Nennungen"]
-                        .sum()
-                        .sort_values(ascending=False)
-                        .head(3)
-                        .index.tolist()
-                    )
-
-                    # --- NEU: Zusammenfassungen für die Top 3 Ticker generieren ---
-                    import summarizer
-                    summarizer.generate_summary(
-                        pickle_path=PICKLE_DIR / new_pickle,
-                        include_all=False,  # oder True, falls du alle willst
-                        streamlit_out=None, # kein Streamlit-Ausgabeobjekt
-                        only_symbols=top3   # nur Top 3 Ticker
-                    )
-                    # --- ENDE NEU ---
-
-                    # Jetzt wie gehabt die Zusammenfassungen laden und Discord-Benachrichtigung verschicken
-                    summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
-                    summary_dict = {}
-                    if summary_path and summary_path.exists():
-                        summary_text = load_summary(summary_path)
-                        summary_dict = parse_summary_md(summary_text)
-                    # Top 3 Ticker nach Nennungen
-                    df_rows = []
-                    for subreddit, srdata in result.get("subreddits", {}).items():
-                        for symbol, count in srdata["symbol_hits"].items():
-                            df_rows.append({
-                                "Ticker": symbol,
-                                "Nennungen": count
-                            })
-                    df = pd.DataFrame(df_rows)
-                    top3 = (
-                        df.groupby("Ticker")["Nennungen"]
-                        .sum()
-                        .sort_values(ascending=False)
-                        .head(3)
-                        .index.tolist()
-                    )
-                    # Vorherigen Crawl laden (sofern vorhanden)
-                    pickle_files = list_pickle_files(PICKLE_DIR)
-                    prev_pickle = None
-                    if len(pickle_files) > 1:
-                        prev_pickle = sorted([f for f in pickle_files if f != new_pickle], reverse=True)[0]
-                    prev_counts = {}
-                    if prev_pickle:
-                        prev_result = load_pickle(PICKLE_DIR / prev_pickle)
-                        prev_rows = []
-                        for subreddit, srdata in prev_result.get("subreddits", {}).items():
-                            for symbol, count in srdata["symbol_hits"].items():
-                                prev_rows.append({
-                                    "Ticker": symbol,
-                                    "Nennungen": count
-                                })
-                        prev_df = pd.DataFrame(prev_rows)
-                        prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
-                    msg = (
-                        f"🕷️ **Crawl abgeschlossen!**\n"
-                        f"**Datei:** `{new_pickle}`\n"
-                        f"**Zeitpunkt:** {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-                        f"**Top 3 Ticker:**\n"
-                        "━━━━━━━━━━━━━━━━━━━━━━\n"
-                    )
-                    for ticker in top3:
-                        nennungen = int(df[df["Ticker"] == ticker]["Nennungen"].sum())
-                        prev = prev_counts.get(ticker, 0)
-                        delta = nennungen - prev
-                        delta_str = ""
-                        if prev > 0:
-                            if delta > 0:
-                                delta_str = f" (▲ +{delta})"
-                            elif delta < 0:
-                                delta_str = f" (▼ {delta})"
-                            else:
-                                delta_str = " (–)"
+                    prev_df = pd.DataFrame(prev_rows)
+                    prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+                msg = (
+                    f"🕷️ **Crawl abgeschlossen!**\n"
+                    f"**Datei:** `{new_pickle}`\n"
+                    f"**Zeitpunkt:** {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+                    f"**Top 3 Ticker:**\n"
+                    f">━━━━━━━━━━━━━━━━━━━━━━━━━━━<\n"
+                )
+                total_mentions = 0
+                for idx, ticker in enumerate(top3, 1):
+                    nennungen = int(df[df["Ticker"] == ticker]["Nennungen"].sum())
+                    total_mentions += nennungen
+                    prev = prev_counts.get(ticker, 0)
+                    delta = nennungen - prev
+                    delta_percent = f" ({(delta/prev*100):+.1f}%)" if prev > 0 else ""
+                    if prev > 0:
+                        if delta > 0:
+                            delta_str = f"▲ +{delta}{delta_percent}"
+                            delta_emoji = "🟢"
+                        elif delta < 0:
+                            delta_str = f"▼ {delta}{delta_percent}"
+                            delta_emoji = "🔴"
                         else:
-                            delta_str = " (neu)"
-                        unternehmen = name_map.get(ticker, "")
-                        summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
-                        wc_base = new_pickle.split("_")[0]
-                        wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
-                        wc_url = f"[Wordcloud]({wc_path})" if wc_path.exists() else ""
-                        msg += (
-                            f"**{ticker}** {f'({unternehmen})' if unternehmen else ''}\n"
-                            f"• Nennungen: **{nennungen}**{delta_str}\n"
-                            f"{summary}\n"
-                            f"{wc_url}\n"
-                            "━━━━━━━━━━━━━━━━━━━━━━\n"
-                        )
-                    send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
-                except Exception as e:
-                    print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+                            delta_str = "–"
+                            delta_emoji = "⚪"
+                    else:
+                        delta_str = "neu"
+                        delta_emoji = "🆕"
+                    unternehmen = name_map.get(ticker, "")
+                    summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
+                    wc_base = new_pickle.split("_")[0]
+                    wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
+                    wc_url = f"[🌥️ Wordcloud]({wc_path})" if wc_path.exists() else ""
+                    msg += (
+                        f"**{idx}. {ticker}** {f'({unternehmen})' if unternehmen else ''}\n"
+                        f"> 📈 **Nennungen:** {nennungen} {delta_emoji} {delta_str}\n"
+                        f"{wc_url}\n"
+                        f"> 🧠 **Zusammenfassung:**\n"
+                        f"> {summary.replace(chr(10), chr(10)+'> ')}\n"
+                        f">━━━━━━━━━━━━━━━━━━━━━━━━━━━<\n"
+                    )
+                msg += f"\n**Gesamtnennungen (Top 3):** {total_mentions}"
+                send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
+            except Exception as e:
+                print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
-                st.rerun()
-                break
-
-            if crawler_proc.poll() is not None:
-                break
-
-            time.sleep(2)
-        else:
-            status.update(label="⚠️ Timeout – keine neue Datei gefunden", state="error")
-            st.error("Der Crawler hat keine neue Analyse erzeugt.")
+            st.rerun()
+    except Exception as e:
+        st.session_state["crawl_running"] = False
+        raise
 
 def run_resolver_ui():
     st.header("📡 Ticker-Namen auflösen")
@@ -381,6 +381,9 @@ def find_log_for_pickle(pickle_filename):
 def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
+
+    if st.session_state.get("crawl_running", False):
+        st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
 
     col_dashboard, col_settings = st.columns([3, 1])
 
