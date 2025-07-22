@@ -170,9 +170,13 @@ def start_crawler_and_wait():
 
             # --- Discord-Benachrichtigung immer senden, auch wenn keine neue Datei ---
             try:
+                # Wähle die zuletzt vorhandene Pickle-Datei, falls keine neue erzeugt wurde
                 if not new_pickle:
-                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
-                    return
+                    pickle_files = list_pickle_files(PICKLE_DIR)
+                    if not pickle_files:
+                        st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                        return
+                    new_pickle = sorted(pickle_files)[-1]
 
                 result = load_pickle(PICKLE_DIR / new_pickle)
                 df_rows = []
@@ -264,6 +268,7 @@ def start_crawler_and_wait():
                 msg += f"\n**Gesamtnennungen (Top 3):** {total_mentions}"
                 send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
             except Exception as e:
+                st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
             st.rerun()
