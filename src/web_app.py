@@ -13,6 +13,7 @@ from collections import Counter
 from PIL import Image
 import threading
 import schedule
+import json
 BASE_DIR = Path(__file__).resolve().parent.parent
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
@@ -41,6 +42,24 @@ TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
 name_map = load_ticker_names(TICKER_NAME_PATH)
 
 load_dotenv(dotenv_path=ENV_PATH)
+
+SCHEDULE_CONFIG_PATH = BASE_DIR / "config" / "schedule.json"
+
+def save_schedule_config(interval_type, interval_value, crawl_time):
+    config = {
+        "interval_type": interval_type,
+        "interval_value": interval_value,
+        "crawl_time": crawl_time.strftime("%H:%M") if crawl_time else None
+    }
+    SCHEDULE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(SCHEDULE_CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump(config, f)
+
+def load_schedule_config():
+    if not SCHEDULE_CONFIG_PATH.exists():
+        return None
+    with open(SCHEDULE_CONFIG_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 def build_env_editor():
     st.sidebar.markdown("---")
@@ -161,15 +180,7 @@ def start_crawler_and_wait():
                     st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
                     return
                 new_pickle = sorted(pickle_files)[-1]
-            else:
-                status.update(label="⚠️ Timeout – keine neue Datei gefunden", state="error")
-                st.warning("Der Crawler hat keine neue Analyse erzeugt – benutze letzte vorhandene Datei für Discord.")
-                pickle_files = list_pickle_files(PICKLE_DIR)
-                if not pickle_files:
-                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
-                    return
-                new_pickle = sorted(pickle_files)[-1]
-
+           
             # Robust: Logfile mehrfach versuchen zu archivieren
             for _ in range(5):
                 try:
@@ -399,6 +410,8 @@ def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
 
+    config = load_schedule_config()
+
     if st.session_state.get("crawl_running", False):
         st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
 
@@ -426,6 +439,7 @@ def main():
 
             if st.button("🗓️ Zeitplan speichern"):
                 start_scheduler(interval_type, interval_value, crawl_time)
+                save_schedule_config(interval_type, interval_value, crawl_time)
                 st.success("Zeitplan gespeichert und aktiviert.")
                 st.rerun()
 
