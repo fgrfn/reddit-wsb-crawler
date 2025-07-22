@@ -124,15 +124,7 @@ def start_crawler_and_wait():
                     return
                 new_pickle = sorted(pickle_files)[-1]
 
-            for _ in range(5):
-                try:
-                    archive_log(LOG_PATH, ARCHIVE_DIR)
-                    break
-                except PermissionError:
-                    time.sleep(0.5)
-            else:
-                st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
-
+            # --- Discord-Benachrichtigung immer senden, auch wenn keine neue Datei ---
             try:
                 if not new_pickle:
                     pickle_files = list_pickle_files(PICKLE_DIR)
@@ -201,7 +193,7 @@ def start_crawler_and_wait():
                     prev = prev_counts.get(ticker, 0)
                     delta = nennungen - prev
                     delta_percent = f" ({(delta/prev*100):+.1f}%)" if prev > 0 else ""
-                    delta_emoji = "🔺" if delta > 0 else ("🔻" if delta < 0 else "⏸️")
+                    delta_emoji = "⬆️" if delta > 0 else ("⬇️" if delta < 0 else "⏸️")
                     delta_str = f"{delta:+d}{delta_percent}" if prev > 0 else ""
                     unternehmen = name_map.get(ticker, "")
                     summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
@@ -234,6 +226,16 @@ def start_crawler_and_wait():
             except Exception as e:
                 st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+
+            # --- Logfile erst jetzt archivieren ---
+            for _ in range(5):
+                try:
+                    archive_log(LOG_PATH, ARCHIVE_DIR)
+                    break
+                except PermissionError:
+                    time.sleep(0.5)
+            else:
+                st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
 
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
@@ -676,6 +678,37 @@ def main():
                 st.image(Image.open(image_path), caption=f"Wordcloud für {ticker}", use_column_width=True)
             else:
                 st.info("Keine Wordcloud vorhanden.")
+
+            st.markdown("---")
+
+        st.subheader("📊 Nennungen nach Ticker (gesamt)")
+        df_ticker = (
+            df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+            .sum()
+            .sort_values(by="Nennungen", ascending=False)
+        )
+        st.dataframe(df_ticker, use_container_width=True)
+
+        # Optional: Die alte Subreddit-Ansicht kannst du darunter als Detailansicht lassen.
+        st.subheader("📊 Nennungen nach Subreddit (Detailansicht)")
+        for subreddit in sorted(df["Subreddit"].unique()):
+            subreddit_df = df[df["Subreddit"] == subreddit]
+            total_mentions = subreddit_df["Nennungen"].sum()
+            st.markdown(f"### {subreddit} (Gesamt: {total_mentions} Nennungen)")
+            st.dataframe(subreddit_df.sort_values(by="Nennungen", ascending=False), use_container_width=True)
+
+            # Optional: Zusammenfassung für den Subreddit anzeigen, falls vorhanden
+            summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
+            summary_dict = {}
+            if summary_path and summary_path.exists():
+                summary_text = load_summary(summary_path)
+                summary_dict = parse_summary_md(summary_text)
+                if subreddit in summary_dict:
+                    st.success(summary_dict[subreddit])
+                else:
+                    st.info("Keine Subreddit-spezifische Zusammenfassung vorhanden.")
+            else:
+                st.info("Noch keine Zusammenfassung für dieses Crawl-Ergebnis.")
 
             st.markdown("---")
 
