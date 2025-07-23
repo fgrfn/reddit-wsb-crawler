@@ -97,7 +97,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
-            f"💹 Kurs: {kurs_str}\n"
+            f"💲 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
         summary = summary_dict.get(ticker)
