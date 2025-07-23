@@ -238,18 +238,46 @@ def start_crawler_and_wait():
                         f"🕷️ **Crawl abgeschlossen!**\n"
                         f"📦 Datei: `{latest_pickle}`\n"
                         f"🕒 Zeitpunkt: {timestamp}\n"
+                        f"\n"  # <-- Leerzeile eingefügt
                         f"🏆 **Top 3 Ticker:**\n"
                         f">━━━━━━━━━━━━━━━━━━━<\n"
                     )
-                    for idx, row in top3.iterrows():
+                    # ...vor dem Discord-Text...
+                    pickle_files = sorted(list_pickle_files(PICKLE_DIR))
+                    if len(pickle_files) >= 2:
+                        prev_pickle = pickle_files[-2]
+                        prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+                        prev_rows = []
+                        for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                            for symbol, count in srdata["symbol_hits"].items():
+                                prev_rows.append({"Ticker": symbol, "Nennungen": count})
+                        prev_df = pd.DataFrame(prev_rows)
+                        prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+                    else:
+                        prev_nennungen = {}
+
+                    # ...beim Erstellen der Discord-Nachricht...
+                    platz_emojis = ["🥇", "🥈", "🥉"]
+                    for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
                         ticker = row["Ticker"]
                         nennungen = row["Nennungen"]
-                        kurs = row.get("Kurs", "k.A.")
-                        unternehmen = row.get("Unternehmen", "")
+                        diff = nennungen - prev_nennungen.get(ticker, 0)
+                        if diff > 0:
+                            trend = f"▲ (+{diff})"
+                        elif diff < 0:
+                            trend = f"▼ ({diff})"
+                        else:
+                            trend = "→ (0)"
+                        emoji = platz_emojis[i-1] if i <= 3 else ""
+                        kurs = row.get('Kurs')
+                        if kurs is not None:
+                            kurs_str = f"{kurs:.2f} USD"
+                        else:
+                            kurs_str = "k.A."
                         msg += (
-                            f"\n**{idx+1}. {ticker}** {'🏢 ' + unternehmen if unternehmen else ''}\n"
-                            f"🔢 Nennungen: **{nennungen}**\n"
-                            f"💹 Kurs: **{kurs}**\n"
+                            f"\n{emoji} **{i}. {ticker}** {'🏢 ' + row.get('Unternehmen', '') if row.get('Unternehmen', '') else ''}\n"
+                            f"🔢 Nennungen: **{nennungen}** {trend}\n"
+                            f"💹 Kurs: **{kurs_str}**\n"
                         )
                         # Zusammenfassung laden, falls vorhanden
                         summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
