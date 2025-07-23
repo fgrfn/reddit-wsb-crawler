@@ -493,10 +493,15 @@ def main():
             st.info("ℹ️ Bitte führe zunächst die initiale Konfiguration in den Einstellungen durch.")
             st.stop()
 
-        if st.sidebar.button("🚀 Crawl jetzt starten"):
-            start_crawler_and_wait()
-            st.rerun()  # <-- Seite neu laden, damit Button wechselt
-            st.stop()
+        if is_crawl_running() or st.session_state.get("crawl_running", False):
+            if st.sidebar.button("🛑 Crawl stoppen"):
+                stop_crawler()
+                st.stop()
+        else:
+            if st.sidebar.button("🚀 Crawl jetzt starten"):
+                start_crawler_and_wait()
+                st.rerun()
+                st.stop()
 
         # --- Live-Loganzeige für laufenden Crawl ---
         if is_crawl_running():
@@ -517,7 +522,9 @@ def main():
                         log_content = ""
                 log_box.code(log_content, language="bash", height=400)
                 time.sleep(refresh_interval)
-                st.experimental_rerun()
+                if not is_crawl_running():
+                    break  # Crawl ist fertig, Schleife verlassen!
+                st.rerun()  # <-- Workaround: Seite neu laden
 
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
@@ -747,3 +754,4 @@ def update_dotenv_variable(key, value, dotenv_path):
 # ... alle anderen Hilfsfunktionen ...
 
 # (Removed duplicate and incomplete main function definition)
+print("Streamlit-Version:", st.__version__)
