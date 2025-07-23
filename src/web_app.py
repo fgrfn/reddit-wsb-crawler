@@ -358,6 +358,7 @@ def run_resolver_ui():
         # st.download_button("⬇️ Als CSV herunterladen", csv, "ticker_results.csv", "text/csv")
 
 scheduler_thread = None
+scheduler_stop_event = threading.Event()
 
 def run_scheduled_crawler(interval_type, interval_value, crawl_time=None):
     def job():
@@ -365,23 +366,22 @@ def run_scheduled_crawler(interval_type, interval_value, crawl_time=None):
 
     schedule.clear()
     if interval_type == "Täglich" and crawl_time:
-        # BUGFIX: Zeile war vorher schedule.every().day.a
-        # Korrekt ist:
         schedule.every().day.at(crawl_time.strftime("%H:%M")).do(job)
     elif interval_type == "Stündlich":
         schedule.every(interval_value).hours.do(job)
     elif interval_type == "Minütlich":
         schedule.every(interval_value).minutes.do(job)
 
-    while True:
+    while not scheduler_stop_event.is_set():
         schedule.run_pending()
         time.sleep(10)
 
 def start_scheduler(interval_type, interval_value, crawl_time=None):
-    global scheduler_thread
+    global scheduler_thread, scheduler_stop_event
     if scheduler_thread and scheduler_thread.is_alive():
         st.warning("Zeitplaner läuft bereits.")
         return
+    scheduler_stop_event.clear()
     scheduler_thread = threading.Thread(
         target=run_scheduled_crawler,
         args=(interval_type, interval_value, crawl_time),
@@ -408,7 +408,10 @@ def get_schedule_description():
     return "\n".join(descs)
 
 def clear_schedule():
+    global scheduler_thread, scheduler_stop_event
     schedule.clear()
+    scheduler_stop_event.set()
+    scheduler_thread = None
 
 import glob
 
@@ -469,6 +472,7 @@ def main():
             if st.button("🗑️ Zeitplan löschen"):
                 clear_schedule()
                 st.success("Zeitplan wurde gelöscht.")
+                st.rerun()  # Seite neu laden, damit die Anzeige verschwindet
 
             interval_type = st.selectbox("Modus wählen", ["Täglich", "Stündlich", "Minütlich"])
             interval_value = 1
@@ -670,7 +674,13 @@ def main():
                 with open(logfile_path, "r", encoding="utf-8", errors="replace") as f:
                     st.code(f.read(), language="bash")
         else:
-            st.info("Kein Logfile für diesen Crawl gefunden.")
+            # Fallback: Zeige das aktuelle Logfile, falls vorhanden
+            if LOG_PATH.exists():
+                with st.expander("📜 Aktuelles Logfile anzeigen", expanded=False):
+                    with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                        st.code(f.read(), language="bash")
+            else:
+                st.info("Kein Logfile für diesen Crawl gefunden.")
 
         # Lösch-Button für die aktuell ausgewählte Analyse
         if st.sidebar.button("🗑️ Analyse löschen"):
