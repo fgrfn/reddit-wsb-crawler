@@ -274,11 +274,12 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
             ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
             capture_output=True, text=True
         )
-        # Format: NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
-        # 2025-07-24 02:00:00 CEST  52min left 2025-07-24 01:00:00 CEST  7min ago   reddit_crawler.timer   reddit_crawler.service
         line = result.stdout.strip().splitlines()
         if line:
-            next_time = line[0].split()[0] + " " + line[0].split()[1]
+            # Splitte nach beliebigen Leerzeichen
+            parts = line[0].split()
+            # Die ersten beiden Teile sind Datum und Uhrzeit
+            next_time = f"{parts[0]} {parts[1]} {parts[2]}"
             return next_time
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
