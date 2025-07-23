@@ -17,15 +17,16 @@ def send_discord_notification(message, webhook_url=None):
         logging.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
-def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict):
+def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
     gesamt = df_ticker.head(3)["Nennungen"].sum()
+    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "~"
     msg = (
-        f"🕷️ **Crawl abgeschlossen!**\n"
-        f"📦 Datei: `{pickle_name}`\n"
-        f"🕒 Zeitpunkt: {timestamp}\n"
+        f"🕷️ Crawl abgeschlossen!\n"
+        f"📦 Datei: {pickle_name}\n"
+        f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n"
         f"\n"
-        f"🏆 **Top 3 Ticker:**\n"
+        f"🏆 Top 3 Ticker:\n"
         f">━━━━━━━━━━━━━━━━━━━<\n"
     )
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
@@ -44,17 +45,16 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             kurs_str = f"{kurs:.2f} USD"
         else:
             kurs_str = "k.A."
+        unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         msg += (
-            f"\n{emoji} **{i}. {ticker}** {'🏢 ' + row.get('Unternehmen', '') if row.get('Unternehmen', '') else ''}\n"
-            f" 🔢 Nennungen: **{nennungen}** {trend}\n"
-            f" 💹 Kurs: **{kurs_str}**\n"
+            f"\n{emoji} {i}. {ticker} \n"
+            f"\n🏢 {unternehmen}\n"
+            f"🔢 Nennungen: {nennungen} {trend}\n"
+            f"💹 Kurs: {kurs_str}\n"
+            f"🧠 Zusammenfassung:\n"
         )
         summary = summary_dict.get(ticker)
-        msg += " 🧠 **Zusammenfassung:**\n"
         if summary:
             msg += summary + "\n"
-        else:
-            msg += "Keine Zusammenfassung vorhanden.\n"
         msg += ">━━━━━━━━━━━━━━━━━━━<\n"
-    msg += f"\n🔢 **Gesamtnennungen (Top 3): {gesamt}**\n"
     return msg

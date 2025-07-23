@@ -258,7 +258,7 @@ def start_crawler_and_wait():
                         df_ticker=df_ticker,
                         prev_nennungen=prev_nennungen,
                         name_map=name_map,
-                        summary_dict=summary_dict
+                        summary_dict=summary_dict  # <--- Hier werden die Zusammenfassungen eingebunden!
                     )
 
                     # Discord-Benachrichtigung senden
@@ -267,12 +267,10 @@ def start_crawler_and_wait():
                         st.success("Discord-Benachrichtigung gesendet!")
                     else:
                         st.error("Fehler beim Senden der Discord-Benachrichtigung.")
-            finally:
-                clear_crawl_flag()
-    except Exception as e:
-        st.session_state["crawl_running"] = False
-        st.session_state.pop("crawler_pid", None)
-        raise
+            except Exception as e:
+                st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+    finally:
+        clear_crawl_flag()
 
 def stop_crawler():
     import psutil
@@ -702,6 +700,10 @@ def main():
 
         summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
         summary_dict = {}
+        if summary_path and summary_path.exists():
+            summary_text = load_summary(summary_path)
+            summary_dict = parse_summary_md(summary_text)
+
         needs_summary = False
 
         st.markdown(f"### 🧠 KI-Zusammenfassung für {top_ticker}")
