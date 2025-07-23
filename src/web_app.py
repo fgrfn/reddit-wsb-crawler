@@ -26,50 +26,7 @@ from utils import (
 )
 from log_utils import archive_log
 from discord_utils import send_discord_notification
-
-def format_discord_embed(top3, result, summary_dict, pickle_filename, crawl_time):
-    embed = {
-        "title": "WSB-Crawler",
-        "description": "🕷️ **Crawl abgeschlossen!**",
-        "fields": [],
-        "timestamp": crawl_time.isoformat(),
-        "footer": {"text": f"Datei: {pickle_filename}"}
-    }
-    embed["fields"].append({
-        "name": "Zeitpunkt",
-        "value": crawl_time.strftime("%d.%m.%Y %H:%M:%S"),
-        "inline": False
-    })
-    embed["fields"].append({
-        "name": "Top 3 Ticker",
-        "value": "----------------------------------------",
-        "inline": False
-    })
-    total_mentions = 0
-    for i, ticker in enumerate(top3, 1):
-        ticker_data = None
-        for subreddit, srdata in result.get("subreddits", {}).items():
-            if ticker in srdata["symbol_hits"]:
-                ticker_data = srdata
-                break
-        nennungen = sum(
-            srdata["symbol_hits"].get(ticker, 0)
-            for srdata in result.get("subreddits", {}).values()
-        )
-        total_mentions += nennungen
-        kurs_delta = summary_dict.get(ticker, {}).get("kurs_delta", "±0 (0.0%)")
-        zusammenfassung = summary_dict.get(ticker, {}).get("text", "Keine Zusammenfassung.")
-        embed["fields"].append({
-            "name": f"{i}. {ticker}",
-            "value": f"**Nennungen:** {nennungen} {kurs_delta}\n\n🧠 **Zusammenfassung:**\n{zusammenfassung}\n----------------------------------------",
-            "inline": False
-        })
-    embed["fields"].append({
-        "name": "Gesamtnennungen (Top 3)",
-        "value": str(total_mentions),
-        "inline": False
-    })
-    return embed
+import summarizer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
@@ -176,7 +133,7 @@ def start_crawler_and_wait():
                         return
                     new_pickle = sorted(pickle_files)[-1]
 
-                result = load_pickle(PICKLE_DIR / new_pickle)
+                result = load_pickle(PICKLE_DIR / neTw_pickle)
                 df_rows = []
                 for subreddit, srdata in result.get("subreddits", {}).items():
                     for symbol, count in srdata["symbol_hits"].items():
@@ -208,15 +165,6 @@ def start_crawler_and_wait():
                     with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
                         log_handle.write(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}\n")
                     st.error(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}")
-                # --- Discord-Benachrichtigung senden ---
-                try:
-                    summary_dict = {}  # Hier die Zusammenfassungen laden/parsen!
-                    crawl_time = datetime.datetime.now()
-                    embed = format_discord_embed(top3, result, summary_dict, new_pickle, crawl_time)
-                    send_discord_notification(embed)
-                except Exception as e:
-                    st.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
-                    print(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
             except Exception as e:
                 st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
