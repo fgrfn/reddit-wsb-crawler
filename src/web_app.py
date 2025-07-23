@@ -265,16 +265,23 @@ def start_crawler_and_wait():
                             msg += "Keine Zusammenfassung vorhanden.\n"
                         msg += ">━━━━━━━━━━━━━━━━━━━<\n"
                     msg += f"\n🔢 **Gesamtnennungen (Top 3): {gesamt}**\n"
-                    success = send_discord_notification(msg)
-                    if success:
-                        st.success("Discord-Benachrichtigung gesendet!")
-                    else:
-                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
-                else:
-                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+                    try:
+                        # Discord-Benachrichtigung senden
+                        success = send_discord_notification(msg)
+                        if success:
+                            st.success("Discord-Benachrichtigung gesendet!")
+                        else:
+                            st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+                    except Exception as e:
+                        st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+                    finally:
+                        # Flag IMMER danach löschen!
+                        clear_crawl_flag()
             except Exception as e:
                 st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
 
+            # Jetzt das Flag löschen!
+            clear_crawl_flag()
             st.rerun()
     except Exception as e:
         st.session_state["crawl_running"] = False
@@ -757,11 +764,18 @@ def main():
         # Top 3 Ticker für Discord-Benachrichtigung
         top3 = df_ticker["Ticker"].head(3).tolist()
         msg = f"Die Top 3 Ticker sind: {', '.join(top3)}"
-        success = send_discord_notification(msg)
-        if success:
-            st.success("Discord-Benachrichtigung gesendet!")
-        else:
-            st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+
+        # Button für manuelle Benachrichtigung
+        if st.button("📣 Discord-Benachrichtigung für diese Analyse senden"):
+            try:
+                success = send_discord_notification(msg)
+                if success:
+                    st.success("Discord-Benachrichtigung gesendet!")
+                else:
+                    st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+            except Exception as e:
+                st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+            clear_crawl_flag()
 
         # Optional: Die alte Subreddit-Ansicht kannst du darunter als Detailansicht lassen.
         st.subheader("📊 Nennungen nach Subreddit (Detailansicht)")
