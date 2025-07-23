@@ -76,11 +76,18 @@ def load_ticker_names(ticker_name_path: Path):
 def download_and_clean_tickerlist():
     # NASDAQ laden
     nasdaq = pd.read_csv(NASDAQ_URL, sep="|")
+    # Fix: NASDAQ-Datei hat einen Header in der ersten Zeile, aber auch eine Zeile mit "File Creation Time" am Anfang.
+    # Diese Zeile muss übersprungen werden, sonst fehlen die Spalten!
+    if "Symbol" not in nasdaq.columns or "Security Name" not in nasdaq.columns:
+        nasdaq = pd.read_csv(NASDAQ_URL, sep="|", skiprows=1)
     nasdaq = nasdaq[["Symbol", "Security Name"]]
     nasdaq["Exchange"] = "NASDAQ"
 
     # NYSE laden
     nyse = pd.read_csv(NYSE_URL, sep="|")
+    # Fix: NYSE-Datei kann ebenfalls eine "File Creation Time"-Zeile am Anfang haben.
+    if "ACT Symbol" not in nyse.columns or "Security Name" not in nyse.columns:
+        nyse = pd.read_csv(NYSE_URL, sep="|", skiprows=1)
     nyse = nyse[["ACT Symbol", "Security Name"]]
     nyse = nyse.rename(columns={"ACT Symbol": "Symbol"})
     nyse["Exchange"] = "NYSE"

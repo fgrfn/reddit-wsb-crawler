@@ -40,6 +40,19 @@ TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
 name_map = load_ticker_names(TICKER_NAME_PATH)
 SCHEDULE_CONFIG_PATH = BASE_DIR / "config" / "schedule.json"
 
+CRAWL_FLAG = "crawl_running.flag"
+
+def set_crawl_flag():
+    with open(CRAWL_FLAG, "w") as f:
+        f.write("running")
+
+def clear_crawl_flag():
+    if os.path.exists(CRAWL_FLAG):
+        os.remove(CRAWL_FLAG)
+
+def is_crawl_running():
+    return os.path.exists(CRAWL_FLAG)
+
 def save_schedule_config(interval_type, interval_value, crawl_time):
     config = {
         "interval_type": interval_type,
@@ -62,6 +75,7 @@ def start_crawler_and_wait():
         return
 
     st.session_state["crawl_running"] = True
+    set_crawl_flag()
     log_event("🕷️ Crawl gestartet ...", "INFO", True)
 
     try:
@@ -133,7 +147,7 @@ def start_crawler_and_wait():
                         return
                     new_pickle = sorted(pickle_files)[-1]
 
-                result = load_pickle(PICKLE_DIR / neTw_pickle)
+                result = load_pickle(PICKLE_DIR / new_pickle)
                 df_rows = []
                 for subreddit, srdata in result.get("subreddits", {}).items():
                     for symbol, count in srdata["symbol_hits"].items():
@@ -147,27 +161,23 @@ def start_crawler_and_wait():
                     .index.tolist()
                 )
 
+                # --- KI-Zusammenfassung für die Top 3 immer erzeugen ---
+                summarizer.generate_summary(
+                    pickle_path=PICKLE_DIR / new_pickle,
+                    include_all=False,
+                    streamlit_out=None,
+                    only_symbols=top3
+                )
                 with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                    log_handle.write(f"🔄 Starte KI-Zusammenfassung für Ticker: {', '.join(top3)}\n")
-                st.info(f"🔄 KI-Zusammenfassung wird erstellt für: {', '.join(top3)}")
-
-                try:
-                    summarizer.generate_summary(
-                        pickle_path=PICKLE_DIR / new_pickle,
-                        include_all=False,
-                        streamlit_out=None,
-                        only_symbols=top3
-                    )
-                    with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                        log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
-                    st.success("✅ KI-Zusammenfassung abgeschlossen.")
-                except Exception as e:
-                    with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                        log_handle.write(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}\n")
-                    st.error(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}")
+                    log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
+                st.success("✅ KI-Zusammenfassung abgeschlossen.")
             except Exception as e:
-                st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
-                print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
+                    log_handle.write(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}\n")
+                st.error(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}")
+            # except Exception as e:
+            #     st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
+            #     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
             # --- Logfile erst jetzt archivieren ---
             for _ in range(5):
@@ -181,6 +191,7 @@ def start_crawler_and_wait():
 
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
+            clear_crawl_flag()
             st.rerun()
     except Exception as e:
         st.session_state["crawl_running"] = False
@@ -202,6 +213,7 @@ def stop_crawler():
             st.error(f"Fehler beim Stoppen des Prozesses: {e}")
         st.session_state["crawl_running"] = False
         st.session_state.pop("crawler_pid", None)
+        clear_crawl_flag()
         st.rerun()
 
 def run_resolver_ui():
@@ -258,6 +270,8 @@ def run_scheduled_crawler(interval_type, interval_value, crawl_time=None):
 
     schedule.clear()
     if interval_type == "Täglich" and crawl_time:
+        # BUGFIX: Zeile war vorher schedule.every().day.a
+        # Korrekt ist:
         schedule.every().day.at(crawl_time.strftime("%H:%M")).do(job)
     elif interval_type == "Stündlich":
         schedule.every(interval_value).hours.do(job)
@@ -425,74 +439,30 @@ def main():
                 st.success("✅ Einstellungen gespeichert.")
 
         with st.expander("🐞 DEBUG", expanded=False):
-            st.markdown("Hier findest du technische Tools für Entwickler und Fehleranalyse.")
+            st.markdown("Technische Tools für Entwickler und Fehleranalyse.")
 
-            # ...deine bisherigen Debug-Buttons...
-
-            if st.button("📣 Discord-Benachrichtigung mit Top 3 Ticker senden"):
-                # Die aktuellste Pickle-Datei laden
-                pickle_files = list_pickle_files(PICKLE_DIR)
-                if not pickle_files:
-                    st.error("Keine Pickle-Datei gefunden.")
+            # Button: Namensauflösung manuell starten
+            if st.button("🔄 Ticker-Namensauflösung ausführen"):
+                import subprocess
+                result = subprocess.run(
+                    ["python", "src/build_ticker_name_cache.py"],
+                    capture_output=True, text=True
+                )
+                st.text(result.stdout)
+                if result.returncode == 0:
+                    st.success("Namensauflösung abgeschlossen!")
                 else:
-                    latest_pickle = PICKLE_DIR / pickle_files[0]
-                    result = load_pickle(latest_pickle)
-                    df_rows = []
-                    for subreddit, srdata in result.get("subreddits", {}).items():
-                        for symbol, count in srdata["symbol_hits"].items():
-                            df_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
-                    df = pd.DataFrame(df_rows)
-                    top3 = (
-                        df.groupby("Ticker")["Nennungen"]
-                        .sum()
-                        .sort_values(ascending=False)
-                        .head(3)
-                        .index.tolist()
-                    )
+                    st.error("Fehler bei der Namensauflösung.")
 
-                    # Zusammenfassungen laden
-                    summary_path = find_summary_for(pickle_files[0], SUMMARY_DIR)
-                    summary_dict = {}
-                    if summary_path and summary_path.exists():
-                        summary_text = load_summary(summary_path)
-                        summary_dict = parse_summary_md(summary_text)
-
-                    # Kursveränderung holen (optional, falls du das im Code hast)
-                    def get_trend(ticker):
-                        import yfinance as yf
-                        try:
-                            data = yf.Ticker(ticker).history(period="7d")
-                            if data.empty:
-                                return "±0 (0.0%)"
-                            change = data["Close"][-1] - data["Close"][0]
-                            pct = (change / data["Close"][0]) * 100
-                            return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
-                        except Exception:
-                            return "±0 (0.0%)"
-
-                    # Nachricht formatieren
-                    msg = f"**WSB-Crawler**\n"
-                    msg += f"🕷️ Crawl abgeschlossen!\n"
-                    msg += f"Datei: `{pickle_files[0]}`\n"
-                    msg += f"Zeitpunkt: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-                    msg += f"Top 3 Ticker:\n>———————————————<\n"
-                    total_mentions = 0
-                    for i, ticker in enumerate(top3, 1):
-                        nennungen = df[df["Ticker"] == ticker]["Nennungen"].sum()
-                        trend = get_trend(ticker)
-                        summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
-                        msg += f"\n**{i}. {ticker}**\n"
-                        msg += f"**Nennungen:** {nennungen} | Kurs: {trend}\n"
-                        msg += f"🧠 **Zusammenfassung:**\n{summary}\n>———————————————<\n"
-                        total_mentions += nennungen
-                    msg += f"\nGesamtnennungen (Top 3): {total_mentions}"
-
-                    # Senden
-                    success = send_discord_notification(msg)
-                    if success:
-                        st.success("Discord-Benachrichtigung erfolgreich gesendet!")
-                    else:
-                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+            # Button: Discord-Benachrichtigung senden
+            if st.button("📣 Test-Discord-Benachrichtigung senden"):
+                from discord_utils import send_discord_notification
+                msg = "Test: Die Namensauflösung wurde manuell ausgeführt."
+                success = send_discord_notification(msg)
+                if success:
+                    st.success("Discord-Benachrichtigung gesendet!")
+                else:
+                    st.error("Fehler beim Senden der Discord-Benachrichtigung.")
 
     with col_dashboard:
         # Hier kommt dein gesamtes Dashboard (alles außer build_env_editor())
@@ -506,6 +476,20 @@ def main():
         if st.sidebar.button("🚀 Crawl jetzt starten"):
             start_crawler_and_wait()
             st.stop()
+
+        # --- Live-Loganzeige für laufenden Crawl ---
+        if is_crawl_running():
+            st.info("🟡 Crawl läuft gerade ...")
+            st.markdown("#### 📜 Live-Crawl-Log")
+            log_content = ""
+            if LOG_PATH.exists():
+                try:
+                    with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                        log_content = f.read()
+                except Exception:
+                    log_content = ""
+            st.code(log_content, language="bash", height=400)
+            st.warning("Die Seite kann aktualisiert werden – das Log wird immer live angezeigt, solange der Crawl läuft.")
 
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
@@ -734,5 +718,4 @@ def update_dotenv_variable(key, value, dotenv_path):
 
 # ... alle anderen Hilfsfunktionen ...
 
-def main():
-    logfile_path = find_log_for_pickle(selected_pickle)
+# (Removed duplicate and incomplete main function definition)

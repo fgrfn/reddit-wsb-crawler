@@ -26,6 +26,10 @@ def download_and_clean_tickerlist():
     logger.info(f"NASDAQ: {len(nasdaq)} Einträge geladen.")
     print(f"NASDAQ: {len(nasdaq)} Einträge geladen.")
 
+    if "Symbol" not in nasdaq.columns or "Security Name" not in nasdaq.columns:
+        logger.error(f"❌ NASDAQ-Datei hat unerwartete Spalten: {list(nasdaq.columns)}")
+        nasdaq = pd.DataFrame(columns=["Symbol", "Security Name", "Exchange"])
+
     # NYSE laden (lokale Datei)
     if NYSE_LOCAL.exists():
         logger.info("⬇️ Lade NYSE-Tickerliste (lokal) ...")
@@ -43,7 +47,7 @@ def download_and_clean_tickerlist():
     # Deutschland/Europa laden (lokale Datei)
     if DE_LOCAL.exists():
         logger.info("⬇️ Lade DE/EU-Tickerliste (lokal, Excel, Blatt 'Prime Standard') ...")
-        # Header in Zeile 2 (header=1), weil Zeile 1 nur Titel enthält
+        # Header in Zeile 8 (header=7), weil Zeile 1-7 nur Titel und Infos enthalten
         de = pd.read_excel(
             DE_LOCAL,
             sheet_name="Prime Standard",
@@ -63,6 +67,14 @@ def download_and_clean_tickerlist():
     else:
         de = pd.DataFrame(columns=["Symbol", "Security Name", "Exchange"])
         logger.warning("⚠️ Keine DE/EU-Liste gefunden!")
+
+    # NYSE: Exchange-Spalte ergänzen, falls Datei nicht existiert
+    if not NYSE_LOCAL.exists():
+        nyse["Exchange"] = "NYSE"
+
+    # DE/EU: Exchange-Spalte ergänzen, falls Datei nicht existiert
+    if not DE_LOCAL.exists():
+        de["Exchange"] = "DE/EU"
 
     # Alle zusammenführen
     tickers = pd.concat([nasdaq, nyse, de], ignore_index=True)
