@@ -63,12 +63,17 @@ def send_discord_notification(message, webhook_url=None):
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
+    warntext = "… [gekürzt wegen Discord-Limit]"
+    maxlen = 1900
+
     msg = (
         f"🕷️ Crawl abgeschlossen! "
         f"📦 Datei: {pickle_name} "
         f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
+
+    ticker_blocks = []
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
         ticker = row["Ticker"]
         nennungen = row["Nennungen"]
@@ -89,7 +94,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         else:
             kurs_str = "k.A."
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
-        msg += (
+        block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
             f"💹 Kurs: {kurs_str}\n"
@@ -97,13 +102,29 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         )
         summary = summary_dict.get(ticker)
         if summary:
-            msg += summary.strip() + "\n"
-        msg += "\n"
-    # Discord-Limit beachten (Hinweis zählt mit!)
-    maxlen = 1900
-    warntext = "… [gekürzt wegen Discord-Limit]"
-    if len(msg) > maxlen:
-        msg = msg[:maxlen - len(warntext)] + warntext
+            block += summary.strip() + "\n"
+        block += "\n"
+        ticker_blocks.append(block)
+
+    # Füge die Ticker-Blöcke einzeln hinzu und kürze ggf. die Zusammenfassung des letzten Tickers
+    for i, block in enumerate(ticker_blocks):
+        if len(msg) + len(block) > maxlen - len(warntext):
+            # Kürze nur die Zusammenfassung des letzten Tickers
+            # Finde den Teil "🧠 Zusammenfassung:\n"
+            split_idx = block.find("🧠 Zusammenfassung:\n")
+            if split_idx != -1:
+                head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
+                summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
+                allowed = maxlen - len(msg) - len(warntext) - 2  # 2 für \n\n
+                summary = summary[:allowed] + warntext
+                block = head + summary + "\n\n"
+            else:
+                block = block[:maxlen - len(msg) - len(warntext)] + warntext
+        msg += block
+        if len(msg) > maxlen:
+            msg = msg[:maxlen - len(warntext)] + warntext
+            break
+
     return msg
 
 def get_yf_price(symbol):
@@ -225,7 +246,7 @@ def main():
                 for symbol, count in srdata["symbol_hits"].items():
                     prev_rows.append({"Ticker": symbol, "Nennungen": count})
             prev_df = pd.DataFrame(prev_rows)
-            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+            prev_nennungen = prev_df.groupby "Ticker")["Nennungen"].sum().to_dict()
         else:
             prev_nennungen = {}
 
