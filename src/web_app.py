@@ -231,18 +231,7 @@ def start_crawler_and_wait():
                         .sum()
                         .sort_values(by="Nennungen", ascending=False)
                     )
-                    top3 = df_ticker.head(3)
-                    gesamt = top3["Nennungen"].sum()
-                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
-                    msg = (
-                        f"🕷️ **Crawl abgeschlossen!**\n"
-                        f"📦 Datei: `{latest_pickle}`\n"
-                        f"🕒 Zeitpunkt: {timestamp}\n"
-                        f"\n"  # <-- Leerzeile eingefügt
-                        f"🏆 **Top 3 Ticker:**\n"
-                        f">━━━━━━━━━━━━━━━━━━━<\n"
-                    )
-                    # ...vor dem Discord-Text...
+                    # Trend-Berechnung
                     pickle_files = sorted(list_pickle_files(PICKLE_DIR))
                     if len(pickle_files) >= 2:
                         prev_pickle = pickle_files[-2]
@@ -256,61 +245,30 @@ def start_crawler_and_wait():
                     else:
                         prev_nennungen = {}
 
-                    # ...beim Erstellen der Discord-Nachricht...
-                    platz_emojis = ["🥇", "🥈", "🥉"]
-                    for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
-                        ticker = row["Ticker"]
-                        nennungen = row["Nennungen"]
-                        diff = nennungen - prev_nennungen.get(ticker, 0)
-                        if diff > 0:
-                            trend = f"▲ (+{diff})"
-                        elif diff < 0:
-                            trend = f"▼ ({diff})"
-                        else:
-                            trend = "→ (0)"
-                        emoji = platz_emojis[i-1] if i <= 3 else ""
-                        kurs = row.get('Kurs')
-                        if kurs is not None:
-                            kurs_str = f"{kurs:.2f} USD"
-                        else:
-                            kurs_str = "k.A."
-                        msg += (
-                            f"\n{emoji} **{i}. {ticker}** {'🏢 ' + row.get('Unternehmen', '') if row.get('Unternehmen', '') else ''}\n"
-                            f"🔢 Nennungen: **{nennungen}** {trend}\n"
-                            f"💹 Kurs: **{kurs_str}**\n"
-                        )
-                        # Zusammenfassung laden, falls vorhanden
-                        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
-                        summary = None
-                        if summary_path and summary_path.exists():
-                            summary_text = load_summary(summary_path)
-                            summary_dict = parse_summary_md(summary_text)
-                            summary = summary_dict.get(ticker)
-                        msg += "🧠 **Zusammenfassung:**\n"
-                        if summary:
-                            msg += summary + "\n"
-                        else:
-                            msg += "Keine Zusammenfassung vorhanden.\n"
-                        msg += ">━━━━━━━━━━━━━━━━━━━<\n"
-                    msg += f"\n🔢 **Gesamtnennungen (Top 3): {gesamt}**\n"
-                    try:
-                        # Discord-Benachrichtigung senden
-                        success = send_discord_notification(msg)
-                        if success:
-                            st.success("Discord-Benachrichtigung gesendet!")
-                        else:
-                            st.error("Fehler beim Senden der Discord-Benachrichtigung.")
-                    except Exception as e:
-                        st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
-                    finally:
-                        # Flag IMMER danach löschen!
-                        clear_crawl_flag()
-            except Exception as e:
-                st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+                    summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+                    summary_dict = {}
+                    if summary_path and summary_path.exists():
+                        summary_text = load_summary(summary_path)
+                        summary_dict = parse_summary_md(summary_text)
 
-            # Jetzt das Flag löschen!
-            clear_crawl_flag()
-            st.rerun()
+                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                    msg = format_discord_message(
+                        pickle_name=latest_pickle,
+                        timestamp=timestamp,
+                        df_ticker=df_ticker,
+                        prev_nennungen=prev_nennungen,
+                        name_map=name_map,
+                        summary_dict=summary_dict
+                    )
+
+                    # Discord-Benachrichtigung senden
+                    success = send_discord_notification(msg)
+                    if success:
+                        st.success("Discord-Benachrichtigung gesendet!")
+                    else:
+                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+            finally:
+                clear_crawl_flag()
     except Exception as e:
         st.session_state["crawl_running"] = False
         st.session_state.pop("crawler_pid", None)

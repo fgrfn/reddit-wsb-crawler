@@ -46,11 +46,11 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             kurs_str = "k.A."
         msg += (
             f"\n{emoji} **{i}. {ticker}** {'🏢 ' + row.get('Unternehmen', '') if row.get('Unternehmen', '') else ''}\n"
-            f"🔢 Nennungen: **{nennungen}** {trend}\n"
-            f"💹 Kurs: **{kurs_str}**\n"
+            f" 🔢 Nennungen: **{nennungen}** {trend}\n"
+            f" 💹 Kurs: **{kurs_str}**\n"
         )
         summary = summary_dict.get(ticker)
-        msg += "🧠 **Zusammenfassung:**\n"
+        msg += " 🧠 **Zusammenfassung:**\n"
         if summary:
             msg += summary + "\n"
         else:
