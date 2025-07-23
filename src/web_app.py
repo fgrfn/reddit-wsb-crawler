@@ -25,7 +25,7 @@ from utils import (
     load_ticker_names
 )
 from log_utils import archive_log
-from discord_utils import send_discord_notification
+from discord_utils import send_discord_notification, format_discord_message
 import summarizer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -796,6 +796,37 @@ def main():
         # Button für manuelle Benachrichtigung
         if st.button("📣 Discord-Benachrichtigung für diese Analyse senden"):
             try:
+                # Hole die vorherige Analyse für Trend
+                pickle_files = sorted(list_pickle_files(PICKLE_DIR))
+                idx = pickle_files.index(selected_pickle)
+                if idx > 0:
+                    prev_pickle = pickle_files[idx-1]
+                    prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+                    prev_rows = []
+                    for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            prev_rows.append({"Ticker": symbol, "Nennungen": count})
+                    prev_df = pd.DataFrame(prev_rows)
+                    prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+                else:
+                    prev_nennungen = {}
+
+                summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
+                summary_dict = {}
+                if summary_path and summary_path.exists():
+                    summary_text = load_summary(summary_path)
+                    summary_dict = parse_summary_md(summary_text)
+
+                timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                msg = format_discord_message(
+                    pickle_name=selected_pickle,
+                    timestamp=timestamp,
+                    df_ticker=df_ticker,
+                    prev_nennungen=prev_nennungen,
+                    name_map=name_map,
+                    summary_dict=summary_dict
+                )
+
                 success = send_discord_notification(msg)
                 if success:
                     st.success("Discord-Benachrichtigung gesendet!")
