@@ -91,27 +91,41 @@ def reddit_crawler():
     results = {}
     total_counter = Counter()
 
+    def process_post(post, symbols, cutoff):
+        try:
+            if datetime.fromtimestamp(post.created_utc, tz=timezone.utc) < cutoff:
+                return None
+            text = f"{post.title} {post.selftext or ''}"
+            post.comments.replace_more(limit=0)
+            for comment in post.comments.list():
+                if hasattr(comment, "body") and isinstance(comment.body, str):
+                    text += " " + comment.body
+            text = text[:50000]
+            counter = Counter()
+            for sym in symbols:
+                if re.search(rf"(?<!\w)(\${sym}|{sym})(?!\w)", text):
+                    counter[sym] += 1
+            return counter
+        except Exception:
+            return None
+
     def crawl_subreddit(sr, reddit, symbols, cutoff):
         sr_data = reddit.subreddit(sr)
-        counter = Counter()
         total_posts = 0
         logger.info(f"r/{sr} analysieren ...")
-        for post in tqdm(sr_data.new(limit=100), desc=f"{sr}", unit="Post", ncols=80):
-            try:
-                if datetime.fromtimestamp(post.created_utc, tz=timezone.utc) < cutoff:
-                    continue
-                total_posts += 1
-                text = f"{post.title} {post.selftext or ''}"
-                post.comments.replace_more(limit=0)
-                for comment in post.comments.list():
-                    if hasattr(comment, "body") and isinstance(comment.body, str):
-                        text += " " + comment.body
-                text = text[:50000]
-                for sym in symbols:
-                    if re.search(rf"(?<!\w)(\${sym}|{sym})(?!\w)", text):
-                        counter[sym] += 1
-            except Exception:
-                continue
+        counters = []
+        posts = list(sr_data.new(limit=100))
+        total_posts = len(posts)
+        with ThreadPoolExecutor(max_workers=8) as post_executor:
+            futures = [post_executor.submit(process_post, post, symbols, cutoff) for post in posts]
+            for future in as_completed(futures):
+                result = future.result()
+                if result:
+                    counters.append(result)
+        # Alle Counter zusammenführen
+        counter = Counter()
+        for c in counters:
+            counter.update(c)
         return sr, {
             "symbol_hits": dict(counter),
             "posts_checked": total_posts
