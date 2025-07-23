@@ -425,6 +425,14 @@ def main():
     st.title("🕷️ Reddit Crawler Dashboard")
 
     config = load_schedule_config()
+    # Zeitplan nach Neustart wiederherstellen
+    if config:
+        interval_type = config.get("interval_type")
+        interval_value = config.get("interval_value")
+        crawl_time = None
+        if config.get("crawl_time"):
+            crawl_time = datetime.datetime.strptime(config["crawl_time"], "%H:%M").time()
+        start_scheduler(interval_type, interval_value, crawl_time)
 
     if st.session_state.get("crawl_running", False):
         st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
@@ -533,7 +541,6 @@ def main():
 
             # Button: Discord-Benachrichtigung senden
             if st.button("📣 Test-Discord-Benachrichtigung senden"):
-                # Lade die aktuellste Pickle-Datei
                 pickle_files = list_pickle_files(PICKLE_DIR)
                 if not pickle_files:
                     st.error("Keine Pickle-Datei gefunden.")
@@ -545,14 +552,24 @@ def main():
                         for symbol, count in srdata["symbol_hits"].items():
                             df_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
                     df = pd.DataFrame(df_rows)
-                    top3 = (
-                        df.groupby("Ticker")["Nennungen"]
+                    df["Unternehmen"] = df["Ticker"].map(name_map)
+                    df_ticker = (
+                        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
                         .sum()
-                        .sort_values(ascending=False)
-                        .head(3)
-                        .index.tolist()
+                        .sort_values(by="Nennungen", ascending=False)
                     )
-                    msg = f"Test: Die Top 3 Ticker sind: {', '.join(top3)}"
+                    # Trend-Berechnung (optional für Test)
+                    prev_nennungen = {}
+                    summary_dict = {}
+                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                    msg = format_discord_message(
+                        pickle_name=latest_pickle,
+                        timestamp=timestamp,
+                        df_ticker=df_ticker,
+                        prev_nennungen=prev_nennungen,
+                        name_map=name_map,
+                        summary_dict=summary_dict
+                    )
                     success = send_discord_notification(msg)
                     if success:
                         st.success("Discord-Benachrichtigung gesendet!")
