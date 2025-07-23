@@ -235,9 +235,6 @@ def start_crawler_and_wait():
                 with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
                     log_handle.write(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}\n")
                 st.error(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}")
-            # except Exception as e:
-            #     st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
-            #     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
             # Discord-Benachrichtigung nach dem Crawl senden (optimiertes Format)
             try:
@@ -277,7 +274,6 @@ def start_crawler_and_wait():
 
                     summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
                     if not summary_path or not summary_path.exists():
-                        # Fallback: Versuche, die Datei direkt zu finden
                         run_id = latest_pickle.split("_")[0]
                         possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
                         if possible_path.exists():
@@ -361,7 +357,6 @@ def start_crawler_and_wait():
 
                     summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
                     if not summary_path or not summary_path.exists():
-                        # Fallback: Versuche, die Datei direkt zu finden
                         run_id = latest_pickle.split("_")[0]
                         possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
                         if possible_path.exists():
