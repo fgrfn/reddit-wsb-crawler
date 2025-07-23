@@ -208,6 +208,73 @@ def start_crawler_and_wait():
             )
             global name_map
             name_map = load_ticker_names(TICKER_NAME_PATH)
+
+            # Discord-Benachrichtigung nach dem Crawl senden (optimiertes Format)
+            try:
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if pickle_files:
+                    latest_pickle = sorted(pickle_files)[-1]
+                    result = load_pickle(PICKLE_DIR / latest_pickle)
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({
+                                "Ticker": symbol,
+                                "Subreddit": subreddit,
+                                "Nennungen": count,
+                                "Kurs": srdata.get("price", {}).get(symbol),  # falls vorhanden
+                            })
+                    df = pd.DataFrame(df_rows)
+                    df["Unternehmen"] = df["Ticker"].map(name_map)
+                    df_ticker = (
+                        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+                        .sum()
+                        .sort_values(by="Nennungen", ascending=False)
+                    )
+                    top3 = df_ticker.head(3)
+                    gesamt = top3["Nennungen"].sum()
+                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                    msg = (
+                        f"🕷️ **Crawl abgeschlossen!**\n"
+                        f"📦 Datei: `{latest_pickle}`\n"
+                        f"🕒 Zeitpunkt: {timestamp}\n"
+                        f"🏆 **Top 3 Ticker:**\n"
+                        f">━━━━━━━━━━━━━━━━━━━<\n"
+                    )
+                    for idx, row in top3.iterrows():
+                        ticker = row["Ticker"]
+                        nennungen = row["Nennungen"]
+                        kurs = row.get("Kurs", "k.A.")
+                        unternehmen = row.get("Unternehmen", "")
+                        msg += (
+                            f"\n**{idx+1}. {ticker}** {'🏢 ' + unternehmen if unternehmen else ''}\n"
+                            f"🔢 Nennungen: **{nennungen}**\n"
+                            f"💹 Kurs: **{kurs}**\n"
+                        )
+                        # Zusammenfassung laden, falls vorhanden
+                        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+                        summary = None
+                        if summary_path and summary_path.exists():
+                            summary_text = load_summary(summary_path)
+                            summary_dict = parse_summary_md(summary_text)
+                            summary = summary_dict.get(ticker)
+                        msg += "🧠 **Zusammenfassung:**\n"
+                        if summary:
+                            msg += summary + "\n"
+                        else:
+                            msg += "Keine Zusammenfassung vorhanden.\n"
+                        msg += ">━━━━━━━━━━━━━━━━━━━<\n"
+                    msg += f"\n🔢 **Gesamtnennungen (Top 3): {gesamt}**\n"
+                    success = send_discord_notification(msg)
+                    if success:
+                        st.success("Discord-Benachrichtigung gesendet!")
+                    else:
+                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+                else:
+                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+            except Exception as e:
+                st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+
             st.rerun()
     except Exception as e:
         st.session_state["crawl_running"] = False
@@ -686,6 +753,15 @@ def main():
             .sort_values(by="Nennungen", ascending=False)
         )
         st.dataframe(df_ticker, use_container_width=True)
+
+        # Top 3 Ticker für Discord-Benachrichtigung
+        top3 = df_ticker["Ticker"].head(3).tolist()
+        msg = f"Die Top 3 Ticker sind: {', '.join(top3)}"
+        success = send_discord_notification(msg)
+        if success:
+            st.success("Discord-Benachrichtigung gesendet!")
+        else:
+            st.error("Fehler beim Senden der Discord-Benachrichtigung.")
 
         # Optional: Die alte Subreddit-Ansicht kannst du darunter als Detailansicht lassen.
         st.subheader("📊 Nennungen nach Subreddit (Detailansicht)")
