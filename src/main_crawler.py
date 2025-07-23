@@ -60,7 +60,6 @@ def main():
         print("🕷️ Starte Reddit-Crawler ...")
     except UnicodeEncodeError:
         print("Starte Reddit-Crawler ...")
-    
     try:
         reddit_crawler()  # <-- Hier direkt die Crawl-Logik aufrufen!
     except Exception:
@@ -74,7 +73,6 @@ def main():
     logger.info("📡 Starte Ticker-Namensauflösung ...")
     try:
         logger.info(f"Starte Resolver: {NAME_RESOLVER_SCRIPT} (cwd={os.getcwd()})")
-        # Ausgabe in Konsole UND Logfile
         process = subprocess.Popen(
             [sys.executable, str(NAME_RESOLVER_SCRIPT)],
             stdout=subprocess.PIPE,
@@ -83,13 +81,14 @@ def main():
         )
         with open(RESOLVER_LOG, "a", encoding="utf-8") as out:
             for line in process.stdout:
-                print(line, end="")   # In die Konsole/WebUI
-                out.write(line)       # In die Logdatei
+                print(line, end="")
+                out.write(line)
         process.wait()
         logger.info("✅ Ticker-Namensauflösung abgeschlossen")
     except Exception:
         logger.exception("⚠️ Fehler bei der Namensauflösung")
 
+    # 📦 Log erst jetzt archivieren!
     try:
         archive_log(LOG_PATH, ARCHIVE_DIR, keep_last=10)
         logger.info("📦 Log archiviert")

@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from ticker_utils import load_tickerlist
 import logging
+import glob
 
 # 🟢 Farbkonsole aktivieren
 init(autoreset=True)
@@ -171,13 +172,15 @@ if __name__ == "__main__":
     logger.info(f"Starte resolve_latest_hits.py (cwd={os.getcwd()})")
     resolve_from_hits()
 
-    PICKLE_DIR = "data/output/pickle"
-    pickle_files = [f for f in os.listdir(PICKLE_DIR) if f.endswith(".pkl")]
+    PICKLE_DIR = Path("data/output/pickle")
+    pickle_files = sorted(PICKLE_DIR.glob("*.pkl"), reverse=True)
     if not pickle_files:
         print("❌ Keine Pickle-Datei gefunden.")
         exit(1)
-    latest_pickle = sorted(pickle_files)[-1]
-    with open(os.path.join(PICKLE_DIR, latest_pickle), "rb") as f:
+    latest_pickle = pickle_files[0]
+    print(f"📜 Lese Treffer aus: {latest_pickle}")
+
+    with open(latest_pickle, "rb") as f:
         counter = pickle.load(f)
 
     if not counter:
