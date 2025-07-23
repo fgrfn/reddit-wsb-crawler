@@ -137,7 +137,7 @@ def start_crawler_and_wait():
 
         with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
             crawler_proc = subprocess.Popen(
-                [sys.executable, os.path.join("src", "main_crawler.py")],
+                [sys.executable, os.path.join("src", "run_crawler_headless.py")],
                 stdout=log_handle,
                 stderr=subprocess.STDOUT,
                 env=os.environ.copy(),
@@ -607,7 +607,7 @@ def main():
             # --- NEU: Externe Zeitplanung für Linux anzeigen ---
             st.markdown("#### 🖥️ Externe Zeitplanung (Linux systemd-timer)")
             python_path = sys.executable
-            script_path = str(BASE_DIR / "src" / "main_crawler.py")
+            script_path = str(BASE_DIR / "src" / "run_crawler_headless.py")
             crawl_time_str = crawl_time.strftime("%H:%M") if crawl_time else "02:00"
             interval_type_str = interval_type
 
