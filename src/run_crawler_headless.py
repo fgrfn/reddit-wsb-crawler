@@ -68,7 +68,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
     msg = (
         f"🕷️ Crawl abgeschlossen! "
-        f"🗂️ {pickle_name} "
+        f"💾 {pickle_name} "
         f"🕒 {timestamp} | ⏰ {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
