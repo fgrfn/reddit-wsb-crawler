@@ -192,6 +192,8 @@ def start_crawler_and_wait():
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             clear_crawl_flag()
+            global name_map
+            name_map = load_ticker_names(TICKER_NAME_PATH)
             st.rerun()
     except Exception as e:
         st.session_state["crawl_running"] = False
@@ -456,13 +458,31 @@ def main():
 
             # Button: Discord-Benachrichtigung senden
             if st.button("📣 Test-Discord-Benachrichtigung senden"):
-                from discord_utils import send_discord_notification
-                msg = "Test: Die Namensauflösung wurde manuell ausgeführt."
-                success = send_discord_notification(msg)
-                if success:
-                    st.success("Discord-Benachrichtigung gesendet!")
+                # Lade die aktuellste Pickle-Datei
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if not pickle_files:
+                    st.error("Keine Pickle-Datei gefunden.")
                 else:
-                    st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+                    latest_pickle = sorted(pickle_files)[-1]
+                    result = load_pickle(PICKLE_DIR / latest_pickle)
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
+                    df = pd.DataFrame(df_rows)
+                    top3 = (
+                        df.groupby("Ticker")["Nennungen"]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(3)
+                        .index.tolist()
+                    )
+                    msg = f"Test: Die Top 3 Ticker sind: {', '.join(top3)}"
+                    success = send_discord_notification(msg)
+                    if success:
+                        st.success("Discord-Benachrichtigung gesendet!")
+                    else:
+                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
 
     with col_dashboard:
         # Hier kommt dein gesamtes Dashboard (alles außer build_env_editor())
@@ -475,21 +495,29 @@ def main():
 
         if st.sidebar.button("🚀 Crawl jetzt starten"):
             start_crawler_and_wait()
+            st.rerun()  # <-- Seite neu laden, damit Button wechselt
             st.stop()
 
         # --- Live-Loganzeige für laufenden Crawl ---
         if is_crawl_running():
             st.info("🟡 Crawl läuft gerade ...")
             st.markdown("#### 📜 Live-Crawl-Log")
-            log_content = ""
-            if LOG_PATH.exists():
-                try:
-                    with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
-                        log_content = f.read()
-                except Exception:
-                    log_content = ""
-            st.code(log_content, language="bash", height=400)
-            st.warning("Die Seite kann aktualisiert werden – das Log wird immer live angezeigt, solange der Crawl läuft.")
+            log_box = st.empty()
+            refresh_interval = 2  # Sekunden
+
+            # Automatisches Polling für das Logfile
+            import time
+            for _ in range(150):  # z.B. 5 Minuten lang alle 2 Sekunden aktualisieren
+                log_content = ""
+                if LOG_PATH.exists():
+                    try:
+                        with open(LOG_PATH, "r", encoding="utf-8", errors="replace") as f:
+                            log_content = f.read()
+                    except Exception:
+                        log_content = ""
+                log_box.code(log_content, language="bash", height=400)
+                time.sleep(refresh_interval)
+                st.experimental_rerun()
 
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
