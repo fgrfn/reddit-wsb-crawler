@@ -415,6 +415,8 @@ def clear_schedule():
     # Konfigurationsdatei löschen
     if SCHEDULE_CONFIG_PATH.exists():
         SCHEDULE_CONFIG_PATH.unlink()
+    # Session-Flag entfernen
+    st.session_state.pop("scheduler_started", None)
 
 import glob
 
@@ -450,16 +452,17 @@ def main():
 
     config = load_schedule_config()
     # Zeitplan nach Neustart wiederherstellen
-    if config:
+    if config and not st.session_state.get("scheduler_started"):
         interval_type = config.get("interval_type")
         interval_value = config.get("interval_value")
         crawl_time = None
         if config.get("crawl_time"):
             crawl_time = datetime.datetime.strptime(config["crawl_time"], "%H:%M").time()
         start_scheduler(interval_type, interval_value, crawl_time)
-    else:
-        # Keine Konfiguration -> keine Jobs anzeigen
+        st.session_state["scheduler_started"] = True
+    elif not config:
         schedule.clear()
+        st.session_state.pop("scheduler_started", None)
 
     if st.session_state.get("crawl_running", False):
         st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
