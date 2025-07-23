@@ -4,6 +4,7 @@ import time
 import logging
 import pickle
 import yfinance as yf
+import subprocess
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ NAME_RESOLVER_SCRIPT = BASE_DIR / "src" / "build_ticker_name_cache.py"
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
 TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
+STATS_PATH = BASE_DIR / "data" / "output" / "ticker_stats.pkl"  # <--- NEU
 
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -96,9 +98,11 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         if summary:
             msg += summary.strip() + "\n"
         msg += "\n"
-    # Discord-Limit beachten
-    if len(msg) > 1997:
-        msg = msg[:1997] + "… [gekürzt wegen Discord-Limit]"
+    # Discord-Limit beachten (Hinweis zählt mit!)
+    maxlen = 1900
+    warntext = "… [gekürzt wegen Discord-Limit]"
+    if len(msg) > maxlen:
+        msg = msg[:maxlen - len(warntext)] + warntext
     return msg
 
 def get_yf_price(symbol):
@@ -110,9 +114,23 @@ def get_yf_price(symbol):
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
         return None
 
+def save_stats(stats_path, nennungen_dict, kurs_dict):
+    with open(stats_path, "wb") as f:
+        pickle.dump({"nennungen": nennungen_dict, "kurs": kurs_dict}, f)
+
+def load_stats(stats_path):
+    if not os.path.exists(stats_path):
+        return {}, {}
+    with open(stats_path, "rb") as f:
+        data = pickle.load(f)
+        return data.get("nennungen", {}), data.get("kurs", {})
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
+
+    # --- Vorherige Werte laden ---
+    prev_nennungen, prev_kurse = load_stats(STATS_PATH)
 
     # --- Tickerliste aktualisieren ---
     try:
@@ -248,6 +266,11 @@ def main():
                 df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = diff
             else:
                 df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = None
+
+        # Nach dem Erstellen von df_ticker:
+        aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
+        aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
+        save_stats(STATS_PATH, aktuelle_nennungen, aktuelle_kurse)
 
         next_crawl_time = get_next_systemd_run()
 
