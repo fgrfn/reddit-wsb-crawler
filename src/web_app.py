@@ -297,6 +297,10 @@ def start_crawler_and_wait():
                     )
 
                     print("DEBUG: Bereite Discord-Nachricht vor...")
+                    if len(msg) > 2000:
+                        print("WARNUNG: Discord-Nachricht zu lang, wird gekürzt!")
+                        msg = msg[:1997] + "..."
+
                     success = send_discord_notification(msg)
                     print(f"DEBUG: Discord-Nachricht gesendet? {success}")
                     if success:
@@ -380,6 +384,10 @@ def start_crawler_and_wait():
                     )
 
                     print("DEBUG: Bereite Discord-Nachricht vor...")
+                    if len(msg) > 2000:
+                        print("WARNUNG: Discord-Nachricht zu lang, wird gekürzt!")
+                        msg = msg[:1997] + "..."
+
                     success = send_discord_notification(msg)
                     print(f"DEBUG: Discord-Nachricht gesendet? {success}")
                     if success:
