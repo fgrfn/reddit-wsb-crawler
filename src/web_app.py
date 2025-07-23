@@ -26,7 +26,50 @@ from utils import (
 )
 from log_utils import archive_log
 from discord_utils import send_discord_notification
-import summarizer
+
+def format_discord_embed(top3, result, summary_dict, pickle_filename, crawl_time):
+    embed = {
+        "title": "WSB-Crawler",
+        "description": "🕷️ **Crawl abgeschlossen!**",
+        "fields": [],
+        "timestamp": crawl_time.isoformat(),
+        "footer": {"text": f"Datei: {pickle_filename}"}
+    }
+    embed["fields"].append({
+        "name": "Zeitpunkt",
+        "value": crawl_time.strftime("%d.%m.%Y %H:%M:%S"),
+        "inline": False
+    })
+    embed["fields"].append({
+        "name": "Top 3 Ticker",
+        "value": "----------------------------------------",
+        "inline": False
+    })
+    total_mentions = 0
+    for i, ticker in enumerate(top3, 1):
+        ticker_data = None
+        for subreddit, srdata in result.get("subreddits", {}).items():
+            if ticker in srdata["symbol_hits"]:
+                ticker_data = srdata
+                break
+        nennungen = sum(
+            srdata["symbol_hits"].get(ticker, 0)
+            for srdata in result.get("subreddits", {}).values()
+        )
+        total_mentions += nennungen
+        kurs_delta = summary_dict.get(ticker, {}).get("kurs_delta", "±0 (0.0%)")
+        zusammenfassung = summary_dict.get(ticker, {}).get("text", "Keine Zusammenfassung.")
+        embed["fields"].append({
+            "name": f"{i}. {ticker}",
+            "value": f"**Nennungen:** {nennungen} {kurs_delta}\n\n🧠 **Zusammenfassung:**\n{zusammenfassung}\n----------------------------------------",
+            "inline": False
+        })
+    embed["fields"].append({
+        "name": "Gesamtnennungen (Top 3)",
+        "value": str(total_mentions),
+        "inline": False
+    })
+    return embed
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
@@ -148,81 +191,32 @@ def start_crawler_and_wait():
                 )
 
                 with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                    log_handle.write("🔄 Starte KI-Zusammenfassung...\n")
-
-                summarizer.generate_summary(
-                    pickle_path=PICKLE_DIR / new_pickle,
-                    include_all=False,
-                    streamlit_out=None,
-                    only_symbols=top3
-                )
-
-                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                    log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
-
-                summary_path = find_summary_for(new_pickle, SUMMARY_DIR)
-                summary_dict = {}
-                if summary_path and summary_path.exists():
-                    summary_text = load_summary(summary_path)
-                    summary_dict = parse_summary_md(summary_text)
-
-                pickle_files = list_pickle_files(PICKLE_DIR)
-                prev_pickle = None
-                if len(pickle_files) > 1:
-                    prev_pickle = sorted([f for f in pickle_files if f != new_pickle], reverse=True)[0]
-                prev_counts = {}
-                if prev_pickle:
-                    prev_result = load_pickle(PICKLE_DIR / prev_pickle)
-                    prev_rows = []
-                    for subreddit, srdata in prev_result.get("subreddits", {}).items():
-                        for symbol, count in srdata["symbol_hits"].items():
-                            prev_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
-                    prev_df = pd.DataFrame(prev_rows)
-                    prev_counts = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
-                msg = (
-                    f"🕷️ **Crawl abgeschlossen!**\n"
-                    f"**Datei:** `{new_pickle}`\n"
-                    f"**Zeitpunkt:** {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
-                    f"**Top 3 Ticker:**\n"
-                    f">━━━━━━━━━━━━━━━━━━━━━━━━━━━<\n"
-                )
-                total_mentions = 0
-                for idx, ticker in enumerate(top3, 1):
-                    nennungen = int(df[df["Ticker"] == ticker]["Nennungen"].sum())
-                    total_mentions += nennungen
-                    prev = prev_counts.get(ticker, 0)
-                    delta = nennungen - prev
-                    delta_percent = f" ({(delta/prev*100):+.1f}%)" if prev > 0 else ""
-                    delta_emoji = "⬆️" if delta > 0 else ("⬇️" if delta < 0 else "⏸️")
-                    delta_str = f"{delta:+d}{delta_percent}" if prev > 0 else ""
-                    unternehmen = name_map.get(ticker, "")
-                    summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
-                    wc_base = new_pickle.split("_")[0]
-                    wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
-                    wc_url = f"[🌥️ Wordcloud]({wc_path})" if wc_path.exists() else ""
-                    msg += (
-                        f"**{idx}. {ticker}** {f'({unternehmen})' if unternehmen else ''}\n"
-                        f"> 📈 **Nennungen:** {nennungen} {delta_emoji} {delta_str}\n"
-                        f"{wc_url}\n"
-                        f"> 🧠 **Zusammenfassung:**\n"
-                        f"> {summary.replace(chr(10), chr(10)+'> ')}\n"
-                        f">━━━━━━━━━━━━━━━━━━━━━━━━━━━<\n"
-                    )
-                msg += f"\n**Gesamtnennungen (Top 3):** {total_mentions}"
-
-                with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                    log_handle.write("🔄 Sende Discord-Benachrichtigung...\n")
+                    log_handle.write(f"🔄 Starte KI-Zusammenfassung für Ticker: {', '.join(top3)}\n")
+                st.info(f"🔄 KI-Zusammenfassung wird erstellt für: {', '.join(top3)}")
 
                 try:
-                    send_discord_notification(msg, os.getenv("DISCORD_WEBHOOK_URL", ""))
+                    summarizer.generate_summary(
+                        pickle_path=PICKLE_DIR / new_pickle,
+                        include_all=False,
+                        streamlit_out=None,
+                        only_symbols=top3
+                    )
                     with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                        log_handle.write("✅ Discord-Benachrichtigung gesendet.\n")
+                        log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
+                    st.success("✅ KI-Zusammenfassung abgeschlossen.")
                 except Exception as e:
                     with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
-                        log_handle.write(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}\n")
-                    st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
-                    print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
-
+                        log_handle.write(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}\n")
+                    st.error(f"❌ KI-Zusammenfassung fehlgeschlagen: {e}")
+                # --- Discord-Benachrichtigung senden ---
+                try:
+                    summary_dict = {}  # Hier die Zusammenfassungen laden/parsen!
+                    crawl_time = datetime.datetime.now()
+                    embed = format_discord_embed(top3, result, summary_dict, new_pickle, crawl_time)
+                    send_discord_notification(embed)
+                except Exception as e:
+                    st.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
+                    print(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
             except Exception as e:
                 st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
                 print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")

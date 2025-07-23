@@ -23,6 +23,8 @@ PICKLE_DIR = Path("data/output/pickle")
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
+IGNORED_KEYS = {"relevant", "run_id", "subreddits", "total_posts"}
+
 # 🌐 Anbieter-Resolver (parallel: Yahoo & Alpha Vantage)
 def resolve_symbol_parallel(symbol):
     def from_yahoo():
@@ -107,7 +109,7 @@ def resolve_from_latest_pickle():
     name_map = load_ticker_name_map()
     print(f"{Fore.LIGHTBLACK_EX}📦 Ticker im Cache: {len(name_map)}")
 
-    uncached = sorted(s for s in counter if s not in name_map)
+    uncached = sorted(s for s in counter if s not in name_map and s not in IGNORED_KEYS)
     print(f"{Fore.YELLOW}🆕 Neue Ticker zur Auflösung: {len(uncached)}\n")
 
     # Zeige an, welche Ticker aus dem Cache kommen
