@@ -412,6 +412,9 @@ def clear_schedule():
     schedule.clear()
     scheduler_stop_event.set()
     scheduler_thread = None
+    # Konfigurationsdatei löschen
+    if SCHEDULE_CONFIG_PATH.exists():
+        SCHEDULE_CONFIG_PATH.unlink()
 
 import glob
 
@@ -454,6 +457,9 @@ def main():
         if config.get("crawl_time"):
             crawl_time = datetime.datetime.strptime(config["crawl_time"], "%H:%M").time()
         start_scheduler(interval_type, interval_value, crawl_time)
+    else:
+        # Keine Konfiguration -> keine Jobs anzeigen
+        schedule.clear()
 
     if st.session_state.get("crawl_running", False):
         st.info("🟡 Ein Crawl läuft gerade (manuell oder automatisch)...")
