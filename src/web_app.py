@@ -995,9 +995,25 @@ def update_dotenv_variable(key, value, dotenv_path):
         with open(dotenv_path, "w", encoding="utf-8") as f:
             f.write("")
 
-    # Rest wie gehabt ...
-    with open(dotenv_path, "r", encoding="utf-8") as f:
-        lines = f.readlines()
-    # ...existing code...
+    # BUGFIX: Datei im Schreibmodus öffnen, falls sie leer ist
+    if os.path.getsize(dotenv_path) == 0:
+        lines = []
+    else:
+        with open(dotenv_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
 
-# ... alle anderen Hilfsfunktionen ...
+    new_lines = []
+    found = False
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            new_lines.append(f"{key}={value}\n")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}\n")
+
+    with open(dotenv_path, "w", encoding="utf-8") as f:
+        f.writelines(new_lines)
+
+    os.environ[key] = value
