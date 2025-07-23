@@ -181,12 +181,22 @@ def start_crawler_and_wait():
                 )
 
                 # --- KI-Zusammenfassung für die Top 3 immer erzeugen ---
-                summarizer.generate_summary(
-                    pickle_path=PICKLE_DIR / new_pickle,
-                    include_all=False,
-                    streamlit_out=None,
-                    only_symbols=top3
-                )
+                print(f"Automatische Zusammenfassung: top3={top3}, new_pickle={new_pickle}")
+                if not top3:
+                    print("Warnung: top3 ist leer, Zusammenfassung für alle Ticker wird erzeugt.")
+                    summarizer.generate_summary(
+                        pickle_path=PICKLE_DIR / new_pickle,
+                        include_all=True,
+                        streamlit_out=None,
+                        only_symbols=None
+                    )
+                else:
+                    summarizer.generate_summary(
+                        pickle_path=PICKLE_DIR / new_pickle,
+                        include_all=False,
+                        streamlit_out=None,
+                        only_symbols=top3
+                    )
                 with open(LOG_PATH, "a", encoding="utf-8") as log_handle:
                     log_handle.write("✅ KI-Zusammenfassung abgeschlossen.\n")
                 st.success("✅ KI-Zusammenfassung abgeschlossen.")
@@ -858,3 +868,19 @@ def update_dotenv_variable(key, value, dotenv_path):
 
 # (Removed duplicate and incomplete main function definition)
 print("Streamlit-Version:", st.__version__)
+print(f"Automatische Zusammenfassung: top3={top3}, new_pickle={new_pickle}")
+if not top3:
+    print("Warnung: top3 ist leer, Zusammenfassung für alle Ticker wird erzeugt.")
+    summarizer.generate_summary(
+        pickle_path=PICKLE_DIR / new_pickle,
+        include_all=True,
+        streamlit_out=None,
+        only_symbols=None
+    )
+else:
+    summarizer.generate_summary(
+        pickle_path=PICKLE_DIR / new_pickle,
+        include_all=False,
+        streamlit_out=None,
+        only_symbols=top3
+    )

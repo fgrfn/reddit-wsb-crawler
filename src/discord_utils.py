@@ -20,7 +20,7 @@ def send_discord_notification(message, webhook_url=None):
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
     gesamt = df_ticker.head(3)["Nennungen"].sum()
-    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "~"
+    next_crawl_str = f"{next_crawl_time}"
     msg = (
         f"🕷️ Crawl abgeschlossen!\n"
         f"📦 Datei: {pickle_name}\n"
