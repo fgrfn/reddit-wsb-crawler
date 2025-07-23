@@ -15,7 +15,6 @@ import glob
 init(autoreset=True)
 
 # 📁 Pfade
-LATEST_HITS_PATH = Path("data/output/latest_ticker_hits.pkl")
 CSV_EXPORT_PATH = Path("data/output/latest_resolved_names.csv")
 PKL_CACHE_PATH = Path("data/input/ticker_name_map.pkl")
 CSV_CACHE_PATH = Path("data/input/ticker_name_map.csv")
@@ -187,7 +186,7 @@ if __name__ == "__main__":
         print(f"{Fore.YELLOW}⚪️ Keine Ticker in der neuesten Pickle-Datei.")
         exit(0)
 
-    print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen in Pickle-Datei: {sum(counter.values())}")
+    print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen in Pickle-Datei: {sum(v for v in counter.values() if isinstance(v, int))}")
     print(f"{Fore.LIGHTBLACK_EX}🔍 Einzigartige Ticker in Pickle-Datei: {len(counter)}")
 
     name_map = load_ticker_name_map()
