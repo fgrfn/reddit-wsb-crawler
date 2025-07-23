@@ -101,7 +101,7 @@ def resolve_from_hits():
         print(f"{Fore.YELLOW}⚪️ Keine Ticker in der Trefferliste.")
         return
 
-    print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen: {sum(counter.values())}")
+    print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen: {sum(v for v in counter.values() if isinstance(v, int))}")
     print(f"{Fore.LIGHTBLACK_EX}🔍 Einzigartige Ticker: {len(counter)}")
 
     name_map = load_ticker_name_map()

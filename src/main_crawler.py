@@ -88,12 +88,5 @@ def main():
     except Exception:
         logger.exception("⚠️ Fehler bei der Namensauflösung")
 
-    # 📦 Log erst jetzt archivieren!
-    try:
-        archive_log(LOG_PATH, ARCHIVE_DIR, keep_last=10)
-        logger.info("📦 Log archiviert")
-    except Exception as e:
-        logger.warning(f"⚠️ Fehler beim Log-Rotate: {e}")
-
 if __name__ == "__main__":
     main()
