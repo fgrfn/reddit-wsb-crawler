@@ -264,10 +264,12 @@ def start_crawler_and_wait():
                             summary_path = possible_path
 
                     summary_dict = {}
+                    print("Summary-Path:", summary_path)
                     if summary_path and summary_path.exists():
                         summary_text = load_summary(summary_path)
+                        print("Summary-Text:", summary_text)
                         summary_dict = parse_summary_md(summary_text)
-                        print("Summary-Keys:", summary_dict.keys())
+                        print("Summary-Dict:", summary_dict)
                     else:
                         print("Keine Zusammenfassung gefunden für Discord-Nachricht.")
 
