@@ -7,7 +7,6 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 from colorama import Fore, Style, init
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from resolver_utils import resolve_symbol_parallel
 import sys
 
 # 🟢 Farbunterstützung
@@ -37,6 +36,31 @@ def save_cache(cache):
         writer.writerow(["Ticker", "Company"])
         for sym, name in sorted(cache.items()):
             writer.writerow([sym, name])
+
+def resolve_symbol_parallel(symbol):
+    import yfinance as yf
+    import requests
+    # 1. yfinance
+    try:
+        info = yf.Ticker(symbol).info
+        name = info.get("longName") or info.get("shortName")
+        if name and name != symbol:
+            return symbol, name, "yfinance"
+    except Exception:
+        pass
+    # 2. Yahoo API
+    try:
+        headers = {"User-Agent": "Mozilla/5.0"}
+        url = f"https://query1.finance.yahoo.com/v1/finance/search?q={symbol}"
+        response = requests.get(url, headers=headers, timeout=5)
+        if response.ok:
+            data = response.json()
+            for result in data.get("quotes", []):
+                if result.get("symbol") == symbol and result.get("shortname"):
+                    return symbol, result["shortname"], "YahooAPI"
+    except Exception:
+        pass
+    return symbol, None, "None"
 
 def main():
     if not SYMBOLS_PATH.exists():
