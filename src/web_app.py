@@ -79,6 +79,16 @@ def load_schedule_config():
         return json.load(f)
 
 def start_crawler_and_wait():
+    # Logfile archivieren, bevor ein neuer Crawl startet
+    for _ in range(5):
+        try:
+            archive_log(LOG_PATH, ARCHIVE_DIR)
+            break
+        except PermissionError:
+            time.sleep(0.5)
+    else:
+        st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
+
     if st.session_state.get("crawl_running", False):
         log_event("Crawler läuft bereits.", "WARNING", True)
         return
@@ -188,19 +198,14 @@ def start_crawler_and_wait():
             #     st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
             #     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
-            # --- Logfile erst jetzt archivieren ---
-            for _ in range(5):
-                try:
-                    archive_log(LOG_PATH, ARCHIVE_DIR)
-                    break
-                except PermissionError:
-                    time.sleep(0.5)
-            else:
-                st.error("Konnte Logfile nicht archivieren (noch gesperrt).")
-
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             clear_crawl_flag()
+            # Nach jedem Crawl: Namensauflösung automatisch ausführen
+            subprocess.run(
+                [sys.executable, os.path.join("src", "build_ticker_name_cache.py")],
+                capture_output=True, text=True
+            )
             global name_map
             name_map = load_ticker_names(TICKER_NAME_PATH)
             st.rerun()
@@ -511,7 +516,7 @@ def main():
             if st.sidebar.button("🚀 Crawl jetzt starten"):
                 start_crawler_and_wait()
                 st.rerun()
-                st.stop()
+                # Entferne
 
         # --- Live-Loganzeige für laufenden Crawl ---
         if is_crawl_running():
