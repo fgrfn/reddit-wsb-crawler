@@ -56,10 +56,11 @@ def main():
     start_time = time.time()
 
     try:
+        print("") 
         print("🕷️ Starte Reddit-Crawler ...")
     except UnicodeEncodeError:
         print("Starte Reddit-Crawler ...")
-
+    
     try:
         reddit_crawler()  # <-- Hier direkt die Crawl-Logik aufrufen!
     except Exception:

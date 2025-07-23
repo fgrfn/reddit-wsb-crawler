@@ -171,14 +171,13 @@ if __name__ == "__main__":
     logger.info(f"Starte resolve_latest_hits.py (cwd={os.getcwd()})")
     resolve_from_hits()
 
-    files = sorted(PICKLE_DIR.glob("*.pkl"), reverse=True)
-    if not files:
+    PICKLE_DIR = "data/output/pickle"
+    pickle_files = [f for f in os.listdir(PICKLE_DIR) if f.endswith(".pkl")]
+    if not pickle_files:
         print("❌ Keine Pickle-Datei gefunden.")
         exit(1)
-    latest_file = files[0]
-    print(f"📥 Verwende Pickle-Datei: {latest_file.name}")
-
-    with open(latest_file, "rb") as f:
+    latest_pickle = sorted(pickle_files)[-1]
+    with open(os.path.join(PICKLE_DIR, latest_pickle), "rb") as f:
         counter = pickle.load(f)
 
     if not counter:
