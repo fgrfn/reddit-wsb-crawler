@@ -544,6 +544,11 @@ def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
 
+    # --- Automatischer Reset, falls Flag fehlt ---
+    if not is_crawl_running() and st.session_state.get("crawl_running", False):
+        st.session_state["crawl_running"] = False
+        st.session_state.pop("crawler_pid", None)
+
     config = load_schedule_config()
     # Zeitplan nach Neustart wiederherstellen
     if config and not st.session_state.get("scheduler_started"):
@@ -704,6 +709,13 @@ def main():
                         st.success("Discord-Benachrichtigung gesendet!")
                     else:
                         st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+
+            if st.button("🧹 Crawl-Status zurücksetzen", key="reset_crawl_status_btn"):
+                st.session_state["crawl_running"] = False
+                st.session_state.pop("crawler_pid", None)
+                clear_crawl_flag()
+                st.success("Crawl-Status wurde zurückgesetzt!")
+                st.rerun()
 
     with col_dashboard:
         # Hier kommt dein gesamtes Dashboard (alles außer build_env_editor())
