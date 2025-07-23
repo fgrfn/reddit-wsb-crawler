@@ -69,6 +69,8 @@ def main():
 
     with open(SYMBOLS_PATH, "rb") as f:
         symbols = set(pickle.load(f))
+    # Nur Strings zulassen!
+    symbols = set(s for s in symbols if isinstance(s, str) and s.isalpha())
 
     logger.info(f"🔍 {len(symbols)} Ticker geladen")
 
