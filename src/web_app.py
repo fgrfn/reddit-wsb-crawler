@@ -312,6 +312,7 @@ def start_crawler_and_wait():
                 st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
 
             # Status erst jetzt zurücksetzen!
+            global name_map  # <-- Diese Zeile ganz nach oben!
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             clear_crawl_flag()
@@ -320,7 +321,6 @@ def start_crawler_and_wait():
                 [sys.executable, os.path.join("src", "build_ticker_name_cache.py")],
                 capture_output=True, text=True
             )
-            global name_map
             name_map = load_ticker_names(TICKER_NAME_PATH)
 
             # Discord-Benachrichtigung nach dem Crawl senden (optimiertes Format)
