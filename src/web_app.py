@@ -239,6 +239,79 @@ def start_crawler_and_wait():
             #     st.error(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
             #     print(f"❌ Discord-Benachrichtigung (mit Zusammenfassungen) fehlgeschlagen: {e}")
 
+            # Discord-Benachrichtigung nach dem Crawl senden (optimiertes Format)
+            try:
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if pickle_files:
+                    latest_pickle = sorted(pickle_files)[-1]
+                    result = load_pickle(PICKLE_DIR / latest_pickle)
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({
+                                "Ticker": symbol,
+                                "Subreddit": subreddit,
+                                "Nennungen": count,
+                                "Kurs": srdata.get("price", {}).get(symbol),  # falls vorhanden
+                            })
+                    df = pd.DataFrame(df_rows)
+                    df["Unternehmen"] = df["Ticker"].map(name_map)
+                    df_ticker = (
+                        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+                        .sum()
+                        .sort_values(by="Nennungen", ascending=False)
+                    )
+                    # Trend-Berechnung
+                    pickle_files = sorted(list_pickle_files(PICKLE_DIR))
+                    if len(pickle_files) >= 2:
+                        prev_pickle = pickle_files[-2]
+                        prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+                        prev_rows = []
+                        for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                            for symbol, count in srdata["symbol_hits"].items():
+                                prev_rows.append({"Ticker": symbol, "Nennungen": count})
+                        prev_df = pd.DataFrame(prev_rows)
+                        prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+                    else:
+                        prev_nennungen = {}
+
+                    summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+                    if not summary_path or not summary_path.exists():
+                        # Fallback: Versuche, die Datei direkt zu finden
+                        run_id = latest_pickle.split("_")[0]
+                        possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
+                        if possible_path.exists():
+                            summary_path = possible_path
+
+                    summary_dict = {}
+                    if summary_path and summary_path.exists():
+                        summary_text = load_summary(summary_path)
+                        summary_dict = parse_summary_md(summary_text)
+
+                    timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
+                    msg = format_discord_message(
+                        pickle_name=latest_pickle,
+                        timestamp=timestamp,
+                        df_ticker=df_ticker,
+                        prev_nennungen=prev_nennungen,
+                        name_map=name_map,
+                        summary_dict=summary_dict
+                    )
+
+                    print("DEBUG: Bereite Discord-Nachricht vor...")
+                    success = send_discord_notification(msg)
+                    print(f"DEBUG: Discord-Nachricht gesendet? {success}")
+                    if success:
+                        st.success("Discord-Benachrichtigung gesendet!")
+                        st.rerun()
+                    else:
+                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
+                else:
+                    st.error("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+            except Exception as e:
+                st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
+
+            # Status erst jetzt zurücksetzen!
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             clear_crawl_flag()
@@ -295,14 +368,9 @@ def start_crawler_and_wait():
                             summary_path = possible_path
 
                     summary_dict = {}
-                    print("Summary-Path:", summary_path)
                     if summary_path and summary_path.exists():
                         summary_text = load_summary(summary_path)
-                        print("Summary-Text:", summary_text)
                         summary_dict = parse_summary_md(summary_text)
-                        print("Summary-Dict:", summary_dict)
-                    else:
-                        print("Keine Zusammenfassung gefunden für Discord-Nachricht.")
 
                     timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
                     msg = format_discord_message(
@@ -311,10 +379,9 @@ def start_crawler_and_wait():
                         df_ticker=df_ticker,
                         prev_nennungen=prev_nennungen,
                         name_map=name_map,
-                        summary_dict=summary_dict  # <--- Hier werden die Zusammenfassungen eingebunden!
+                        summary_dict=summary_dict
                     )
 
-                    # Discord-Benachrichtigung senden
                     print("DEBUG: Bereite Discord-Nachricht vor...")
                     success = send_discord_notification(msg)
                     print(f"DEBUG: Discord-Nachricht gesendet? {success}")
@@ -370,19 +437,6 @@ def run_resolver_ui():
             status.info(f"Aktuell: {sym}")
 
         from time import sleep  # nur für Demo-Zwecke
-
-        # Resolver mit Einzel-Feedback
-        from reddit_crawler import resolve_ticker_name, load_ticker_name_map
-        cache = load_ticker_name_map()
-
-        for i, sym in enumerate(tickers):
-            sym_clean, name = resolve_ticker_name(sym, cache, verbose=True)
-            results[sym_clean] = name
-            update_progress(i, sym)
-            sleep(0.1)  # optional bremsen
-
-        progress.empty()
-        status.success("Alle Ticker verarbeitet.")
 
         # Entferne diese Zeilen:
         # st.subheader("📋 Ergebnis:")
@@ -515,7 +569,7 @@ def main():
                 next_run = datetime.datetime.fromisoformat(config["next_run"])
                 st.info(f"Nächster Crawl: {next_run.strftime('%d.%m.%Y %H:%M:%S')}")
 
-            st.info("**Aktueller Zeitplan:**\n" + get_schedule_description())
+            st.info("**Aktueller Zeitplan:**\n")
 
             if st.button("🗑️ Zeitplan löschen"):
                 clear_schedule()
