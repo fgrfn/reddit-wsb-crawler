@@ -544,8 +544,10 @@ def main():
     st.set_page_config(page_title="Reddit Crawler Dashboard", layout="wide")
     st.title("🕷️ Reddit Crawler Dashboard")
 
-    # --- Automatischer Reset, falls Flag fehlt ---
-    if not is_crawl_running() and st.session_state.get("crawl_running", False):
+    # --- Synchronisiere Session-Flag mit Datei ---
+    if is_crawl_running():
+        st.session_state["crawl_running"] = True
+    else:
         st.session_state["crawl_running"] = False
         st.session_state.pop("crawler_pid", None)
 
@@ -601,6 +603,62 @@ def main():
                 save_schedule_config(interval_type, interval_value, crawl_time)
                 st.success("Zeitplan gespeichert und aktiviert.")
                 st.rerun()
+
+            # --- NEU: Externe Zeitplanung für Linux anzeigen ---
+            st.markdown("#### 🖥️ Externe Zeitplanung (Linux systemd-timer)")
+            python_path = sys.executable
+            script_path = str(BASE_DIR / "src" / "main_crawler.py")
+            crawl_time_str = crawl_time.strftime("%H:%M") if crawl_time else "02:00"
+            interval_type_str = interval_type
+
+            # systemd-Timer-Unit generieren
+            if interval_type_str == "Täglich":
+                on_calendar = f"*-*-* {crawl_time_str}:00"
+            elif interval_type_str == "Stündlich":
+                on_calendar = f"hourly"
+            elif interval_type_str == "Minütlich":
+                on_calendar = f"minutely"
+            else:
+                on_calendar = "*-*-* 02:00:00"
+
+            service_name = "reddit_crawler"
+            timer_unit = f"""[Unit]
+Description=Reddit Crawler
+
+[Service]
+Type=simple
+WorkingDirectory={BASE_DIR}
+ExecStart={python_path} {script_path}
+"""
+
+            timer_file = f"""[Unit]
+Description=Reddit Crawler Timer
+
+[Timer]
+OnCalendar={on_calendar}
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+"""
+
+            st.markdown("**reddit_crawler.service**")
+            st.code(service_name + ".service\n" + service_unit, language="ini")
+            st.markdown("**reddit_crawler.timer**")
+            st.code(service_name + ".timer\n" + timer_file, language="ini")
+
+            st.info("""
+Kopiere beide Dateien nach `/etc/systemd/system/` und aktiviere den Timer mit:
+```
+sudo systemctl daemon-reload
+sudo systemctl enable --now reddit_crawler.timer
+```
+Zum Entfernen:
+```
+sudo systemctl disable --now reddit_crawler.timer
+sudo rm /etc/systemd/system/reddit_crawler.*
+```
+""")
 
         with st.expander("⚙️ Einstellungen", expanded=False):
             openai_key = st.text_input(
