@@ -47,8 +47,17 @@ def set_crawl_flag():
         f.write("running")
 
 def clear_crawl_flag():
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logging.info(f"Versuche crawl_running.flag zu löschen: {os.path.abspath(CRAWL_FLAG)}")
     if os.path.exists(CRAWL_FLAG):
-        os.remove(CRAWL_FLAG)
+        try:
+            os.remove(CRAWL_FLAG)
+            logging.info("crawl_running.flag erfolgreich gelöscht.")
+        except Exception as e:
+            logging.error(f"Fehler beim Löschen von crawl_running.flag: {e}")
+    else:
+        logging.info("crawl_running.flag existiert nicht.")
 
 def is_crawl_running():
     return os.path.exists(CRAWL_FLAG)
@@ -201,15 +210,17 @@ def start_crawler_and_wait():
         raise
 
 def stop_crawler():
+    import psutil
     pid = st.session_state.get("crawler_pid")
     if pid:
         try:
             p = psutil.Process(pid)
+            st.info(f"Prozess-Status vor Stop: {p.status()}")
             p.terminate()
             try:
                 p.wait(timeout=5)
             except psutil.TimeoutExpired:
-                p.kill()
+                os.system(f"kill -9 {pid}")
             st.success("Crawl-Prozess wurde gestoppt.")
         except Exception as e:
             st.error(f"Fehler beim Stoppen des Prozesses: {e}")
@@ -255,14 +266,13 @@ def run_resolver_ui():
         progress.empty()
         status.success("Alle Ticker verarbeitet.")
 
-        st.subheader("📋 Ergebnis:")
-        st.table({k: v or "❌ Nicht gefunden" for k, v in results.items()}.items())
-
-        # Optional: CSV-Download anbieten
-        import pandas as pd
-        df = pd.DataFrame(list(results.items()), columns=["Symbol", "Firmenname"])
-        csv = df.to_csv(index=False).encode("utf-8")
-        st.download_button("⬇️ Als CSV herunterladen", csv, "ticker_results.csv", "text/csv")
+        # Entferne diese Zeilen:
+        # st.subheader("📋 Ergebnis:")
+        # st.table({k: v or "❌ Nicht gefunden" for k, v in results.items()}.items())
+        # import pandas as pd
+        # df = pd.DataFrame(list(results.items()), columns=["Symbol", "Firmenname"])
+        # csv = df.to_csv(index=False).encode("utf-8")
+        # st.download_button("⬇️ Als CSV herunterladen", csv, "ticker_results.csv", "text/csv")
 
 scheduler_thread = None
 
@@ -663,44 +673,6 @@ def main():
         if sentiment_path.exists():
             st.markdown("### 📉 Gesamt-Sentiment")
             st.image(sentiment_path, use_column_width=True)
-
-        # Neue Sektion: Detaillierte Subreddit-Analyse für jeden Ticker
-        st.subheader("🔍 Detaillierte Subreddit-Analyse")
-        for ticker in sorted(df["Ticker"].unique()):
-            ticker_df = df[df["Ticker"] == ticker]
-            subreddit_counts = (
-                ticker_df.groupby("Subreddit")["Nennungen"].sum().sort_values(ascending=False)
-            )
-            subreddit_str = " | ".join(
-                f"{sub} ({count})" for sub, count in subreddit_counts.items()
-            )
-            st.markdown(f"### {ticker}")
-            st.markdown(f"**Subreddits:** {subreddit_str}")
-
-            # Zusammenfassung anzeigen
-            summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
-            summary_dict = {}
-            if summary_path and summary_path.exists():
-                summary_text = load_summary(summary_path)
-                summary_dict = parse_summary_md(summary_text)
-                if ticker in summary_dict:
-                    st.success(summary_dict[ticker])
-                else:
-                    st.info("Keine Ticker-spezifische Zusammenfassung vorhanden.")
-            else:
-                st.info("Noch keine Zusammenfassung für dieses Crawl-Ergebnis.")
-
-            # Wordcloud anzeigen
-            wc_base = selected_pickle.split("_")[0]
-            wc_path = CHART_DIR / f"{ticker}_wordcloud_{wc_base}.png"
-            fallback_wc = CHART_DIR / f"{ticker}_wordcloud.png"
-            image_path = wc_path if wc_path.exists() else fallback_wc
-            if image_path.exists():
-                st.image(Image.open(image_path), caption=f"Wordcloud für {ticker}", use_column_width=True)
-            else:
-                st.info("Keine Wordcloud vorhanden.")
-
-            st.markdown("---")
 
         st.subheader("📊 Nennungen nach Ticker (gesamt)")
         df_ticker = (
