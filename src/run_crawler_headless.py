@@ -96,6 +96,9 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         if summary:
             msg += summary.strip() + "\n"
         msg += "\n"
+    # Discord-Limit beachten
+    if len(msg) > 1997:
+        msg = msg[:1997] + "… [gekürzt wegen Discord-Limit]"
     return msg
 
 def get_yf_price(symbol):
