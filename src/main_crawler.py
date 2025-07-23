@@ -5,6 +5,7 @@ import subprocess
 import os
 import pickle
 from pathlib import Path
+import streamlit as st
 from reddit_crawler import reddit_crawler
 from log_utils import archive_log
 from ticker_utils import SYMBOLS_PKL, download_and_clean_tickerlist
@@ -49,6 +50,10 @@ def ensure_symbols_list(tickers):
     with open(SYMBOLS_PKL, "wb") as f:
         pickle.dump(list(tickers["Symbol"]), f)
     logger.info(f"symbols_list.pkl wurde neu erstellt mit {len(tickers)} Symbolen.")
+
+def stop_crawler():
+    logger.info("🛑 stop_crawler wurde aufgerufen (Stub-Funktion).")
+    # Hier kann die Logik zum Stoppen des Crawlers ergänzt werden.
 
 def main():
     tickers = download_and_clean_tickerlist()  # Listen immer neu laden und loggen
@@ -95,7 +100,7 @@ def main():
                 st.stop()
         else:
             if st.sidebar.button("🚀 Crawl jetzt starten"):
-                start_crawler_and_wait()
+                main()  # Starte den Crawl-Prozess erneut
                 st.stop()
 
 #    # 📦 Log erst jetzt archivieren!
