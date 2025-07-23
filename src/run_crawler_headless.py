@@ -209,13 +209,10 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
+        # Logfile direkt nach Benachrichtigung archivieren!
+        archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
 
-    # --- Logfile archivieren ---
-    try:
-        archive_log(LOG_PATH, ARCHIVE_DIR)
-    except Exception as e:
-        logger.warning(f"Fehler beim Log-Archiv: {e}")
-
 if __name__ == "__main__":
+    main()
