@@ -5,6 +5,7 @@ import logging
 import pickle
 import yfinance as yf
 import subprocess
+from datetime import datetime
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -302,10 +303,14 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         )
         line = result.stdout.strip().splitlines()
         if line:
-            # Splitte nach beliebigen Leerzeichen
             parts = line[0].split()
-            # Die ersten beiden Teile sind Datum und Uhrzeit
-            next_time = f"{parts[0]} {parts[1]} {parts[2]}"
+            # parts[1] = Datum, parts[2] = Uhrzeit
+            # Beispiel: parts[1] = '2025-07-24', parts[2] = '02:00:00'
+            try:
+                dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
+                next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
+            except Exception:
+                next_time = f"{parts[1]} {parts[2]}"
             return next_time
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
