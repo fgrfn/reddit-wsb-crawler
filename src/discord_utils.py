@@ -19,15 +19,12 @@ def send_discord_notification(message, webhook_url=None):
 
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
-    gesamt = df_ticker.head(3)["Nennungen"].sum()
-    next_crawl_str = f"{next_crawl_time}"
+    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "None"
     msg = (
-        f"🕷️ Crawl abgeschlossen!\n"
-        f"📦 Datei: {pickle_name}\n"
-        f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n"
-        f"\n"
+        f"🕷️ Crawl abgeschlossen! "
+        f"📦 Datei: {pickle_name} "
+        f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
-        f">━━━━━━━━━━━━━━━━━━━<\n"
     )
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
         ticker = row["Ticker"]
@@ -47,14 +44,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             kurs_str = "k.A."
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         msg += (
-            f"\n{emoji} {i}. {ticker} \n"
-            f"\n🏢 {unternehmen}\n"
+            f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
             f"💹 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
         summary = summary_dict.get(ticker)
         if summary:
-            msg += summary + "\n"
-        msg += ">━━━━━━━━━━━━━━━━━━━<\n"
+            msg += summary.strip() + "\n"
+        msg += "\n"
     return msg
