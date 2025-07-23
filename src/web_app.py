@@ -63,10 +63,23 @@ def is_crawl_running():
     return os.path.exists(CRAWL_FLAG)
 
 def save_schedule_config(interval_type, interval_value, crawl_time):
+    now = datetime.datetime.now()
+    if interval_type == "Täglich" and crawl_time:
+        next_run = now.replace(hour=crawl_time.hour, minute=crawl_time.minute, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += datetime.timedelta(days=1)
+    elif interval_type == "Stündlich":
+        next_run = now + datetime.timedelta(hours=interval_value)
+    elif interval_type == "Minütlich":
+        next_run = now + datetime.timedelta(minutes=interval_value)
+    else:
+        next_run = None
+
     config = {
         "interval_type": interval_type,
         "interval_value": interval_value,
-        "crawl_time": crawl_time.strftime("%H:%M") if crawl_time else None
+        "crawl_time": crawl_time.strftime("%H:%M") if crawl_time else None,
+        "next_run": next_run.isoformat() if next_run else None
     }
     SCHEDULE_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(SCHEDULE_CONFIG_PATH, "w", encoding="utf-8") as f:
@@ -76,7 +89,25 @@ def load_schedule_config():
     if not SCHEDULE_CONFIG_PATH.exists():
         return None
     with open(SCHEDULE_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+    # Prüfe, ob next_run in der Vergangenheit liegt
+    if config.get("next_run"):
+        next_run = datetime.datetime.fromisoformat(config["next_run"])
+        now = datetime.datetime.now()
+        while next_run <= now:
+            if config["interval_type"] == "Täglich" and config.get("crawl_time"):
+                next_run += datetime.timedelta(days=1)
+            elif config["interval_type"] == "Stündlich":
+                next_run += datetime.timedelta(hours=config["interval_value"])
+            elif config["interval_type"] == "Minütlich":
+                next_run += datetime.timedelta(minutes=config["interval_value"])
+            else:
+                break
+        config["next_run"] = next_run.isoformat()
+        # Optional: Schreibe die aktualisierte Zeit zurück
+        with open(SCHEDULE_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(config, f)
+    return config
 
 def start_crawler_and_wait():
     # Logfile archivieren, bevor ein neuer Crawl startet
@@ -284,7 +315,9 @@ def start_crawler_and_wait():
                     )
 
                     # Discord-Benachrichtigung senden
+                    print("DEBUG: Bereite Discord-Nachricht vor...")
                     success = send_discord_notification(msg)
+                    print(f"DEBUG: Discord-Nachricht gesendet? {success}")
                     if success:
                         st.success("Discord-Benachrichtigung gesendet!")
                     else:
@@ -477,6 +510,10 @@ def main():
     with col_settings:
         with st.expander("🕒 Zeitplanung", expanded=True):
             st.markdown("Hier kannst du den automatischen Start des Crawlers planen.")
+
+            if config and config.get("next_run"):
+                next_run = datetime.datetime.fromisoformat(config["next_run"])
+                st.info(f"Nächster Crawl: {next_run.strftime('%d.%m.%Y %H:%M:%S')}")
 
             st.info("**Aktueller Zeitplan:**\n" + get_schedule_description())
 
