@@ -57,12 +57,13 @@ def send_discord_notification(message, webhook_url=None):
         logger.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
-def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict):
+def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
+    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     msg = (
         f"🕷️ Crawl abgeschlossen! "
         f"📦 Datei: {pickle_name} "
-        f"🕒 Zeitpunkt: {timestamp}\n\n"
+        f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
@@ -77,7 +78,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
-        kurs_str = f"{kurs:.2f} USD" if kurs is not None else "k.A."
+        kursdiff = row.get('Kursdiff')
+        if kurs is not None:
+            kurs_str = f"{kurs:.2f} USD"
+            if kursdiff is not None:
+                kurs_str += f" ({kursdiff:+.2f} USD)"
+        else:
+            kurs_str = "k.A."
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         msg += (
             f"\n{emoji} {ticker} - {unternehmen}\n"
@@ -208,9 +215,38 @@ def main():
 
         # Kursdaten für die Top 3 Ticker holen
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
+        last_kurse = {}
+        # Hole die Kurse aus dem vorherigen Crawl
+        if len(pickle_files) >= 2:
+            prev_result = load_pickle(PICKLE_DIR / sorted(pickle_files)[-2])
+            prev_rows = []
+            for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                for symbol, count in srdata["symbol_hits"].items():
+                    prev_rows.append({
+                        "Ticker": symbol,
+                        "Kurs": srdata.get("price", {}).get(symbol)
+                    })
+            prev_df = pd.DataFrame(prev_rows)
+            for ticker in top3_ticker:
+                # Hole alten Kurs aus yfinance (alternativ aus prev_df, falls vorhanden)
+                last_kurse[ticker] = None
+                try:
+                    last_kurse[ticker] = get_yf_price(ticker)
+                except Exception:
+                    pass
+
         for ticker in top3_ticker:
             kurs = get_yf_price(ticker)
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
+            # Kursänderung berechnen
+            prev_kurs = last_kurse.get(ticker)
+            if kurs is not None and prev_kurs is not None:
+                diff = kurs - prev_kurs
+                df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = diff
+            else:
+                df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = None
+
+        next_crawl_time = get_next_systemd_run()
 
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
@@ -219,7 +255,8 @@ def main():
             df_ticker=df_ticker,
             prev_nennungen=prev_nennungen,
             name_map=name_map,
-            summary_dict=summary_dict
+            summary_dict=summary_dict,
+            next_crawl_time=next_crawl_time
         )
         success = send_discord_notification(msg)
         if success:
@@ -230,6 +267,22 @@ def main():
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
+
+def get_next_systemd_run(timer_name="reddit_crawler.timer"):
+    try:
+        result = subprocess.run(
+            ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
+            capture_output=True, text=True
+        )
+        # Format: NEXT                         LEFT          LAST                         PASSED       UNIT                         ACTIVATES
+        # 2025-07-24 02:00:00 CEST  52min left 2025-07-24 01:00:00 CEST  7min ago   reddit_crawler.timer   reddit_crawler.service
+        line = result.stdout.strip().splitlines()
+        if line:
+            next_time = line[0].split()[0] + " " + line[0].split()[1]
+            return next_time
+    except Exception as e:
+        logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
+    return "unbekannt"
 
 if __name__ == "__main__":
     main()
