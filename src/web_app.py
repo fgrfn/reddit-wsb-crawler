@@ -622,7 +622,7 @@ def main():
                 on_calendar = "*-*-* 02:00:00"
 
             service_name = "reddit_crawler"
-            timer_unit = f"""[Unit]
+            service_unit = f"""[Unit]
 Description=Reddit Crawler
 
 [Service]
