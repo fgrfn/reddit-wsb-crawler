@@ -3,6 +3,8 @@ import sys
 import time
 import logging
 import pickle
+import yfinance as yf
+
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -88,6 +90,15 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             msg += summary.strip() + "\n"
         msg += "\n"
     return msg
+
+def get_yf_price(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        price = ticker.info.get("regularMarketPrice")
+        return float(price) if price is not None else None
+    except Exception as e:
+        logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
+        return None
 
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
@@ -194,6 +205,12 @@ def main():
         if summary_path and summary_path.exists():
             summary_text = load_summary(summary_path)
             summary_dict = parse_summary_md(summary_text)
+
+        # Kursdaten für die Top 3 Ticker holen
+        top3_ticker = df_ticker["Ticker"].head(3).tolist()
+        for ticker in top3_ticker:
+            kurs = get_yf_price(ticker)
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
 
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
