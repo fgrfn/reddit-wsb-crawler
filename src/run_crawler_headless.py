@@ -282,7 +282,7 @@ def main():
             kurs = get_yf_price(ticker)
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
             # Kursänderung berechnen
-            prev_kurs = last_kurse.get(ticker)
+            prev_kurs = prev_kurse.get(ticker)
             if kurs is not None and prev_kurs is not None:
                 diff = kurs - prev_kurs
                 df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = diff
