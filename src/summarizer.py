@@ -26,8 +26,8 @@ def get_market_trend(ticker):
         data = yf.Ticker(ticker).history(period="7d")
         if data.empty:
             return "Keine Kursdaten verfügbar"
-        change = data["Close"][-1] - data["Close"][0]
-        pct = (change / data["Close"][0]) * 100
+        change = data["Close"].iloc[-1] - data["Close"].iloc[0]
+        pct = (change / data["Close"].iloc[0]) * 100
         if pct > 5:
             return f"steigend (+{pct:.1f} %)"
         elif pct < -5:
