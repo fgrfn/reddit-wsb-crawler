@@ -426,13 +426,73 @@ def main():
 
         with st.expander("🐞 DEBUG", expanded=False):
             st.markdown("Hier findest du technische Tools für Entwickler und Fehleranalyse.")
-            if st.button("🔄 Ticker-Namen auflösen"):
-                result = subprocess.run([sys.executable, "src/resolve_latest_hits.py"])
-                if result.returncode == 0:
-                    st.success("Ticker-Namen wurden erfolgreich aufgelöst.")
-                    st.rerun()
+
+            # ...deine bisherigen Debug-Buttons...
+
+            if st.button("📣 Discord-Benachrichtigung mit Top 3 Ticker senden"):
+                # Die aktuellste Pickle-Datei laden
+                pickle_files = list_pickle_files(PICKLE_DIR)
+                if not pickle_files:
+                    st.error("Keine Pickle-Datei gefunden.")
                 else:
-                    st.error("Fehler beim Auflösen der Ticker-Namen.")
+                    latest_pickle = PICKLE_DIR / pickle_files[0]
+                    result = load_pickle(latest_pickle)
+                    df_rows = []
+                    for subreddit, srdata in result.get("subreddits", {}).items():
+                        for symbol, count in srdata["symbol_hits"].items():
+                            df_rows.append({"Ticker": symbol, "Subreddit": subreddit, "Nennungen": count})
+                    df = pd.DataFrame(df_rows)
+                    top3 = (
+                        df.groupby("Ticker")["Nennungen"]
+                        .sum()
+                        .sort_values(ascending=False)
+                        .head(3)
+                        .index.tolist()
+                    )
+
+                    # Zusammenfassungen laden
+                    summary_path = find_summary_for(pickle_files[0], SUMMARY_DIR)
+                    summary_dict = {}
+                    if summary_path and summary_path.exists():
+                        summary_text = load_summary(summary_path)
+                        summary_dict = parse_summary_md(summary_text)
+
+                    # Kursveränderung holen (optional, falls du das im Code hast)
+                    def get_trend(ticker):
+                        import yfinance as yf
+                        try:
+                            data = yf.Ticker(ticker).history(period="7d")
+                            if data.empty:
+                                return "±0 (0.0%)"
+                            change = data["Close"][-1] - data["Close"][0]
+                            pct = (change / data["Close"][0]) * 100
+                            return f"{'+' if pct >= 0 else ''}{pct:.1f}%"
+                        except Exception:
+                            return "±0 (0.0%)"
+
+                    # Nachricht formatieren
+                    msg = f"**WSB-Crawler**\n"
+                    msg += f"🕷️ Crawl abgeschlossen!\n"
+                    msg += f"Datei: `{pickle_files[0]}`\n"
+                    msg += f"Zeitpunkt: {datetime.datetime.now().strftime('%d.%m.%Y %H:%M:%S')}\n"
+                    msg += f"Top 3 Ticker:\n>———————————————<\n"
+                    total_mentions = 0
+                    for i, ticker in enumerate(top3, 1):
+                        nennungen = df[df["Ticker"] == ticker]["Nennungen"].sum()
+                        trend = get_trend(ticker)
+                        summary = summary_dict.get(ticker, "Keine Zusammenfassung vorhanden.")
+                        msg += f"\n**{i}. {ticker}**\n"
+                        msg += f"**Nennungen:** {nennungen} | Kurs: {trend}\n"
+                        msg += f"🧠 **Zusammenfassung:**\n{summary}\n>———————————————<\n"
+                        total_mentions += nennungen
+                    msg += f"\nGesamtnennungen (Top 3): {total_mentions}"
+
+                    # Senden
+                    success = send_discord_notification(msg)
+                    if success:
+                        st.success("Discord-Benachrichtigung erfolgreich gesendet!")
+                    else:
+                        st.error("Fehler beim Senden der Discord-Benachrichtigung.")
 
     with col_dashboard:
         # Hier kommt dein gesamtes Dashboard (alles außer build_env_editor())
