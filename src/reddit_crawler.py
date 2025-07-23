@@ -116,7 +116,7 @@ def reddit_crawler():
         counters = []
         posts = list(sr_data.new(limit=100))
         total_posts = len(posts)
-        with ThreadPoolExecutor(max_workers=8) as post_executor:
+        with ThreadPoolExecutor(max_workers=2) as post_executor:
             futures = [post_executor.submit(process_post, post, symbols, cutoff) for post in posts]
             for future in as_completed(futures):
                 result = future.result()
@@ -131,7 +131,7 @@ def reddit_crawler():
             "posts_checked": total_posts
         }
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
             executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff)
             for sr in subreddits
