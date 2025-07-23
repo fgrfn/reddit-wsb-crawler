@@ -110,6 +110,8 @@ def load_schedule_config():
     return config
 
 def start_crawler_and_wait():
+    global name_map
+
     # Logfile archivieren, bevor ein neuer Crawl startet
     for _ in range(5):
         try:
@@ -316,7 +318,7 @@ def start_crawler_and_wait():
                 [sys.executable, os.path.join("src", "build_ticker_name_cache.py")],
                 capture_output=True, text=True
             )
-            global name_map  # <-- Diese Zeile muss direkt vor die Zuweisung!
+
             name_map = load_ticker_names(TICKER_NAME_PATH)
 
             # Discord-Benachrichtigung nach dem Crawl senden (optimiertes Format)
