@@ -91,7 +91,7 @@ def reddit_crawler():
     results = {}
     total_counter = Counter()
 
-    for sr in subreddits:
+    def crawl_subreddit(sr, reddit, symbols, cutoff):
         sr_data = reddit.subreddit(sr)
         counter = Counter()
         total_posts = 0
@@ -112,11 +112,20 @@ def reddit_crawler():
                         counter[sym] += 1
             except Exception:
                 continue
-        results[sr] = {
+        return sr, {
             "symbol_hits": dict(counter),
             "posts_checked": total_posts
         }
-        total_counter.update(counter)
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff)
+            for sr in subreddits
+        ]
+        for future in as_completed(futures):
+            sr, sr_result = future.result()
+            results[sr] = sr_result
+            total_counter.update(sr_result["symbol_hits"])
 
     # 🧠 Speichere Treffer für spätere Namensauflösung
     os.makedirs("data/output", exist_ok=True)

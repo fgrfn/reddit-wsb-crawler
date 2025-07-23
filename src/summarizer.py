@@ -5,6 +5,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 from openai import OpenAI, APIConnectionError, RateLimitError
 import yfinance as yf
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 🔧 Projekt-Root ermitteln
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -81,19 +82,31 @@ def generate_summary(pickle_path, include_all=False, streamlit_out=None, only_sy
     success, failed = [], []
     total = len(combined_context)
 
-    for i, (ticker, context) in enumerate(combined_context.items(), 1):
-        if streamlit_out:
-            streamlit_out.markdown(f"🔄 **[{i}/{total}]** ⏳ Verarbeite `{ticker}` ...")
+    def get_summary(ticker, context):
         try:
             summary = ask_openai_summary(ticker, context)
-            summaries[ticker] = summary
-            success.append(ticker)
-            if streamlit_out:
-                streamlit_out.success(f"✅ {ticker} abgeschlossen")
+            return ticker, summary, None
         except (APIConnectionError, RateLimitError, Exception) as e:
-            failed.append(ticker)
+            return ticker, None, e
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [
+            executor.submit(get_summary, ticker, context)
+            for ticker, context in combined_context.items()
+        ]
+        for i, future in enumerate(as_completed(futures), 1):
+            ticker, summary, error = future.result()
             if streamlit_out:
-                streamlit_out.error(f"❌ Fehler bei {ticker}: {e}")
+                streamlit_out.markdown(f"🔄 **[{i}/{total}]** ⏳ Verarbeite `{ticker}` ...")
+            if summary:
+                summaries[ticker] = summary
+                success.append(ticker)
+                if streamlit_out:
+                    streamlit_out.success(f"✅ {ticker} abgeschlossen")
+            else:
+                failed.append(ticker)
+                if streamlit_out:
+                    streamlit_out.error(f"❌ Fehler bei {ticker}: {error}")
 
     md_lines = [f"# Reddit-KI-Zusammenfassung für {run_id}"]
     for ticker in sorted(summaries):
