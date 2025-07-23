@@ -256,10 +256,20 @@ def start_crawler_and_wait():
                         prev_nennungen = {}
 
                     summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+                    if not summary_path or not summary_path.exists():
+                        # Fallback: Versuche, die Datei direkt zu finden
+                        run_id = latest_pickle.split("_")[0]
+                        possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
+                        if possible_path.exists():
+                            summary_path = possible_path
+
                     summary_dict = {}
                     if summary_path and summary_path.exists():
                         summary_text = load_summary(summary_path)
                         summary_dict = parse_summary_md(summary_text)
+                        print("Summary-Keys:", summary_dict.keys())
+                    else:
+                        print("Keine Zusammenfassung gefunden für Discord-Nachricht.")
 
                     timestamp = datetime.datetime.now().strftime("%d.%m.%Y %H:%M:%S")
                     msg = format_discord_message(
@@ -709,6 +719,13 @@ def main():
         st.dataframe(df.sort_values(by="Nennungen", ascending=False), use_container_width=True)
 
         summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
+        if not summary_path or not summary_path.exists():
+            # Fallback: Versuche, die Datei direkt zu finden
+            run_id = selected_pickle.split("_")[0]
+            possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
+            if possible_path.exists():
+                summary_path = possible_path
+
         summary_dict = {}
         if summary_path and summary_path.exists():
             summary_text = load_summary(summary_path)
@@ -799,6 +816,13 @@ def main():
                     prev_nennungen = {}
 
                 summary_path = find_summary_for(selected_pickle, SUMMARY_DIR)
+                if not summary_path or not summary_path.exists():
+                    # Fallback: Versuche, die Datei direkt zu finden
+                    run_id = selected_pickle.split("_")[0]
+                    possible_path = SUMMARY_DIR / f"{run_id}_summary.md"
+                    if possible_path.exists():
+                        summary_path = possible_path
+
                 summary_dict = {}
                 if summary_path and summary_path.exists():
                     summary_text = load_summary(summary_path)
@@ -865,22 +889,3 @@ def update_dotenv_variable(key, value, dotenv_path):
     # ...existing code...
 
 # ... alle anderen Hilfsfunktionen ...
-
-# (Removed duplicate and incomplete main function definition)
-print("Streamlit-Version:", st.__version__)
-print(f"Automatische Zusammenfassung: top3={top3}, new_pickle={new_pickle}")
-if not top3:
-    print("Warnung: top3 ist leer, Zusammenfassung für alle Ticker wird erzeugt.")
-    summarizer.generate_summary(
-        pickle_path=PICKLE_DIR / new_pickle,
-        include_all=True,
-        streamlit_out=None,
-        only_symbols=None
-    )
-else:
-    summarizer.generate_summary(
-        pickle_path=PICKLE_DIR / new_pickle,
-        include_all=False,
-        streamlit_out=None,
-        only_symbols=top3
-    )
