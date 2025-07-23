@@ -312,7 +312,6 @@ def start_crawler_and_wait():
                 st.error(f"Fehler beim Senden der Discord-Benachrichtigung: {e}")
 
             # Status erst jetzt zurücksetzen!
-            global name_map  # <-- Diese Zeile direkt vor die erste Verwendung!
             st.session_state.pop("crawler_pid", None)
             st.session_state["crawl_running"] = False
             clear_crawl_flag()
