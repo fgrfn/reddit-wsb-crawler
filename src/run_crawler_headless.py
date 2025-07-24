@@ -87,7 +87,6 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')
-
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
