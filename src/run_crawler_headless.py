@@ -244,6 +244,7 @@ def main():
     try:
         import pandas as pd
         from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
+        from discord_utils import format_price_block_with_börse
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
             logger.warning("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
@@ -288,10 +289,14 @@ def main():
 
         # Kursdaten für die Top 3 Ticker holen
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
-        kurse, kursdiffs = get_kurse_parallel(top3_ticker)
+
+        # NEU: Kurs-/Statusdaten holen und KursStr setzen
         for ticker in top3_ticker:
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
+            prices = get_all_prices_and_status(ticker)
+            kurs_str = format_price_block_with_börse(prices)
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "KursStr"] = kurs_str
+
+        # ...optional: alte Kurs/Kursdiff-Logik entfernen, wenn nicht mehr benötigt...
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))

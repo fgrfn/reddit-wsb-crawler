@@ -41,13 +41,8 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         kurs = row.get('Kurs')
         marktstatus = row.get('Marktstatus')
         kurs_regular = row.get('KursRegular')
-        kurs_str = ""
-        if kurs_regular is not None and marktstatus:
-            kurs_str = f"{kurs_regular:.2f} USD → {kurs:.2f} USD ({marktstatus})"
-        elif kurs is not None:
-            kurs_str = f"{kurs:.2f} USD"
-        else:
-            kurs_str = "keine Kursdaten verfügbar"
+        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')
+        unternehmen = name_map.get(ticker, "-")  # <--- Diese Zeile ergänzen!
         # Link zu Yahoo Finance
         yahoo_url = f"https://finance.yahoo.com/quote/{ticker}"
         msg += (
