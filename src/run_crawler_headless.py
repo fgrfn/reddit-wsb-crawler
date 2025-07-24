@@ -65,11 +65,8 @@ def send_discord_notification(message, webhook_url=None):
 def get_discord_legend():
     return (
         "Legende:\n"
-        "Kurs = letzter Börsenkurs\n"
-        "🌅 Pre-Market = vorbörslich\n"
-        "🌙 After-Market = nachbörslich\n"
-        "(+X.XX USD, +Y.YY%) = Veränderung zum Vortag\n"
-        "📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
+        "🏦 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
+        "🏦 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
 
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
@@ -100,7 +97,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
-            f"{kurs_str}\n"
+            f"🏦 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
         summary = summary_dict.get(ticker.strip().upper())
