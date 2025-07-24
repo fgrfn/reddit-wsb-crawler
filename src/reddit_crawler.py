@@ -109,19 +109,21 @@ def reddit_crawler():
         except Exception:
             return None
 
-    def crawl_subreddit(sr, reddit, symbols, cutoff):
+    def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
         sr_data = reddit.subreddit(sr)
-        total_posts = 0
-        logger.info(f"r/{sr} analysieren ...")
+        logger.info(f"[{sr_idx}/{total_subs}] r/{sr} analysieren ...")
         counters = []
         posts = list(sr_data.new(limit=100))
         total_posts = len(posts)
         with ThreadPoolExecutor(max_workers=2) as post_executor:
             futures = [post_executor.submit(process_post, post, symbols, cutoff) for post in posts]
-            for future in as_completed(futures):
+            for idx, future in enumerate(as_completed(futures), 1):
                 result = future.result()
                 if result:
                     counters.append(result)
+                # Fortschritt für Posts anzeigen (alle 10 oder am Ende)
+                if idx % 10 == 0 or idx == total_posts:
+                    logger.info(f"  → {sr}: {idx}/{total_posts} Posts verarbeitet")
         # Alle Counter zusammenführen
         counter = Counter()
         for c in counters:
@@ -133,8 +135,8 @@ def reddit_crawler():
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
-            executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff)
-            for sr in subreddits
+            executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff, i+1, total_subs)
+            for i, sr in enumerate(subreddits)
         ]
         for future in as_completed(futures):
             sr, sr_result = future.result()
