@@ -452,11 +452,17 @@ def get_kurse_parallel(ticker_list):
     return kurse, kursdiffs
 
 def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     sr_data = reddit.subreddit(sr)
     tqdm_desc = f"[{sr_idx}/{total_subs}] r/{sr}"
     posts = list(sr_data.new(limit=100))
     total_posts = len(posts)
     counters = []
+    # Define subreddits list before using it
+    subreddits = [sr]  # or provide a list of subreddit names as needed
+    import collections
+    results = {}  # <--- Fix: results initialisieren
+    total_counter = collections.Counter()  # <--- Fix: total_counter initialisieren
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
             executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff, i+1, total_subs)
