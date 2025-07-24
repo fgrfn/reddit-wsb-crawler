@@ -38,12 +38,8 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         else:
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs = row.get('Kurs')
-        marktstatus = row.get('Marktstatus')
-        kurs_regular = row.get('KursRegular')
-        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')
-        unternehmen = name_map.get(ticker, "-")  # <--- Diese Zeile ergänzen!
-        # Link zu Yahoo Finance
+        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')  # <-- nur noch KursStr verwenden!
+        unternehmen = name_map.get(ticker, "-")
         yahoo_url = f"https://finance.yahoo.com/quote/{ticker}"
         msg += (
             f"\n{emoji} [{ticker}]({yahoo_url}) - {unternehmen}\n"
