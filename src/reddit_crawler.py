@@ -121,9 +121,10 @@ def reddit_crawler():
                 result = future.result()
                 if result:
                     counters.append(result)
-                # Fortschritt für Posts anzeigen (alle 10 oder am Ende)
+                # Fortschritt als Balken loggen
                 if idx % 10 == 0 or idx == total_posts:
-                    logger.info(f"  → {sr}: {idx}/{total_posts} Posts verarbeitet")
+                    bar = make_progress_bar(idx, total_posts)
+                    logger.info(f"  → {sr}: {bar}")
         # Alle Counter zusammenführen
         counter = Counter()
         for c in counters:
@@ -163,3 +164,8 @@ def reddit_crawler():
             logger.info(f"   {sym}: {count}")
     else:
         logger.info("Keine relevanten Ticker gefunden.")
+
+def make_progress_bar(current, total, length=20):
+    filled = int(length * current // total)
+    bar = "█" * filled + "░" * (length - filled)
+    return f"[{bar}] {current}/{total}"

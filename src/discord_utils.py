@@ -1,6 +1,7 @@
 import os
 import requests
 import logging
+from utils import list_pickle_files, load_pickle, load_ticker_names
 
 def send_discord_notification(message, webhook_url=None):
     if webhook_url is None:
@@ -38,14 +39,15 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
-        kursdiff = row.get('Kursdiff')
         marktstatus = row.get('Marktstatus')
-        unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
-        kurs_str = f"{kurs:.2f} USD" if kurs is not None else "k.A."
-        if marktstatus:
-            kurs_str += f" ({marktstatus})"
-        if kursdiff is not None:
-            kurs_str += f" | Δ {kursdiff:+.2f} USD"
+        kurs_regular = row.get('KursRegular')
+        kurs_str = ""
+        if kurs_regular is not None and marktstatus:
+            kurs_str = f"{kurs_regular:.2f} USD → {kurs:.2f} USD ({marktstatus})"
+        elif kurs is not None:
+            kurs_str = f"{kurs:.2f} USD"
+        else:
+            kurs_str = "keine Kursdaten verfügbar"
         # Link zu Yahoo Finance
         yahoo_url = f"https://finance.yahoo.com/quote/{ticker}"
         msg += (

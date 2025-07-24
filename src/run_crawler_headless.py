@@ -143,15 +143,12 @@ def get_yf_price(symbol):
         price = info.get("regularMarketPrice")
         pre = info.get("preMarketPrice")
         post = info.get("postMarketPrice")
-        # Bevorzugt Pre/Post, wenn Markt geschlossen
-        if pre is not None and pre != price:
-            return float(pre), "Pre-Market"
-        if post is not None and post != price:
-            return float(post), "After-Market"
-        return float(price) if price is not None else None, None
+        return float(price) if price is not None else None, \
+               float(pre) if pre is not None else None, \
+               float(post) if post is not None else None
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return None, None
+        return None, None, None
 
 def get_yf_price_hour_ago(symbol):
     try:
@@ -345,9 +342,18 @@ def main():
         logger.info(f"Kursabfrage für Top 3 Ticker dauerte {t_kurse_ende - t_kurse_start:.2f} Sekunden")
 
         for ticker in top3_ticker:
-            kurs, marktstatus = kurse.get(ticker, (None, None))
+            regular, pre, post = kurse.get(ticker, (None, None, None))
+            marktstatus = None
+            kurs = regular
+            if pre is not None and pre != regular:
+                kurs = pre
+                marktstatus = "Pre-Market"
+            elif post is not None and post != regular:
+                kurs = post
+                marktstatus = "After-Market"
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Marktstatus"] = marktstatus
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "KursRegular"] = regular
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
