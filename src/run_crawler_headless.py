@@ -93,7 +93,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
                 kurs_str += f" ({kursdiff:+.2f} USD)"
             else:
-                kurs_str += " (keine Kursdifferenz verfügbar)"
+                kurs_str += " (±0.00 USD)"  # <--- Hier geändert
         else:
             kurs_str = "keine Kursdaten verfügbar"
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')

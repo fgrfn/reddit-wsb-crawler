@@ -13,13 +13,12 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 import logging
+logger = logging.getLogger(__name__)
 
 # 📁 Pfade
 TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
 TICKER_CSV_PATH = os.path.join("data", "input", "ticker_name_map.csv")
 SYMBOLS_PATH = os.path.join("data", "input", "symbols_list.pkl")
-
-logger = logging.getLogger(__name__)
 
 # 🧠 Cache laden/speichern
 def load_ticker_name_map():
@@ -82,6 +81,7 @@ def reddit_crawler():
     symbols = [s for s in symbols if s not in blacklist]
 
     subreddits = [s.strip() for s in os.getenv("SUBREDDITS", "wallstreetbets").split(",")]
+    total_subs = len(subreddits)
     cutoff = datetime.now(timezone.utc) - timedelta(days=1)
     run_id = datetime.now().strftime("%y%m%d-%H%M%S")
     os.makedirs("data/output/pickle", exist_ok=True)
