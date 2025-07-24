@@ -276,7 +276,7 @@ def main():
                 for symbol, count in srdata["symbol_hits"].items():
                     prev_rows.append({"Ticker": symbol, "Nennungen": count})
             prev_df = pd.DataFrame(prev_rows)
-            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+            prev_nennungen = prev_df.groupby "Ticker")["Nennungen"].sum().to_dict()
         else:
             prev_nennungen = {}
 
@@ -326,24 +326,25 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
             ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
             capture_output=True, text=True
         )
-        line = result.stdout.strip().splitlines()
-        if line:
-            logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
-            parts = line[0].split()
-            # Prüfe, ob mindestens drei Spalten vorhanden sind und das Datum wie erwartet aussieht
-            if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
-                try:
-                    dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
-                    next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
-                except Exception:
-                    logger.warning(f"Unerwartetes Zeitformat in systemd-Timer: {parts}")
-                    next_time = "unbekannt"
-                return next_time
-            else:
-                logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
+        lines = result.stdout.strip().splitlines()
+        if not lines:
+            logger.warning("Keine systemd-Timer-Ausgabe erhalten.")
+            return "kein Timer gefunden"
+        logger.info(f"Systemd-Timer-Rohzeile: {lines[0]}")
+        parts = lines[0].split()
+        # Suche nach Datum im Format: Wochentag YYYY-MM-DD HH:MM:SS
+        if len(parts) >= 5:
+            date_str = f"{parts[2]} {parts[3]}"
+            try:
+                dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+                return dt.strftime("%d.%m.%Y %H:%M:%S")
+            except Exception as e:
+                logger.warning(f"Konnte Zeit nicht parsen: {date_str} ({e})")
+        logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {lines[0]}")
+        return "unbekannt"
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
-    return "unbekannt"
+        return "unbekannt"
 
 def get_kurse_parallel(ticker_list):
     kurse = {}
