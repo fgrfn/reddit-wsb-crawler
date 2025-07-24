@@ -101,6 +101,6 @@ def format_price_block_with_börse(kurs_data, ticker=None):
         kurs_str += f" | 🌙 After-Market: {post:.2f} {currency}"
     # Yahoo-Link (Ticker als Fallback, falls symbol nicht im Kursdict)
     symbol = kurs_data.get('symbol') or ticker or ""
-    if regular is not None and symbol:
+    if symbol:
         kurs_str += f" | [Yahoo Finance](https://finance.yahoo.com/quote/{symbol})"
     return kurs_str
