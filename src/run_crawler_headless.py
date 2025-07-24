@@ -111,5 +111,14 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
 # Die restlichen Funktionen bleiben unverändert, da sie bereits optimiert sind.
 
+def main():
+    logger.info("main() wurde aufgerufen, aber ist noch nicht implementiert.")
+    # Hier können Sie den Hauptablauf Ihres Crawlers implementieren.
+    # Beispiel:
+    # - Laden der Umgebungsvariablen
+    # - Starten des Crawl-Prozesses
+    # - Senden von Benachrichtigungen
+    # - usw.
+
 if __name__ == "__main__":
     main()
