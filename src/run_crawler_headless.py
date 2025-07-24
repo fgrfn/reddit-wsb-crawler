@@ -192,7 +192,7 @@ def main():
 
         print("summary_dict keys:", list(summary_dict.keys()))  # <-- Hier ist die Änderung
 
-        # Kursdaten für die Top 3 Ticker holen
+        # Kursdaten für die Top 5 Ticker holen
         top5_ticker = df_ticker["Ticker"].head(5).tolist()
         kurse = get_kurse_parallel(top5_ticker)
         for ticker in top5_ticker:
