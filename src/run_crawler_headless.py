@@ -136,6 +136,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
 def get_yf_price(symbol):
     try:
+        symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
         ticker = yf.Ticker(symbol)
         price = ticker.info.get("regularMarketPrice")
         return float(price) if price is not None else None
@@ -145,19 +146,18 @@ def get_yf_price(symbol):
 
 def get_yf_price_hour_ago(symbol):
     try:
+        symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
         ticker = yf.Ticker(symbol)
         end = datetime.now()
         start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
         df = ticker.history(interval="1m", start=start, end=end)
         if not df.empty:
             target_time = end - timedelta(hours=1)
-            # Finde den Kurs, der dem Zielzeitpunkt am nächsten, aber nicht jünger ist
             df = df[df.index <= target_time]
             if not df.empty:
                 price = df["Close"].iloc[-1]
                 return float(price)
             else:
-                # Kein Wert vor exakt einer Stunde, nimm den ältesten verfügbaren
                 price = df["Close"].iloc[0]
                 return float(price)
         else:
@@ -225,7 +225,7 @@ def main():
         logger.error(f"Fehler beim Resolver: {e}")
     t_resolver = time.time()
 
-    # --- KI-Zusammenfassung erzeugen ---
+    # --- KI-Zusammenfassungen parallel erzeugen ---
     try:
         from utils import list_pickle_files
         import summarizer
@@ -234,16 +234,51 @@ def main():
             logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
         else:
             latest_pickle = sorted(pickle_files)[-1]
-            logger.info(f"Starte KI-Zusammenfassung für: {latest_pickle}")
-            summarizer.generate_summary(
-                pickle_path=PICKLE_DIR / latest_pickle,
-                include_all=False,
-                streamlit_out=None,
-                only_symbols=None
+            logger.info(f"Starte parallele KI-Zusammenfassungen für: {latest_pickle}")
+            # Hole die Top 3 Ticker
+            import pandas as pd
+            result = load_pickle(PICKLE_DIR / latest_pickle)
+            name_map = load_ticker_names(TICKER_NAME_PATH)
+            df_rows = []
+            for subreddit, srdata in result.get("subreddits", {}).items():
+                for symbol, count in srdata["symbol_hits"].items():
+                    df_rows.append({
+                        "Ticker": symbol,
+                        "Subreddit": subreddit,
+                        "Nennungen": count,
+                        "Kurs": srdata.get("price", {}).get(symbol),
+                    })
+            df = pd.DataFrame(df_rows)
+            df["Unternehmen"] = df["Ticker"].map(name_map)
+            df_ticker = (
+                df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+                .sum()
+                .sort_values(by="Nennungen", ascending=False)
             )
-            logger.info("KI-Zusammenfassung abgeschlossen.")
+            top3_ticker = df_ticker["Ticker"].head(3).tolist()
+
+            # Parallele Zusammenfassung für Top 3
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            summary_dict = {}
+            with ThreadPoolExecutor(max_workers=3) as executor:
+                futures = {
+                    executor.submit(
+                        summarizer.generate_summary,
+                        pickle_path=PICKLE_DIR / latest_pickle,
+                        include_all=False,
+                        streamlit_out=None,
+                        only_symbols=[ticker]
+                    ): ticker for ticker in top3_ticker
+                }
+                for future in as_completed(futures):
+                    ticker = futures[future]
+                    try:
+                        summary_dict[ticker] = future.result()
+                    except Exception as e:
+                        summary_dict[ticker] = f"Fehler: {e}"
+            logger.info("Parallele KI-Zusammenfassungen abgeschlossen.")
     except Exception as e:
-        logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
+        logger.error(f"Fehler bei der parallelen KI-Zusammenfassung: {e}")
     t_summary = time.time()
 
     # --- Discord-Benachrichtigung ---
