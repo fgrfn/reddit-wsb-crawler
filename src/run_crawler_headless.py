@@ -100,9 +100,18 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             f"🏦 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
-        summary = summary_dict.get(ticker.strip().upper())
+        # Robuste Zuordnung für die Zusammenfassung:
+        summary = (
+            summary_dict.get(ticker)
+            or summary_dict.get(ticker.upper())
+            or summary_dict.get(ticker.strip())
+            or summary_dict.get(ticker.strip().upper())
+            or summary_dict.get(ticker.lower())
+        )
         if summary:
             block += summary.strip() + "\n"
+        else:
+            block += "(keine Zusammenfassung gefunden)\n"
         block += "\n"
         ticker_blocks.append(block)
 
