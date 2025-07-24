@@ -46,7 +46,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             f"💵 {kurs_str}\n"
             f"🧠\n"
         )
-        summary = summary_dict.get(ticker.strip().upper())
+        summary = summary_dict.get(str(ticker).strip().upper())
         if summary:
             block += summary.strip() + "\n"
         block += "\n"
