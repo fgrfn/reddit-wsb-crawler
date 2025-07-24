@@ -5,6 +5,7 @@ import logging
 import pickle
 import yfinance as yf
 import subprocess
+import concurrent.futures
 from datetime import datetime, timedelta
 
 from pathlib import Path
@@ -91,10 +92,10 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             kurs_str = f"{kurs:.2f} USD"
             if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
                 kurs_str += f" ({kursdiff:+.2f} USD)"
-            elif kursdiff is None or (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
-                kurs_str += " (k.A.)"
+            else:
+                kurs_str += " (keine Kursdifferenz verfügbar)"
         else:
-            kurs_str = "k.A."
+            kurs_str = "keine Kursdaten verfügbar"
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
@@ -149,8 +150,16 @@ def get_yf_price_hour_ago(symbol):
         start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
         df = ticker.history(interval="1m", start=start, end=end)
         if not df.empty:
-            price = df["Close"].iloc[0]
-            return float(price)
+            target_time = end - timedelta(hours=1)
+            # Finde den Kurs, der dem Zielzeitpunkt am nächsten, aber nicht jünger ist
+            df = df[df.index <= target_time]
+            if not df.empty:
+                price = df["Close"].iloc[-1]
+                return float(price)
+            else:
+                # Kein Wert vor exakt einer Stunde, nimm den ältesten verfügbaren
+                price = df["Close"].iloc[0]
+                return float(price)
         else:
             return None
     except Exception as e:
@@ -279,38 +288,10 @@ def main():
 
         # Kursdaten für die Top 3 Ticker holen
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
-        last_kurse = {}
-        # Hole die Kurse aus dem vorherigen Crawl
-        if len(pickle_files) >= 2:
-            prev_result = load_pickle(PICKLE_DIR / sorted(pickle_files)[-2])
-            prev_rows = []
-            for subreddit, srdata in prev_result.get("subreddits", {}).items():
-                for symbol, count in srdata["symbol_hits"].items():
-                    prev_rows.append({
-                        "Ticker": symbol,
-                        "Kurs": srdata.get("price", {}).get(symbol)
-                    })
-            prev_df = pd.DataFrame(prev_rows)
-            for ticker in top3_ticker:
-                # Hole alten Kurs aus yfinance (alternativ aus prev_df, falls vorhanden)
-                last_kurse[ticker] = None
-                try:
-                    last_kurse[ticker] = get_yf_price(ticker)
-                except Exception:
-                    pass
-
+        kurse, kursdiffs = get_kurse_parallel(top3_ticker)
         for ticker in top3_ticker:
-            # Hole aktuellen Kurs von yfinance
-            kurs = get_yf_price(ticker)
-            # Hole Kurs von vor einer Stunde von yfinance
-            kurs_hour_ago = get_yf_price_hour_ago(ticker)
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
-            # Kursänderung berechnen (immer mit Kurs von vor 1 Stunde)
-            if kurs is not None and kurs_hour_ago is not None:
-                diff = kurs - kurs_hour_ago
-                df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = diff
-            else:
-                df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = None
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
@@ -347,18 +328,58 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         )
         line = result.stdout.strip().splitlines()
         if line:
+            logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
             parts = line[0].split()
-            # parts[1] = Datum, parts[2] = Uhrzeit
-            # Beispiel: parts[1] = '2025-07-24', parts[2] = '02:00:00'
-            try:
-                dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
-                next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
-            except Exception:
-                next_time = f"{parts[1]} {parts[2]}"
-            return next_time
+            # Prüfe, ob mindestens drei Spalten vorhanden sind und das Datum wie erwartet aussieht
+            if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
+                try:
+                    dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
+                    next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
+                except Exception:
+                    logger.warning(f"Unerwartetes Zeitformat in systemd-Timer: {parts}")
+                    next_time = "unbekannt"
+                return next_time
+            else:
+                logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
     return "unbekannt"
+
+def get_kurse_parallel(ticker_list):
+    kurse = {}
+    kursdiffs = {}
+    tickers_ohne_kurs = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_ticker = {executor.submit(get_yf_price, t): t for t in ticker_list}
+        future_to_ticker_ago = {executor.submit(get_yf_price_hour_ago, t): t for t in ticker_list}
+        results = {}
+        results_ago = {}
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            t = future_to_ticker[future]
+            try:
+                results[t] = future.result()
+            except Exception as e:
+                logger.warning(f"Kursabfrage für {t} fehlgeschlagen: {e}")
+                results[t] = None
+        for future in concurrent.futures.as_completed(future_to_ticker_ago):
+            t = future_to_ticker_ago[future]
+            try:
+                results_ago[t] = future.result()
+            except Exception as e:
+                logger.warning(f"Kursabfrage (1h alt) für {t} fehlgeschlagen: {e}")
+                results_ago[t] = None
+        for t in ticker_list:
+            kurse[t] = results.get(t)
+            kurs_ago = results_ago.get(t)
+            if kurse[t] is not None and kurs_ago is not None:
+                kursdiffs[t] = kurse[t] - kurs_ago
+            else:
+                kursdiffs[t] = None
+                if kurse[t] is None or kurs_ago is None:
+                    tickers_ohne_kurs.append(t)
+    if tickers_ohne_kurs:
+        logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
+    return kurse, kursdiffs
 
 if __name__ == "__main__":
     main()
