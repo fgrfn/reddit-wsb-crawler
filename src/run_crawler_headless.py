@@ -102,7 +102,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             f"💰 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
-        summary = summary_dict.get(ticker)
+        summary = summary_dict.get(ticker.strip().upper())
         if summary:
             block += summary.strip() + "\n"
         block += "\n"
@@ -300,12 +300,14 @@ def main():
                     pass
 
         for ticker in top3_ticker:
+            # Hole aktuellen Kurs von yfinance
             kurs = get_yf_price(ticker)
+            # Hole Kurs von vor einer Stunde von yfinance
+            kurs_hour_ago = get_yf_price_hour_ago(ticker)
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
-            # Kursänderung berechnen
-            prev_kurs = prev_kurse.get(ticker)
-            if kurs is not None and prev_kurs is not None:
-                diff = kurs - prev_kurs
+            # Kursänderung berechnen (immer mit Kurs von vor 1 Stunde)
+            if kurs is not None and kurs_hour_ago is not None:
+                diff = kurs - kurs_hour_ago
                 df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = diff
             else:
                 df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = None
