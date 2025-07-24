@@ -89,8 +89,10 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         kursdiff = row.get('Kursdiff')
         if kurs is not None:
             kurs_str = f"{kurs:.2f} USD"
-            if kursdiff is not None:
+            if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
                 kurs_str += f" ({kursdiff:+.2f} USD)"
+            elif kursdiff is None or (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
+                kurs_str += " (k.A.)"
         else:
             kurs_str = "k.A."
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
@@ -106,23 +108,24 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block += "\n"
         ticker_blocks.append(block)
 
-    # Füge die Ticker-Blöcke einzeln hinzu und kürze ggf. die Zusammenfassung des letzten Tickers
+    # Füge die ersten beiden Ticker immer vollständig hinzu
     for i, block in enumerate(ticker_blocks):
-        if len(msg) + len(block) > maxlen - len(warntext):
-            # Kürze nur die Zusammenfassung des letzten Tickers
-            # Finde den Teil "🧠 Zusammenfassung:\n"
-            split_idx = block.find("🧠 Zusammenfassung:\n")
-            if split_idx != -1:
-                head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
-                summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
-                allowed = maxlen - len(msg) - len(warntext) - 2  # 2 für \n\n
-                summary = summary[:allowed] + warntext
-                block = head + summary + "\n\n"
-            else:
-                block = block[:maxlen - len(msg) - len(warntext)] + warntext
-        msg += block
-        if len(msg) > maxlen:
-            msg = msg[:maxlen - len(warntext)] + warntext
+        if i < 2:
+            msg += block
+        else:
+            # Nur Nummer 3 ggf. kürzen
+            if len(msg) + len(block) > maxlen - len(warntext):
+                split_idx = block.find("🧠 Zusammenfassung:\n")
+                if split_idx != -1:
+                    head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
+                    summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
+                    allowed = maxlen - len(msg) - len(warntext) - 2  # 2 für \n\n
+                    summary = summary[:allowed] + warntext
+                    block = head + summary + "\n\n"
+                else:
+                    block = block[:maxlen - len(msg) - len(warntext)] + warntext
+            msg += block
+            # Nach Nummer 3 abbrechen
             break
 
     return msg
