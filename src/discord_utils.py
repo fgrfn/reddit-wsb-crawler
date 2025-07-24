@@ -125,3 +125,12 @@ def get_discord_legend():
         "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
         "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
+
+legend = get_discord_legend()
+send_discord_notification(legend)
+success = send_discord_notification(msg)
+if success:
+    logger.info("Discord-Benachrichtigung gesendet!")
+else:
+    logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
+archive_log(LOG_PATH, ARCHIVE_DIR)
