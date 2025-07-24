@@ -125,6 +125,3 @@ def get_discord_legend():
         "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
         "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
-
-legend = get_discord_legend()
-send_discord_notification(legend)

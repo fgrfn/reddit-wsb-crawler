@@ -226,20 +226,6 @@ def main():
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
 
-    crawl_info = (
-        f"🕷️ Crawl abgeschlossen! "
-        f"💾 {latest_pickle} "
-        f"🕒 {timestamp} ⏰ {next_crawl_time}"
-    )
-    legend = get_discord_legend()
-    send_discord_notification(legend)
-    success = send_discord_notification(msg)
-    if success:
-        logger.info("Discord-Benachrichtigung gesendet!")
-    else:
-        logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
-    archive_log(LOG_PATH, ARCHIVE_DIR)
-
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
         result = subprocess.run(
