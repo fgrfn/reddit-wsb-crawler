@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
+from discord_utils import format_price_block_with_börse
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -62,6 +63,7 @@ def send_discord_notification(message, webhook_url=None):
         return False
 
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
+    from discord_utils import format_price_block_with_börse  # falls nicht global importiert
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     warntext = "… [gekürzt wegen Discord-Limit]"
@@ -82,23 +84,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs_data = row.get('Kurs')
-        if isinstance(kurs_data, dict):
-            kurs_str = ""
-            if kurs_data.get("regular") is not None:
-                kurs_str += f"{kurs_data['regular']:.2f} USD"
-            else:
-                kurs_str += "keine Kursdaten verfügbar"
-            if kurs_data.get("pre") is not None:
-                kurs_str += f" | Pre-Market: {kurs_data['pre']:.2f} USD"
-            if kurs_data.get("post") is not None:
-                kurs_str += f" | After-Market: {kurs_data['post']:.2f} USD"
-        else:
-            kurs_str = "keine Kursdaten verfügbar"
+        # Kursblock inkl. Pre-/After-Market, Zeit, Emojis, Yahoo-Link
+        kurs_str = format_price_block_with_börse(ticker, kurs_data)
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
-            f"💰 Kurs: {kurs_str}\n"
+            f"{kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
         summary = summary_dict.get(ticker.strip().upper())
@@ -133,17 +125,16 @@ def get_yf_price(symbol):
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
-        price = info.get("regularMarketPrice")
-        pre = info.get("preMarketPrice")
-        post = info.get("postMarketPrice")
         return {
-            "regular": float(price) if price is not None else None,
-            "pre": float(pre) if pre is not None else None,
-            "post": float(post) if post is not None else None
+            "regular": float(info.get("regularMarketPrice")) if info.get("regularMarketPrice") is not None else None,
+            "pre": float(info.get("preMarketPrice")) if info.get("preMarketPrice") is not None else None,
+            "post": float(info.get("postMarketPrice")) if info.get("postMarketPrice") is not None else None,
+            "previousClose": float(info.get("previousClose")) if info.get("previousClose") is not None else None,
+            "currency": info.get("currency", "USD")
         }
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return {"regular": None, "pre": None, "post": None}
+        return {"regular": None, "pre": None, "post": None, "previousClose": None, "currency": "USD"}
 
 def save_stats(stats_path, nennungen_dict, kurs_dict):
     with open(stats_path, "wb") as f:
@@ -340,6 +331,26 @@ def get_kurse_parallel(ticker_list):
     if tickers_ohne_kurs:
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse
+
+def format_price_block(kurs_data):
+    if not isinstance(kurs_data, dict):
+        return "keine Kursdaten verfügbar"
+    currency = kurs_data.get("currency", "USD")
+    parts = []
+    # Hauptkurs
+    if kurs_data.get("regular") is not None:
+        parts.append(f"{kurs_data['regular']:.2f} {currency}")
+    elif kurs_data.get("previousClose") is not None:
+        parts.append(f"Vortag: {kurs_data['previousClose']:.2f} {currency}")
+    else:
+        parts.append("keine Kursdaten verfügbar")
+    # Pre-Market
+    if kurs_data.get("pre") is not None:
+        parts.append(f"Pre-Market: {kurs_data['pre']:.2f} {currency}")
+    # After-Market
+    if kurs_data.get("post") is not None:
+        parts.append(f"After-Market: {kurs_data['post']:.2f} {currency}")
+    return " | ".join(parts)
 
 if __name__ == "__main__":
     main()
