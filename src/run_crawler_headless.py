@@ -86,7 +86,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         else:
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')
+        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')  # <-- nur noch KursStr verwenden!
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
@@ -105,19 +105,10 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         if i < 2:
             msg += block
         else:
-            # Nur Nummer 3 ggf. kürzen
-            if len(msg) + len(block) > maxlen - len(warntext):
-                split_idx = block.find("🧠 Zusammenfassung:\n")
-                if split_idx != -1:
-                    head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
-                    summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
-                    allowed = maxlen - len(msg) - len(warntext) - 2  # 2 für \n\n
-                    summary = summary[:allowed] + warntext
-                    block = head + summary + "\n\n"
-                else:
-                    block = block[:maxlen - len(msg) - len(warntext)] + warntext
+            if len(msg) + len(block) > maxlen:
+                msg += warntext
+                break
             msg += block
-            break
 
     # Endgültig auf Discord-Limit kürzen (falls z.B. die Basisdaten zu lang sind)
     if len(msg) > 2000:
