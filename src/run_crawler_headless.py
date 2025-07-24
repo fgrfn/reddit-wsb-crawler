@@ -5,7 +5,7 @@ import logging
 import pickle
 import yfinance as yf
 import subprocess
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -140,6 +140,21 @@ def get_yf_price(symbol):
         return float(price) if price is not None else None
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
+        return None
+
+def get_yf_price_hour_ago(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        end = datetime.now()
+        start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
+        df = ticker.history(interval="1m", start=start, end=end)
+        if not df.empty:
+            price = df["Close"].iloc[0]
+            return float(price)
+        else:
+            return None
+    except Exception as e:
+        logger.warning(f"Kursabfrage (1h alt) für {symbol} fehlgeschlagen: {e}")
         return None
 
 def save_stats(stats_path, nennungen_dict, kurs_dict):
