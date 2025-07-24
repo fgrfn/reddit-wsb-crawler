@@ -74,7 +74,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     warntext = "… [gekürzt wegen Discord-Limit]"
-    maxlen = 1966
+    maxlen = 1900
 
     # Crawl-Info wieder an den Anfang!
     msg = (
