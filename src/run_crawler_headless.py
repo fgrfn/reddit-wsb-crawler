@@ -170,7 +170,7 @@ def main():
 
     # --- Crawl starten ---
     try:
-        logger.info("🕷️ Starte Reddit-Crawler ...")
+        logger.info("🕷️  Starte Reddit-Crawler ...")
         from reddit_crawler import reddit_crawler
         reddit_crawler()
         logger.info("✅ Crawl abgeschlossen")
