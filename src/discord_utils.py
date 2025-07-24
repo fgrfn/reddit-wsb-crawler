@@ -125,9 +125,3 @@ def get_discord_legend():
         "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
         "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
-
-summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
-summary_dict = {}
-if summary_path and summary_path.exists():
-    summary_text = load_summary(summary_path)
-    summary_dict = parse_summary_md(summary_text)
