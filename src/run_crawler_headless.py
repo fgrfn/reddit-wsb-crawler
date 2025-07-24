@@ -7,6 +7,7 @@ import yfinance as yf
 import subprocess
 import concurrent.futures
 from datetime import datetime, timedelta
+
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -24,19 +25,6 @@ STATS_PATH = BASE_DIR / "data" / "output" / "ticker_stats.pkl"  # <--- NEU
 
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-
-# --- Entferne Log-Rotation und stelle das alte Logging wieder her ---
-# Entferne diese Zeilen:
-# from logging.handlers import RotatingFileHandler
-# log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-# file_handler = RotatingFileHandler(LOG_PATH, maxBytes=2*1024*1024, backupCount=5, encoding="utf-8", delay=False)
-# file_handler.setFormatter(log_formatter)
-# stream_handler = logging.StreamHandler(sys.stdout)
-# stream_handler.setFormatter(log_formatter)
-# logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
-# logger = logging.getLogger(__name__)
-
-# Ersetze durch das ursprüngliche Logging:
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
@@ -146,47 +134,38 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
     return msg
 
-# --- NEU: Retry-Decorator ---
-def retry(max_attempts=3, delay=2):
-    def decorator(func):
-        def wrapper(*args, **kwargs):
-            for attempt in range(1, max_attempts + 1):
-                try:
-                    return func(*args, **kwargs)
-                except Exception as e:
-                    logger.warning(f"Fehler bei {func.__name__}({args}): {e} (Versuch {attempt}/{max_attempts})")
-                    if attempt < max_attempts:
-                        time.sleep(delay)
-            return None
-        return wrapper
-    return decorator
-
-# --- NEU: Retry für Kursabfragen ---
-@retry(max_attempts=3, delay=2)
 def get_yf_price(symbol):
-    symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
-    ticker = yf.Ticker(symbol)
-    price = ticker.info.get("regularMarketPrice")
-    return float(price) if price is not None else None
-
-@retry(max_attempts=3, delay=2)
-def get_yf_price_hour_ago(symbol):
-    symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
-    ticker = yf.Ticker(symbol)
-    end = datetime.now()
-    start = end - timedelta(hours=1, minutes=5)
-    df = ticker.history(interval="1m", start=start, end=end)
-    if not df.empty:
-        target_time = end - timedelta(hours=1)
-        df = df[df.index <= target_time]
-        if not df.empty:
-            price = df["Close"].iloc[-1]
-            return float(price)
-        else:
-            price = df["Close"].iloc[0]
-            return float(price)
-    else:
+    try:
+        ticker = yf.Ticker(symbol)
+        price = ticker.info.get("regularMarketPrice")
+        return float(price) if price is not None else None
+    except Exception as e:
+        logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
         return None
+
+def get_yf_price_hour_ago(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        end = datetime.now()
+        start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
+        df = ticker.history(interval="1m", start=start, end=end)
+        if not df.empty:
+            target_time = end - timedelta(hours=1)
+            # Finde den Kurs, der dem Zielzeitpunkt am nächsten, aber nicht jünger ist
+            df = df[df.index <= target_time]
+            if not df.empty:
+                price = df["Close"].iloc[-1]
+                return float(price)
+            else:
+                # Kein Wert vor exakt einer Stunde, nimm den ältesten verfügbaren
+                price = df["Close"].iloc[0]
+                return float(price)
+        else:
+            return None
+    except Exception as e:
+        logger.warning(f"Kursabfrage (1h alt) für {symbol} fehlgeschlagen: {e}")
+        return None
+
 def save_stats(stats_path, nennungen_dict, kurs_dict):
     with open(stats_path, "wb") as f:
         pickle.dump({"nennungen": nennungen_dict, "kurs": kurs_dict}, f)
@@ -198,35 +177,12 @@ def load_stats(stats_path):
         data = pickle.load(f)
         return data.get("nennungen", {}), data.get("kurs", {})
 
-def get_kurse_parallel(ticker_list):
-    kurse = {}
-    kursdiffs = {}
-
-    def fetch(ticker):
-        price_now = get_yf_price(ticker)
-        price_hour_ago = get_yf_price_hour_ago(ticker)
-        diff = None
-        if price_now is not None and price_hour_ago is not None:
-            diff = price_now - price_hour_ago
-        return ticker, price_now, diff
-
-    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
-        future_to_ticker = {executor.submit(fetch, ticker): ticker for ticker in ticker_list}
-        for future in concurrent.futures.as_completed(future_to_ticker):
-            ticker, price_now, diff = future.result()
-            kurse[ticker] = price_now
-            kursdiffs[ticker] = diff
-    return kurse, kursdiffs
-
 def main():
-    # --- NEU: Performance-Metriken ---
-    t0 = time.time()
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
-    t_env = time.time()
 
+    # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)
-    t_stats = time.time()
 
     # --- Tickerliste aktualisieren ---
     try:
@@ -238,7 +194,6 @@ def main():
             pickle.dump(list(tickers["Symbol"]), f)
     except Exception as e:
         logger.error(f"Fehler beim Laden der Tickerliste: {e}")
-    t_ticker = time.time()
 
     # --- Crawl starten ---
     try:
@@ -248,7 +203,6 @@ def main():
         logger.info("✅ Crawl abgeschlossen")
     except Exception as e:
         logger.error(f"Fehler beim Reddit-Crawl: {e}")
-    t_crawl = time.time()
 
     # --- Ticker-Namensauflösung ---
     try:
@@ -265,7 +219,6 @@ def main():
             logger.error("Fehler bei der Namensauflösung.")
     except Exception as e:
         logger.error(f"Fehler beim Resolver: {e}")
-    t_resolver = time.time()
 
     # --- KI-Zusammenfassung erzeugen ---
     try:
@@ -286,7 +239,6 @@ def main():
             logger.info("KI-Zusammenfassung abgeschlossen.")
     except Exception as e:
         logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
-    t_summary = time.time()
 
     # --- Discord-Benachrichtigung ---
     try:
@@ -363,80 +315,71 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
-
-        # --- NEU: Diagramm erzeugen und an Discord senden ---
-        try:
-            send_ticker_stats_plot(df_ticker, STATS_PATH)
-        except Exception as e:
-            logger.warning(f"Diagramm konnte nicht gesendet werden: {e}")
-
         # Logfile direkt nach Benachrichtigung archivieren!
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
 
-    # --- NEU: Performance-Metriken loggen ---
-    t_end = time.time()
-    logger.info(f"Laufzeit: ENV={t_env-t0:.2f}s, Stats={t_stats-t_env:.2f}s, Ticker={t_ticker-t_stats:.2f}s, Crawl={t_crawl-t_ticker:.2f}s, Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_resolver:.2f}s, Discord={t_end-t_summary:.2f}s, Gesamt={t_end-t0:.2f}s")
-
-def get_next_systemd_run():
-    """
-    Returns the next scheduled run time for this script if run by systemd timer, otherwise returns None.
-    """
+def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
-        import subprocess
-        import re
-        # Try to get the next run time for the systemd timer (assumes timer is named like the script)
-        timer_name = Path(__file__).stem.replace("_headless", "") + ".timer"
         result = subprocess.run(
-            ["systemctl", "list-timers", "--all", "--no-pager"],
-            capture_output=True, text=True, timeout=5
+            ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
+            capture_output=True, text=True
         )
-        for line in result.stdout.splitlines():
-            if timer_name in line:
-                # The first column is the NEXT run time
-                match = re.match(r"(\S+\s+\S+)", line)
-                if match:
-                    return match.group(1)
-        return None
-    except Exception:
-        return None
+        line = result.stdout.strip().splitlines()
+        if line:
+            logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
+            parts = line[0].split()
+            # Prüfe, ob mindestens drei Spalten vorhanden sind und das Datum wie erwartet aussieht
+            if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
+                try:
+                    dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
+                    next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
+                except Exception:
+                    logger.warning(f"Unerwartetes Zeitformat in systemd-Timer: {parts}")
+                    next_time = "unbekannt"
+                return next_time
+            else:
+                logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
+    except Exception as e:
+        logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
+    return "unbekannt"
 
-# --- NEU: Diagramm-Funktion ---
-def send_ticker_stats_plot(df_ticker, stats_path):
-    import matplotlib.pyplot as plt
-    import io
-    import requests
+def get_kurse_parallel(ticker_list):
+    kurse = {}
+    kursdiffs = {}
+    tickers_ohne_kurs = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_ticker = {executor.submit(get_yf_price, t): t for t in ticker_list}
+        future_to_ticker_ago = {executor.submit(get_yf_price_hour_ago, t): t for t in ticker_list}
+        results = {}
+        results_ago = {}
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            t = future_to_ticker[future]
+            try:
+                results[t] = future.result()
+            except Exception as e:
+                logger.warning(f"Kursabfrage für {t} fehlgeschlagen: {e}")
+                results[t] = None
+        for future in concurrent.futures.as_completed(future_to_ticker_ago):
+            t = future_to_ticker_ago[future]
+            try:
+                results_ago[t] = future.result()
+            except Exception as e:
+                logger.warning(f"Kursabfrage (1h alt) für {t} fehlgeschlagen: {e}")
+                results_ago[t] = None
+        for t in ticker_list:
+            kurse[t] = results.get(t)
+            kurs_ago = results_ago.get(t)
+            if kurse[t] is not None and kurs_ago is not None:
+                kursdiffs[t] = kurse[t] - kurs_ago
+            else:
+                kursdiffs[t] = None
+                if kurse[t] is None or kurs_ago is None:
+                    tickers_ohne_kurs.append(t)
+    if tickers_ohne_kurs:
+        logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
+    return kurse, kursdiffs
 
-    # Lade bisherige Statistik
-    if os.path.exists(stats_path):
-        with open(stats_path, "rb") as f:
-            stats = pickle.load(f)
-        nennungen_hist = stats.get("nennungen", {})
-        kurs_hist = stats.get("kurs", {})
-    else:
-        nennungen_hist = {}
-        kurs_hist = {}
-
-    # Nur Top 3 Ticker plotten
-    top3 = df_ticker["Ticker"].head(3).tolist()
-    fig, ax1 = plt.subplots(figsize=(8, 4))
-    for ticker in top3:
-        y = [nennungen_hist.get(ticker, 0)]
-        ax1.plot([0], y, marker="o", label=f"{ticker} Nennungen")
-    ax1.set_ylabel("Nennungen")
-    ax1.set_xlabel("Lauf")
-    ax1.legend(loc="upper left")
-    plt.title("Top 3 Ticker Nennungen (letzter Lauf)")
-    buf = io.BytesIO()
-    plt.tight_layout()
-    plt.savefig(buf, format="png")
-    buf.seek(0)
-
-    # Sende Bild an Discord
-    webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
-    if webhook_url:
-        files = {"file": ("ticker_stats.png", buf, "image/png")}
-        data = {"content": "📈 Ticker-Statistik (letzter Lauf)"}
-        requests.post(webhook_url, data=data, files=files, timeout=10)
-    plt.close(fig)
+if __name__ == "__main__":
+    main()
