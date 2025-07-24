@@ -115,6 +115,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
                 if key.strip().upper().startswith(ticker_upper):
                     summary = summary_dict[key]
                     break
+        summary = summary_dict.get(ticker.strip().upper())
         if summary:
             block += summary.strip() + "\n"
         else:
