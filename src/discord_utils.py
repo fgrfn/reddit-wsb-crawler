@@ -128,9 +128,3 @@ def get_discord_legend():
 
 legend = get_discord_legend()
 send_discord_notification(legend)
-success = send_discord_notification(msg)
-if success:
-    logger.info("Discord-Benachrichtigung gesendet!")
-else:
-    logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
-archive_log(LOG_PATH, ARCHIVE_DIR)
