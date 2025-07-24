@@ -30,13 +30,6 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         f"🏆 Top 3 Ticker:\n"
     )
 
-    df_ticker = (
-        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
-        .sum()
-        .sort_values(by=["Nennungen", "Ticker"], ascending=[False, True])
-    )
-    top3_ticker = df_ticker["Ticker"].head(3).tolist()
-
     ticker_blocks = []
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
         ticker = row["Ticker"]
