@@ -154,12 +154,14 @@ def retry(max_attempts=3, delay=2):
 # --- NEU: Retry für Kursabfragen ---
 @retry(max_attempts=3, delay=2)
 def get_yf_price(symbol):
+    symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
     ticker = yf.Ticker(symbol)
     price = ticker.info.get("regularMarketPrice")
     return float(price) if price is not None else None
 
 @retry(max_attempts=3, delay=2)
 def get_yf_price_hour_ago(symbol):
+    symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
     ticker = yf.Ticker(symbol)
     end = datetime.now()
     start = end - timedelta(hours=1, minutes=5)
@@ -185,6 +187,26 @@ def load_stats(stats_path):
     with open(stats_path, "rb") as f:
         data = pickle.load(f)
         return data.get("nennungen", {}), data.get("kurs", {})
+
+def get_kurse_parallel(ticker_list):
+    kurse = {}
+    kursdiffs = {}
+
+    def fetch(ticker):
+        price_now = get_yf_price(ticker)
+        price_hour_ago = get_yf_price_hour_ago(ticker)
+        diff = None
+        if price_now is not None and price_hour_ago is not None:
+            diff = price_now - price_hour_ago
+        return ticker, price_now, diff
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        future_to_ticker = {executor.submit(fetch, ticker): ticker for ticker in ticker_list}
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            ticker, price_now, diff = future.result()
+            kurse[ticker] = price_now
+            kursdiffs[ticker] = diff
+    return kurse, kursdiffs
 
 def main():
     # --- NEU: Performance-Metriken ---
@@ -346,6 +368,29 @@ def main():
     # --- NEU: Performance-Metriken loggen ---
     t_end = time.time()
     logger.info(f"Laufzeit: ENV={t_env-t0:.2f}s, Stats={t_stats-t_env:.2f}s, Ticker={t_ticker-t_stats:.2f}s, Crawl={t_crawl-t_ticker:.2f}s, Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_resolver:.2f}s, Discord={t_end-t_summary:.2f}s, Gesamt={t_end-t0:.2f}s")
+
+def get_next_systemd_run():
+    """
+    Returns the next scheduled run time for this script if run by systemd timer, otherwise returns None.
+    """
+    try:
+        import subprocess
+        import re
+        # Try to get the next run time for the systemd timer (assumes timer is named like the script)
+        timer_name = Path(__file__).stem.replace("_headless", "") + ".timer"
+        result = subprocess.run(
+            ["systemctl", "list-timers", "--all", "--no-pager"],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.splitlines():
+            if timer_name in line:
+                # The first column is the NEXT run time
+                match = re.match(r"(\S+\s+\S+)", line)
+                if match:
+                    return match.group(1)
+        return None
+    except Exception:
+        return None
 
 # --- NEU: Diagramm-Funktion ---
 def send_ticker_stats_plot(df_ticker, stats_path):
