@@ -178,11 +178,13 @@ def load_stats(stats_path):
         return data.get("nennungen", {}), data.get("kurs", {})
 
 def main():
+    t0 = time.time()
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
+    t_env = time.time()
 
-    # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)
+    t_stats = time.time()
 
     # --- Tickerliste aktualisieren ---
     try:
@@ -194,6 +196,7 @@ def main():
             pickle.dump(list(tickers["Symbol"]), f)
     except Exception as e:
         logger.error(f"Fehler beim Laden der Tickerliste: {e}")
+    t_ticker = time.time()
 
     # --- Crawl starten ---
     try:
@@ -203,6 +206,7 @@ def main():
         logger.info("✅ Crawl abgeschlossen")
     except Exception as e:
         logger.error(f"Fehler beim Reddit-Crawl: {e}")
+    t_crawl = time.time()
 
     # --- Ticker-Namensauflösung ---
     try:
@@ -219,6 +223,7 @@ def main():
             logger.error("Fehler bei der Namensauflösung.")
     except Exception as e:
         logger.error(f"Fehler beim Resolver: {e}")
+    t_resolver = time.time()
 
     # --- KI-Zusammenfassung erzeugen ---
     try:
@@ -239,6 +244,7 @@ def main():
             logger.info("KI-Zusammenfassung abgeschlossen.")
     except Exception as e:
         logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
+    t_summary = time.time()
 
     # --- Discord-Benachrichtigung ---
     try:
@@ -286,9 +292,13 @@ def main():
             summary_text = load_summary(summary_path)
             summary_dict = parse_summary_md(summary_text)
 
-        # Kursdaten für die Top 3 Ticker holen
+        # --- Parallelisierte Kursabfrage für Top 3 Ticker ---
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
+        t_kurse_start = time.time()
         kurse, kursdiffs = get_kurse_parallel(top3_ticker)
+        t_kurse_ende = time.time()
+        logger.info(f"Kursabfrage für Top 3 Ticker dauerte {t_kurse_ende - t_kurse_start:.2f} Sekunden")
+
         for ticker in top3_ticker:
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
@@ -315,10 +325,18 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
-        # Logfile direkt nach Benachrichtigung archivieren!
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
+
+    # --- Performance-Metriken loggen ---
+    t_end = time.time()
+    logger.info(
+        f"Laufzeit: ENV={t_env-t0:.2f}s, Stats={t_stats-t_env:.2f}s, "
+        f"Ticker={t_ticker-t_stats:.2f}s, Crawl={t_crawl-t_ticker:.2f}s, "
+        f"Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_resolver:.2f}s, "
+        f"Kurse={t_kurse_ende-t_kurse_start:.2f}s, Discord={t_end-t_kurse_ende:.2f}s, Gesamt={t_end-t0:.2f}s"
+    )
 
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
