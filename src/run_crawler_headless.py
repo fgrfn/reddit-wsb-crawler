@@ -62,6 +62,17 @@ def send_discord_notification(message, webhook_url=None):
         logger.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
+def get_discord_legend(crawl_info):
+    return (
+        f"{crawl_info}\n"
+        "Legende:\n"
+        "Kurs = letzter Börsenkurs\n"
+        "🌅 Pre-Market = vorbörslich\n"
+        "🌙 After-Market = nachbörslich\n"
+        "(+X.XX USD, +Y.YY%) = Veränderung zum Vortag\n"
+        "📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
+    )
+
 def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
     from discord_utils import format_price_block_with_börse  # falls nicht global importiert
     platz_emojis = ["🥇", "🥈", "🥉"]
@@ -69,10 +80,11 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
     warntext = "… [gekürzt wegen Discord-Limit]"
     maxlen = 1900
 
+    # Entferne die Crawl-Info aus msg!
     msg = (
-        f"🕷️ Crawl abgeschlossen! "
-        f"💾 {pickle_name} "
-        f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
+        # f"🕷️ Crawl abgeschlossen! "
+        # f"💾 {pickle_name} "
+        # f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
 
@@ -298,9 +310,19 @@ def main():
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
 
-    legend = get_discord_legend()
+    crawl_info = (
+        f"🕷️ Crawl abgeschlossen! "
+        f"💾 {latest_pickle} "
+        f"🕒 {timestamp} ⏰ {next_crawl_time}"
+    )
+    legend = get_discord_legend(crawl_info)
     send_discord_notification(legend)
     success = send_discord_notification(msg)
+    if success:
+        logger.info("Discord-Benachrichtigung gesendet!")
+    else:
+        logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
+    archive_log(LOG_PATH, ARCHIVE_DIR)
 
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
