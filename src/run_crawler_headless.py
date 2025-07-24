@@ -125,16 +125,26 @@ def get_yf_price(symbol):
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
+        regular = info.get("regularMarketPrice")
+        previous = info.get("previousClose")
+        change = None
+        changePercent = None
+        if regular is not None and previous is not None:
+            change = regular - previous
+            changePercent = (change / previous) * 100 if previous != 0 else None
         return {
-            "regular": float(info.get("regularMarketPrice")) if info.get("regularMarketPrice") is not None else None,
+            "regular": float(regular) if regular is not None else None,
             "pre": float(info.get("preMarketPrice")) if info.get("preMarketPrice") is not None else None,
             "post": float(info.get("postMarketPrice")) if info.get("postMarketPrice") is not None else None,
-            "previousClose": float(info.get("previousClose")) if info.get("previousClose") is not None else None,
-            "currency": info.get("currency", "USD")
+            "previousClose": float(previous) if previous is not None else None,
+            "change": float(change) if change is not None else None,
+            "changePercent": float(changePercent) if changePercent is not None else None,
+            "currency": info.get("currency", "USD"),
+            "timestamp": info.get("regularMarketTime")  # Unix timestamp
         }
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return {"regular": None, "pre": None, "post": None, "previousClose": None, "currency": "USD"}
+        return {"regular": None, "pre": None, "post": None, "previousClose": None, "change": None, "changePercent": None, "currency": "USD", "timestamp": None}
 
 def save_stats(stats_path, nennungen_dict, kurs_dict):
     with open(stats_path, "wb") as f:
