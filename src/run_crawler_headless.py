@@ -231,6 +231,34 @@ def main():
         logger.error(f"Fehler beim Resolver: {e}")
     t_resolver = time.time()
 
+    # --- DataFrame und Top 3 Ticker bestimmen ---
+    import pandas as pd
+    from utils import list_pickle_files, load_pickle, load_ticker_names
+    pickle_files = list_pickle_files(PICKLE_DIR)
+    if not pickle_files:
+        logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
+        return
+    latest_pickle = sorted(pickle_files)[-1]
+    result = load_pickle(PICKLE_DIR / latest_pickle)
+    name_map = load_ticker_names(TICKER_NAME_PATH)
+    df_rows = []
+    for subreddit, srdata in result.get("subreddits", {}).items():
+        for symbol, count in srdata["symbol_hits"].items():
+            df_rows.append({
+                "Ticker": symbol,
+                "Subreddit": subreddit,
+                "Nennungen": count,
+                "Kurs": srdata.get("price", {}).get(symbol),
+            })
+    df = pd.DataFrame(df_rows)
+    df["Unternehmen"] = df["Ticker"].map(name_map)
+    df_ticker = (
+        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+        .sum()
+        .sort_values(by="Nennungen", ascending=False)
+    )
+    top3_ticker = df_ticker["Ticker"].head(3).tolist()
+
     # --- KI-Zusammenfassungen seriell erzeugen ---
     summary_dict = {}
     for ticker in top3_ticker:
@@ -248,78 +276,6 @@ def main():
 
     # --- Discord-Benachrichtigung ---
     try:
-        import pandas as pd
-        from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
-        pickle_files = list_pickle_files(PICKLE_DIR)
-        if not pickle_files:
-            logger.warning("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
-            return
-        latest_pickle = sorted(pickle_files)[-1]
-        result = load_pickle(PICKLE_DIR / latest_pickle)
-        name_map = load_ticker_names(TICKER_NAME_PATH)
-        df_rows = []
-        for subreddit, srdata in result.get("subreddits", {}).items():
-            for symbol, count in srdata["symbol_hits"].items():
-                df_rows.append({
-                    "Ticker": symbol,
-                    "Subreddit": subreddit,
-                    "Nennungen": count,
-                    "Kurs": srdata.get("price", {}).get(symbol),
-                })
-        df = pd.DataFrame(df_rows)
-        df["Unternehmen"] = df["Ticker"].map(name_map)
-        df_ticker = (
-            df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
-            .sum()
-            .sort_values(by="Nennungen", ascending=False)
-        )
-        # Trend-Berechnung
-        if len(pickle_files) >= 2:
-            prev_pickle = sorted(pickle_files)[-2]
-            prev_result = load_pickle(PICKLE_DIR / prev_pickle)
-            prev_rows = []
-            for subreddit, srdata in prev_result.get("subreddits", {}).items():
-                for symbol, count in srdata["symbol_hits"].items():
-                    prev_rows.append({"Ticker": symbol, "Nennungen": count})
-            prev_df = pd.DataFrame(prev_rows)
-            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
-        else:
-            prev_nennungen = {}
-
-        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
-        summary_dict = {}
-        if summary_path and summary_path.exists():
-            summary_text = load_summary(summary_path)
-            summary_dict = parse_summary_md(summary_text)
-
-        # --- Parallelisierte Kursabfrage für Top 3 Ticker ---
-        top3_ticker = df_ticker["Ticker"].head(3).tolist()
-        t_kurse_start = time.time()
-        kurse, kursdiffs = get_kurse_parallel(top3_ticker)
-        t_kurse_ende = time.time()
-        logger.info(f"Kursabfrage für Top 3 Ticker dauerte {t_kurse_ende - t_kurse_start:.2f} Sekunden")
-
-        for ticker in top3_ticker:
-            regular, pre, post = kurse.get(ticker, (None, None, None))
-            marktstatus = None
-            kurs = regular
-            if pre is not None and pre != regular:
-                kurs = pre
-                marktstatus = "Pre-Market"
-            elif post is not None and post != regular:
-                kurs = post
-                marktstatus = "After-Market"
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Marktstatus"] = marktstatus
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "KursRegular"] = regular
-
-        # Nach dem Erstellen von df_ticker:
-        aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
-        aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
-        save_stats(STATS_PATH, aktuelle_nennungen, aktuelle_kurse)
-
-        next_crawl_time = get_next_systemd_run()
-
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
             pickle_name=latest_pickle,
