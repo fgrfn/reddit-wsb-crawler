@@ -231,7 +231,7 @@ def main():
         f"💾 {latest_pickle} "
         f"🕒 {timestamp} ⏰ {next_crawl_time}"
     )
-    legend = get_discord_legend(crawl_info)
+    legend = get_discord_legend()
     send_discord_notification(legend)
     success = send_discord_notification(msg)
     if success:
