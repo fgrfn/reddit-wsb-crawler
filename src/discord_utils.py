@@ -61,3 +61,30 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             msg += summary.strip() + "\n"
         msg += "\n"
     return msg
+
+def format_price_block_with_börse(prices):
+    regular = prices.get("regular")
+    kurs_1h_ago = prices.get("kurs_1h_ago")
+    pre = prices.get("pre")
+    post = prices.get("post")
+    boerse_status = prices.get("boerse_status", "unbekannt")
+
+    # Kursdifferenz
+    diff = (regular - kurs_1h_ago) if (regular is not None and kurs_1h_ago is not None) else 0.0
+
+    # Hauptkurs-String
+    if regular is not None:
+        kurs_str = f"{regular:.2f} USD ({diff:+.2f} USD) [{boerse_status}]"
+    else:
+        kurs_str = "keine Kursdaten verfügbar"
+
+    # Pre-/After-Market
+    pre_str = ""
+    if pre is not None:
+        pre_diff = pre - (kurs_1h_ago if kurs_1h_ago is not None else pre)
+        pre_str = f" | Pre-Market: {pre:.2f} USD ({pre_diff:+.2f} USD)"
+    if post is not None:
+        post_diff = post - (kurs_1h_ago if kurs_1h_ago is not None else post)
+        pre_str += f" | After-Market: {post:.2f} USD ({post_diff:+.2f} USD)"
+
+    return kurs_str + pre_str

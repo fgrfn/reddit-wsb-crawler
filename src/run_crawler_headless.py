@@ -382,5 +382,40 @@ def get_kurse_parallel(ticker_list):
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse, kursdiffs
 
+def get_all_prices_and_status(symbol):
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        regular = info.get("regularMarketPrice")
+        pre = info.get("preMarketPrice")
+        post = info.get("postMarketPrice")
+        regular_time = info.get("regularMarketTime")
+        pre_time = info.get("preMarketTime")
+        post_time = info.get("postMarketTime")
+        kurs_1h_ago = get_yf_price_hour_ago(symbol)
+        # Börsenstatus bestimmen (offen, wenn Kurszeit < 30min alt)
+        now = int(time.time())
+        boerse_status = "unbekannt"
+        if regular_time:
+            delta = now - int(regular_time)
+            boerse_status = "offen" if delta < 1800 else "geschlossen"
+        return {
+            "regular": float(regular) if regular is not None else None,
+            "pre": float(pre) if pre is not None else None,
+            "post": float(post) if post is not None else None,
+            "regular_time": regular_time,
+            "pre_time": pre_time,
+            "post_time": post_time,
+            "kurs_1h_ago": kurs_1h_ago,
+            "boerse_status": boerse_status
+        }
+    except Exception as e:
+        logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
+        return {
+            "regular": None, "pre": None, "post": None,
+            "regular_time": None, "pre_time": None, "post_time": None,
+            "kurs_1h_ago": None, "boerse_status": "unbekannt"
+        }
+
 if __name__ == "__main__":
     main()
