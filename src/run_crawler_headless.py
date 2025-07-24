@@ -410,4 +410,3 @@ def get_all_prices_and_status(symbol):
 
 if __name__ == "__main__":
     main()
-.

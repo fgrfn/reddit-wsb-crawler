@@ -79,4 +79,3 @@ def format_price_block_with_börse(prices):
         pre_str += f" | After-Market: {post:.2f} USD ({post_diff:+.2f} USD)"
 
     return kurs_str + pre_str
-.
