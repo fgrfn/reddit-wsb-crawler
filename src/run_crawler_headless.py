@@ -79,21 +79,19 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         ticker = row["Ticker"]
         nennungen = row["Nennungen"]
         diff = nennungen - prev_nennungen.get(ticker, 0)
-        if diff > 0:
-            trend = f"▲ (+{diff})"
-        elif diff < 0:
-            trend = f"▼ ({diff})"
-        else:
-            trend = "→ (0)"
+        trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs = row.get('Kurs')
-        kursdiff = row.get('Kursdiff')
-        if kurs is not None:
-            kurs_str = f"{kurs:.2f} USD"
-            if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
-                kurs_str += f" ({kursdiff:+.2f} USD)"
+        kurs_data = row.get('Kurs')
+        if isinstance(kurs_data, dict):
+            kurs_str = ""
+            if kurs_data.get("regular") is not None:
+                kurs_str += f"{kurs_data['regular']:.2f} USD"
             else:
-                kurs_str += " (keine Kursdifferenz verfügbar)"
+                kurs_str += "keine Kursdaten verfügbar"
+            if kurs_data.get("pre") is not None:
+                kurs_str += f" | Pre-Market: {kurs_data['pre']:.2f} USD"
+            if kurs_data.get("post") is not None:
+                kurs_str += f" | After-Market: {kurs_data['post']:.2f} USD"
         else:
             kurs_str = "keine Kursdaten verfügbar"
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
@@ -109,18 +107,16 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block += "\n"
         ticker_blocks.append(block)
 
-    # Füge die ersten beiden Ticker immer vollständig hinzu
     for i, block in enumerate(ticker_blocks):
         if i < 2:
             msg += block
         else:
-            # Nur Nummer 3 ggf. kürzen
             if len(msg) + len(block) > maxlen - len(warntext):
                 split_idx = block.find("🧠 Zusammenfassung:\n")
                 if split_idx != -1:
                     head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
                     summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
-                    allowed = maxlen - len(msg) - len(warntext) - 2  # 2 für \n\n
+                    allowed = maxlen - len(msg) - len(warntext) - 2
                     summary = summary[:allowed] + warntext
                     block = head + summary + "\n\n"
                 else:
@@ -128,7 +124,6 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             msg += block
             break
 
-    # Endgültig auf Discord-Limit kürzen (falls z.B. die Basisdaten zu lang sind)
     if len(msg) > 2000:
         msg = msg[:2000 - len(warntext)] + warntext
 
@@ -137,34 +132,18 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 def get_yf_price(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        price = ticker.info.get("regularMarketPrice")
-        return float(price) if price is not None else None
+        info = ticker.info
+        price = info.get("regularMarketPrice")
+        pre = info.get("preMarketPrice")
+        post = info.get("postMarketPrice")
+        return {
+            "regular": float(price) if price is not None else None,
+            "pre": float(pre) if pre is not None else None,
+            "post": float(post) if post is not None else None
+        }
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return None
-
-def get_yf_price_hour_ago(symbol):
-    try:
-        ticker = yf.Ticker(symbol)
-        end = datetime.now()
-        start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
-        df = ticker.history(interval="1m", start=start, end=end)
-        if not df.empty:
-            target_time = end - timedelta(hours=1)
-            # Finde den Kurs, der dem Zielzeitpunkt am nächsten, aber nicht jünger ist
-            df = df[df.index <= target_time]
-            if not df.empty:
-                price = df["Close"].iloc[-1]
-                return float(price)
-            else:
-                # Kein Wert vor exakt einer Stunde, nimm den ältesten verfügbaren
-                price = df["Close"].iloc[0]
-                return float(price)
-        else:
-            return None
-    except Exception as e:
-        logger.warning(f"Kursabfrage (1h alt) für {symbol} fehlgeschlagen: {e}")
-        return None
+        return {"regular": None, "pre": None, "post": None}
 
 def save_stats(stats_path, nennungen_dict, kurs_dict):
     with open(stats_path, "wb") as f:
@@ -207,7 +186,6 @@ def main():
     # --- Ticker-Namensauflösung ---
     try:
         logger.info("📡 Starte Ticker-Namensauflösung ...")
-        import subprocess
         result = subprocess.run(
             [sys.executable, str(NAME_RESOLVER_SCRIPT)],
             capture_output=True, text=True
@@ -288,10 +266,9 @@ def main():
 
         # Kursdaten für die Top 3 Ticker holen
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
-        kurse, kursdiffs = get_kurse_parallel(top3_ticker)
+        kurse = get_kurse_parallel(top3_ticker)
         for ticker in top3_ticker:
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = [kurse.get(ticker)]
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
@@ -315,7 +292,6 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
-        # Logfile direkt nach Benachrichtigung archivieren!
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
@@ -330,7 +306,6 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         if line:
             logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
             parts = line[0].split()
-            # Prüfe, ob mindestens drei Spalten vorhanden sind und das Datum wie erwartet aussieht
             if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
                 try:
                     dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
@@ -347,13 +322,10 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
 
 def get_kurse_parallel(ticker_list):
     kurse = {}
-    kursdiffs = {}
     tickers_ohne_kurs = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
         future_to_ticker = {executor.submit(get_yf_price, t): t for t in ticker_list}
-        future_to_ticker_ago = {executor.submit(get_yf_price_hour_ago, t): t for t in ticker_list}
         results = {}
-        results_ago = {}
         for future in concurrent.futures.as_completed(future_to_ticker):
             t = future_to_ticker[future]
             try:
@@ -361,25 +333,13 @@ def get_kurse_parallel(ticker_list):
             except Exception as e:
                 logger.warning(f"Kursabfrage für {t} fehlgeschlagen: {e}")
                 results[t] = None
-        for future in concurrent.futures.as_completed(future_to_ticker_ago):
-            t = future_to_ticker_ago[future]
-            try:
-                results_ago[t] = future.result()
-            except Exception as e:
-                logger.warning(f"Kursabfrage (1h alt) für {t} fehlgeschlagen: {e}")
-                results_ago[t] = None
         for t in ticker_list:
             kurse[t] = results.get(t)
-            kurs_ago = results_ago.get(t)
-            if kurse[t] is not None and kurs_ago is not None:
-                kursdiffs[t] = kurse[t] - kurs_ago
-            else:
-                kursdiffs[t] = None
-                if kurse[t] is None or kurs_ago is None:
-                    tickers_ohne_kurs.append(t)
+            if not kurse[t] or kurse[t]["regular"] is None:
+                tickers_ohne_kurs.append(t)
     if tickers_ohne_kurs:
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
-    return kurse, kursdiffs
+    return kurse
 
 if __name__ == "__main__":
     main()
