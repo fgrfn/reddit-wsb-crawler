@@ -62,9 +62,8 @@ def send_discord_notification(message, webhook_url=None):
         logger.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
-def get_discord_legend(crawl_info):
+def get_discord_legend():
     return (
-        f"{crawl_info}\n"
         "Legende:\n"
         "Kurs = letzter Börsenkurs\n"
         "🌅 Pre-Market = vorbörslich\n"
@@ -78,13 +77,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     warntext = "… [gekürzt wegen Discord-Limit]"
-    maxlen = 1900
+    maxlen = 1966
 
-    # Entferne die Crawl-Info aus msg!
+    # Crawl-Info wieder an den Anfang!
     msg = (
-        # f"🕷️ Crawl abgeschlossen! "
-        # f"💾 {pickle_name} "
-        # f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
+        f"🕷️ Crawl abgeschlossen! "
+        f"💾 {pickle_name} "
+        f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
 
@@ -96,7 +95,6 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs_data = row.get('Kurs')
-        # Kursblock inkl. Pre-/After-Market, Zeit, Emojis, Yahoo-Link
         kurs_str = format_price_block_with_börse(kurs_data)
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
@@ -300,12 +298,13 @@ def main():
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time
         )
-        # Nachricht an Discord senden
-        success = send_discord_notification(msg)
-        if success:
-            logger.info("Discord-Benachrichtigung gesendet!")
-        else:
-            logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
+        # Nachricht 1: Crawl-Info, Top 3, Zusammenfassungen
+        send_discord_notification(msg)
+        # Nachricht 2: Legende
+        legend = get_discord_legend()
+        send_discord_notification(legend)
+        # Logging wie gehabt
+        logger.info("Discord-Benachrichtigung gesendet!")
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
