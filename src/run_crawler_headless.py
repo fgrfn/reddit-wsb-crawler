@@ -138,7 +138,7 @@ def main():
                 pickle_path=PICKLE_DIR / latest_pickle,
                 include_all=False,
                 streamlit_out=None,
-                only_symbols=None
+                only_symbols=top5_ticker
             )
             logger.info("KI-Zusammenfassung abgeschlossen.")
     except Exception as e:
@@ -193,9 +193,9 @@ def main():
         print("summary_dict keys:", list(summary_dict.keys()))  # <-- Hier ist die Änderung
 
         # Kursdaten für die Top 3 Ticker holen
-        top3_ticker = df_ticker["Ticker"].head(3).tolist()
-        kurse = get_kurse_parallel(top3_ticker)
-        for ticker in top3_ticker:
+        top5_ticker = df_ticker["Ticker"].head(5).tolist()
+        kurse = get_kurse_parallel(top5_ticker)
+        for ticker in top5_ticker:
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = [kurse.get(ticker)]
 
         # Nach dem Erstellen von df_ticker:
