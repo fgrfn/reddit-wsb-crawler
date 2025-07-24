@@ -100,7 +100,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             f"🏦 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
         )
-        # Robuste Zuordnung für die Zusammenfassung:
+        # Noch robuster: Suche nach einem passenden Key, der mit dem Ticker beginnt (z.B. "TSLA" in "TSLA.US")
         summary = (
             summary_dict.get(ticker)
             or summary_dict.get(ticker.upper())
@@ -108,6 +108,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             or summary_dict.get(ticker.strip().upper())
             or summary_dict.get(ticker.lower())
         )
+        if not summary:
+            # Suche nach erstem Key, der mit Ticker (groß) beginnt
+            ticker_upper = ticker.strip().upper()
+            for key in summary_dict:
+                if key.strip().upper().startswith(ticker_upper):
+                    summary = summary_dict[key]
+                    break
         if summary:
             block += summary.strip() + "\n"
         else:
@@ -280,6 +287,8 @@ def main():
         if summary_path and summary_path.exists():
             summary_text = load_summary(summary_path)
             summary_dict = parse_summary_md(summary_text)
+
+        print("summary_dict keys:", list(summary_dict.keys()))  # <-- Hier ist die Änderung
 
         # Kursdaten für die Top 3 Ticker holen
         top3_ticker = df_ticker["Ticker"].head(3).tolist()
