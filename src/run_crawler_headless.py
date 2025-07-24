@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
-from discord_utils import get_discord_legend, format_discord_message
+from discord_utils import send_discord_notification, get_discord_legend, format_discord_message
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -45,106 +45,6 @@ def archive_log(log_path, archive_dir):
     archive_file = archive_dir / f"{log_path.stem}_{ts}.log"
     shutil.copy(str(log_path), str(archive_file))
     logger.info(f"Logfile archiviert: {archive_file}")
-
-def send_discord_notification(message, webhook_url=None):
-    import requests
-    if webhook_url is None:
-        webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
-    if not webhook_url:
-        logger.warning("Kein Discord-Webhook-URL gesetzt.")
-        return False
-    try:
-        data = {"content": message}
-        response = requests.post(webhook_url, json=data, timeout=10)
-        response.raise_for_status()
-        return True
-    except Exception as e:
-        logger.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
-        return False
-
-def get_discord_legend():
-    return (
-        "Legende:\n"
-        "🔢 = Nennungen in Subreddits 🧠 = KI Zusammenfassungen\n"
-        "🏦 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
-        "🏦 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
-    )
-
-def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
-    from discord_utils import format_price_block_with_börse  # falls nicht global importiert
-    platz_emojis = ["🥇", "🥈", "🥉"]
-    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
-    warntext = "… [gekürzt wegen Discord-Limit]"
-    maxlen = 1900
-
-    # Crawl-Info wieder an den Anfang!
-    msg = (
-        f"🕷️ Crawl abgeschlossen! "
-        f"💾 {pickle_name} "
-        f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
-        f"🏆 Top 3 Ticker:\n"
-    )
-
-    ticker_blocks = []
-    for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
-        ticker = row["Ticker"]
-        nennungen = row["Nennungen"]
-        diff = nennungen - prev_nennungen.get(ticker, 0)
-        trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
-        emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs_data = row.get('Kurs')
-        kurs_str = format_price_block_with_börse(kurs_data)
-        unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
-        block = (
-            f"\n{emoji} {ticker} - {unternehmen}\n"
-            f"🔢 Nennungen: {nennungen} {trend}\n"
-            f"🏦 Kurs: {kurs_str}\n"
-            f"🧠 Zusammenfassung:\n"
-        )
-        # Noch robuster: Suche nach einem passenden Key, der mit dem Ticker beginnt (z.B. "TSLA" in "TSLA.US")
-        summary = (
-            summary_dict.get(ticker)
-            or summary_dict.get(ticker.upper())
-            or summary_dict.get(ticker.strip())
-            or summary_dict.get(ticker.strip().upper())
-            or summary_dict.get(ticker.lower())
-        )
-        if not summary:
-            # Suche nach erstem Key, der mit Ticker (groß) beginnt
-            ticker_upper = ticker.strip().upper()
-            for key in summary_dict:
-                if key.strip().upper().startswith(ticker_upper):
-                    summary = summary_dict[key]
-                    break
-        summary = summary_dict.get(ticker.strip().upper())
-        if summary:
-            block += summary.strip() + "\n"
-        else:
-            block += "(keine Zusammenfassung gefunden)\n"
-        block += "\n"
-        ticker_blocks.append(block)
-
-    for i, block in enumerate(ticker_blocks):
-        if i < 2:
-            msg += block
-        else:
-            if len(msg) + len(block) > maxlen - len(warntext):
-                split_idx = block.find("🧠 Zusammenfassung:\n")
-                if split_idx != -1:
-                    head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
-                    summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
-                    allowed = maxlen - len(msg) - len(warntext) - 2
-                    summary = summary[:allowed] + warntext
-                    block = head + summary + "\n\n"
-                else:
-                    block = block[:maxlen - len(msg) - len(warntext)] + warntext
-            msg += block
-            break
-
-    if len(msg) > 2000:
-        msg = msg[:2000 - len(warntext)] + warntext
-
-    return msg
 
 def get_yf_price(symbol):
     try:
@@ -384,26 +284,3 @@ def get_kurse_parallel(ticker_list):
     if tickers_ohne_kurs:
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse
-
-def format_price_block(kurs_data):
-    if not isinstance(kurs_data, dict):
-        return "keine Kursdaten verfügbar"
-    currency = kurs_data.get("currency", "USD")
-    parts = []
-    # Hauptkurs
-    if kurs_data.get("regular") is not None:
-        parts.append(f"{kurs_data['regular']:.2f} {currency}")
-    elif kurs_data.get("previousClose") is not None:
-        parts.append(f"Vortag: {kurs_data['previousClose']:.2f} {currency}")
-    else:
-        parts.append("keine Kursdaten verfügbar")
-    # Pre-Market
-    if kurs_data.get("pre") is not None:
-        parts.append(f"Pre-Market: {kurs_data['pre']:.2f} {currency}")
-    # After-Market
-    if kurs_data.get("post") is not None:
-        parts.append(f"After-Market: {kurs_data['post']:.2f} {currency}")
-    return " | ".join(parts)
-
-if __name__ == "__main__":
-    main()

@@ -25,7 +25,7 @@ from utils import (
     load_ticker_names
 )
 from log_utils import archive_log
-from discord_utils import send_discord_notification, format_discord_message
+from discord_utils import send_discord_notification, format_discord_message, get_discord_legend
 import summarizer
 
 BASE_DIR = Path(__file__).resolve().parent.parent
