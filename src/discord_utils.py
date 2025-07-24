@@ -51,7 +51,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 {nennungen} {trend}\n"
-            f"🏦 {kurs_str}\n"
+            f"💵 {kurs_str}\n"
             f"🧠 \n"
         )
         summary = summary_dict.get(ticker.strip().upper())
@@ -130,6 +130,6 @@ def get_discord_legend():
     return (
         "Legende:\n"
         "🔢 = Nennungen in Subreddits 🧠 = KI Zusammenfassungen\n"
-        "🏦 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
-        "🏦 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
+        "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
+        "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
