@@ -284,3 +284,6 @@ def get_kurse_parallel(ticker_list):
     if tickers_ohne_kurs:
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse
+
+if __name__ == "__main__":
+    main()
