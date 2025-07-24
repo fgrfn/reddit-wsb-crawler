@@ -88,11 +88,11 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
-        kursdiff = row.get('Kursdiff')
+        marktstatus = row.get('Marktstatus')
         if kurs is not None:
             kurs_str = f"{kurs:.2f} USD"
-            if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
-                kurs_str += f" ({kursdiff:+.2f} USD)"
+            if marktstatus:
+                kurs_str += f" ({marktstatus})"
             else:
                 kurs_str += " (±0.00 USD)"  # <--- Hier geändert
         else:
@@ -137,13 +137,21 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
 def get_yf_price(symbol):
     try:
-        symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
+        symbol = symbol.lstrip("$")
         ticker = yf.Ticker(symbol)
-        price = ticker.info.get("regularMarketPrice")
-        return float(price) if price is not None else None
+        info = ticker.info
+        price = info.get("regularMarketPrice")
+        pre = info.get("preMarketPrice")
+        post = info.get("postMarketPrice")
+        # Bevorzugt Pre/Post, wenn Markt geschlossen
+        if pre is not None and pre != price:
+            return float(pre), "Pre-Market"
+        if post is not None and post != price:
+            return float(post), "After-Market"
+        return float(price) if price is not None else None, None
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return None
+        return None, None
 
 def get_yf_price_hour_ago(symbol):
     try:
@@ -228,7 +236,7 @@ def main():
 
     # --- KI-Zusammenfassungen parallel erzeugen ---
     try:
-        from utils import list_pickle_files
+        from utils import load_pickle, load_ticker_names  # <--- Import ergänzen
         import summarizer
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
@@ -337,8 +345,9 @@ def main():
         logger.info(f"Kursabfrage für Top 3 Ticker dauerte {t_kurse_ende - t_kurse_start:.2f} Sekunden")
 
         for ticker in top3_ticker:
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
+            kurs, marktstatus = kurse.get(ticker, (None, None))
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurs
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Marktstatus"] = marktstatus
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))

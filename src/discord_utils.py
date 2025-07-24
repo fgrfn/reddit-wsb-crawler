@@ -21,8 +21,8 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "None"
     msg = (
-        f"🕷️ Crawl abgeschlossen! "
-        f"📦 Datei: {pickle_name} "
+        f"🕷️ Crawl abgeschlossen!\n"
+        f"📦 Datei: {pickle_name}\n"
         f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
@@ -38,13 +38,18 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
-        if kurs is not None:
-            kurs_str = f"{kurs:.2f} USD"
-        else:
-            kurs_str = "k.A."
+        kursdiff = row.get('Kursdiff')
+        marktstatus = row.get('Marktstatus')
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
+        kurs_str = f"{kurs:.2f} USD" if kurs is not None else "k.A."
+        if marktstatus:
+            kurs_str += f" ({marktstatus})"
+        if kursdiff is not None:
+            kurs_str += f" | Δ {kursdiff:+.2f} USD"
+        # Link zu Yahoo Finance
+        yahoo_url = f"https://finance.yahoo.com/quote/{ticker}"
         msg += (
-            f"\n{emoji} {ticker} - {unternehmen}\n"
+            f"\n{emoji} [{ticker}]({yahoo_url}) - {unternehmen}\n"
             f"🔢 Nennungen: {nennungen} {trend}\n"
             f"💹 Kurs: {kurs_str}\n"
             f"🧠 Zusammenfassung:\n"
