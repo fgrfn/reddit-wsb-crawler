@@ -65,6 +65,7 @@ def send_discord_notification(message, webhook_url=None):
 def get_discord_legend():
     return (
         "Legende:\n"
+        "🔢 = Nennungen in Subreddits 🧠 = KI Zusammenfassungen\n"
         "🏦 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
         "🏦 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
