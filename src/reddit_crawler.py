@@ -60,7 +60,7 @@ def fetch_name_with_retry(symbol, retries=3, delay=2):
 
 # 🕷️ Reddit-Crawler
 def reddit_crawler():
-    logger.info("🕷️ Crawl gestartet")
+    logger.info("Reddit Crawl gestartet")
     base_dir = os.path.dirname(os.path.abspath(__file__))
     dotenv_path = os.path.join(base_dir, "..", "config", ".env")
     load_dotenv(dotenv_path)

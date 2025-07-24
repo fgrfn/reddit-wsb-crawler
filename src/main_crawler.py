@@ -62,7 +62,7 @@ def main():
 
     try:
         print("") 
-        print("🕷️ Starte Reddit-Crawler ...")
+        print("Starte Reddit-Crawler ...")
     except UnicodeEncodeError:
         print("Starte Reddit-Crawler ...")
     try:
