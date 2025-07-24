@@ -27,9 +27,9 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         f"📦 Datei: {pickle_name}\n"
         f"🕒 Zeitpunkt: {timestamp} | nächster Crawl: {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
-        f"• Kurs = letzter Börsenkurs | 🌅 Pre-Market = vorbörslich | 🌙 After-Market = nachbörslich\n"
-        f"• (+X.XX USD, +Y.YY%) = Veränderung zum Vortag\n"
-        f"• 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert\n"
+        f"> Kurs = letzter Börsenkurs | 🌅 Pre-Market = vorbörslich | 🌙 After-Market = nachbörslich\n"
+        f"> (+X.XX USD, +Y.YY%) = Veränderung zum Vortag\n"
+        f"> 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert\n"
         f"\n"  # <--- Zusätzliche Leerzeile für Absatz!
     )
     for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
