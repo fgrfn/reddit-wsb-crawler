@@ -276,7 +276,7 @@ def main():
                 for symbol, count in srdata["symbol_hits"].items():
                     prev_rows.append({"Ticker": symbol, "Nennungen": count})
             prev_df = pd.DataFrame(prev_rows)
-            prev_nennungen = prev_df.groupby "Ticker")["Nennungen"].sum().to_dict()
+            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
         else:
             prev_nennungen = {}
 
