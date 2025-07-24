@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
-from discord_utils import format_price_block_with_börse, get_discord_legend
+from discord_utils import get_discord_legend, format_discord_message
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -297,6 +297,10 @@ def main():
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
+
+    legend = get_discord_legend()
+    send_discord_notification(legend)
+    success = send_discord_notification(msg)
 
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
