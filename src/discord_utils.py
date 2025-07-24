@@ -2,7 +2,7 @@ import os
 import requests
 import logging
 import time
-from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
+from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for
 
 def send_discord_notification(message, webhook_url=None):
     if webhook_url is None:
