@@ -104,3 +104,14 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     if symbol:
         kurs_str += f" | [Yahoo Finance](https://finance.yahoo.com/quote/{symbol})"
     return kurs_str
+
+def get_discord_legend():
+    return (
+        "```"
+        "Kurs = letzter Börsenkurs\n"
+        "🌅 Pre-Market = vorbörslich\n"
+        "🌙 After-Market = nachbörslich\n"
+        "(+X.XX USD, +Y.YY%) = Veränderung zum Vortag\n"
+        "📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert\n"
+        "```"
+    )

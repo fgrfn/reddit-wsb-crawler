@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
-from discord_utils import format_price_block_with_börse
+from discord_utils import format_price_block_with_börse, get_discord_legend
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -288,6 +288,7 @@ def main():
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time
         )
+        # Nachricht an Discord senden
         success = send_discord_notification(msg)
         if success:
             logger.info("Discord-Benachrichtigung gesendet!")
