@@ -26,9 +26,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
     maxlen = 1900
 
     msg = (
-        f"🕷️ Crawl abgeschlossen! "
-        f"💾 {pickle_name} "
-        f"🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
+        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
         f"🏆 Top 3 Ticker:\n"
     )
 
@@ -37,12 +35,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         ticker = row["Ticker"]
         nennungen = row["Nennungen"]
         diff = nennungen - prev_nennungen.get(ticker, 0)
-        if diff > 0:
-            trend = f"▲ (+{diff})"
-        elif diff < 0:
-            trend = f"▼ ({diff})"
-        else:
-            trend = "→ (0)"
+        trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
         kursdiff = row.get('Kursdiff')
@@ -58,7 +51,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
             f"🔢 {nennungen} {trend}\n"
-            f"💰 {kurs_str}\n"
+            f"🏦 {kurs_str}\n"
             f"🧠 \n"
         )
         summary = summary_dict.get(ticker.strip().upper())
@@ -72,10 +65,10 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             msg += block
         else:
             if len(msg) + len(block) > maxlen - len(warntext):
-                split_idx = block.find("🧠 Zusammenfassung:\n")
+                split_idx = block.find("🧠 \n")
                 if split_idx != -1:
-                    head = block[:split_idx + len("🧠 Zusammenfassung:\n")]
-                    summary = block[split_idx + len("🧠 Zusammenfassung:\n"):]
+                    head = block[:split_idx + len("🧠 \n")]
+                    summary = block[split_idx + len("🧠 \n"):]
                     allowed = maxlen - len(msg) - len(warntext) - 2
                     summary = summary[:allowed] + warntext
                     block = head + summary + "\n\n"
