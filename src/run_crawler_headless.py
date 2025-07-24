@@ -231,62 +231,20 @@ def main():
         logger.error(f"Fehler beim Resolver: {e}")
     t_resolver = time.time()
 
-    # --- KI-Zusammenfassungen parallel erzeugen ---
-    try:
-        from utils import load_pickle, load_ticker_names  # <--- Import ergänzen
-        import summarizer
-        pickle_files = list_pickle_files(PICKLE_DIR)
-        if not pickle_files:
-            logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
-        else:
-            latest_pickle = sorted(pickle_files)[-1]
-            logger.info(f"Starte parallele KI-Zusammenfassungen für: {latest_pickle}")
-            # Hole die Top 3 Ticker
-            import pandas as pd
-            result = load_pickle(PICKLE_DIR / latest_pickle)
-            name_map = load_ticker_names(TICKER_NAME_PATH)
-            df_rows = []
-            for subreddit, srdata in result.get("subreddits", {}).items():
-                for symbol, count in srdata["symbol_hits"].items():
-                    df_rows.append({
-                        "Ticker": symbol,
-                        "Subreddit": subreddit,
-                        "Nennungen": count,
-                        "Kurs": srdata.get("price", {}).get(symbol),
-                    })
-            df = pd.DataFrame(df_rows)
-            df["Unternehmen"] = df["Ticker"].map(name_map)
-            df_ticker = (
-                df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
-                .sum()
-                .sort_values(by="Nennungen", ascending=False)
+    # --- KI-Zusammenfassungen seriell erzeugen ---
+    summary_dict = {}
+    for ticker in top3_ticker:
+        try:
+            summary = summarizer.generate_summary(
+                pickle_path=PICKLE_DIR / latest_pickle,
+                include_all=False,
+                streamlit_out=None,
+                only_symbols=[ticker]
             )
-            top3_ticker = df_ticker["Ticker"].head(3).tolist()
-
-            # Parallele Zusammenfassung für Top 3
-            from concurrent.futures import ThreadPoolExecutor, as_completed
-            summary_dict = {}
-            with ThreadPoolExecutor(max_workers=3) as executor:
-                futures = {
-                    executor.submit(
-                        summarizer.generate_summary,
-                        pickle_path=PICKLE_DIR / latest_pickle,
-                        include_all=False,
-                        streamlit_out=None,
-                        only_symbols=[ticker]
-                    ): ticker for ticker in top3_ticker
-                }
-                for future in as_completed(futures):
-                    ticker = futures[future]
-                    try:
-                        summary = future.result()
-                        summary_dict[ticker.upper()] = summary  # <--- Key immer upper
-                    except Exception as e:
-                        summary_dict[ticker.upper()] = f"Fehler: {e}"
-            logger.info("Parallele KI-Zusammenfassungen abgeschlossen.")
-    except Exception as e:
-        logger.error(f"Fehler bei der parallelen KI-Zusammenfassung: {e}")
-    t_summary = time.time()
+            summary_dict[ticker.upper()] = summary
+        except Exception as e:
+            summary_dict[ticker.upper()] = f"Fehler: {e}"
+    logger.info("Serielle KI-Zusammenfassungen abgeschlossen.")
 
     # --- Discord-Benachrichtigung ---
     try:
