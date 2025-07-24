@@ -10,9 +10,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 
-# --- NEU: Log-Rotation ---
-from logging.handlers import RotatingFileHandler
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
 LOG_PATH = BASE_DIR / "logs" / "crawler.log"
@@ -28,13 +25,26 @@ STATS_PATH = BASE_DIR / "data" / "output" / "ticker_stats.pkl"  # <--- NEU
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
 
-# --- NEU: RotatingFileHandler verwenden ---
-log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-file_handler = RotatingFileHandler(LOG_PATH, maxBytes=2*1024*1024, backupCount=5, encoding="utf-8", delay=False)
-file_handler.setFormatter(log_formatter)
-stream_handler = logging.StreamHandler(sys.stdout)
-stream_handler.setFormatter(log_formatter)
-logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
+# --- Entferne Log-Rotation und stelle das alte Logging wieder her ---
+# Entferne diese Zeilen:
+# from logging.handlers import RotatingFileHandler
+# log_formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+# file_handler = RotatingFileHandler(LOG_PATH, maxBytes=2*1024*1024, backupCount=5, encoding="utf-8", delay=False)
+# file_handler.setFormatter(log_formatter)
+# stream_handler = logging.StreamHandler(sys.stdout)
+# stream_handler.setFormatter(log_formatter)
+# logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
+# logger = logging.getLogger(__name__)
+
+# Ersetze durch das ursprüngliche Logging:
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    handlers=[
+        logging.FileHandler(LOG_PATH, encoding="utf-8", delay=False),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
 logger = logging.getLogger(__name__)
 
 def archive_log(log_path, archive_dir):
