@@ -125,8 +125,11 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
                 else:
                     block = block[:maxlen - len(msg) - len(warntext)] + warntext
             msg += block
-            # Nach Nummer 3 abbrechen
             break
+
+    # Endgültig auf Discord-Limit kürzen (falls z.B. die Basisdaten zu lang sind)
+    if len(msg) > 2000:
+        msg = msg[:2000 - len(warntext)] + warntext
 
     return msg
 
@@ -249,7 +252,7 @@ def main():
                 for symbol, count in srdata["symbol_hits"].items():
                     prev_rows.append({"Ticker": symbol, "Nennungen": count})
             prev_df = pd.DataFrame(prev_rows)
-            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+            prev_nennungen = prev_df.groupby "Ticker")["Nennungen"].sum().to_dict()
         else:
             prev_nennungen = {}
 
