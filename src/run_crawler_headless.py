@@ -274,9 +274,13 @@ def main():
 
         # NEU: Kurs-/Statusdaten holen und KursStr setzen
         for ticker in top3_ticker:
-            prices = get_all_prices_and_status(ticker)
-            kurs_str = format_price_block_with_börse(prices)
-            df_ticker.loc[df_ticker["Ticker"] == ticker, "KursStr"] = kurs_str
+            kurs_data = get_all_prices_and_status(ticker)
+            if kurs_data:
+                kurs_str = format_price_block_with_börse(kurs_data)
+                df_ticker.loc[df_ticker["Ticker"] == ticker, "KursStr"] = kurs_str
+            else:
+                logger.warning(f"Keine Kursdaten für {ticker} verfügbar.")
+                df_ticker.loc[df_ticker["Ticker"] == ticker, "KursStr"] = "keine Kursdaten verfügbar"
 
         # ...optional: alte Kurs/Kursdiff-Logik entfernen, wenn nicht mehr benötigt...
 
