@@ -260,6 +260,7 @@ def main():
     top3_ticker = df_ticker["Ticker"].head(3).tolist()
 
     # --- KI-Zusammenfassungen seriell erzeugen ---
+    t_summary_start = time.time()
     summary_dict = {}
     for ticker in top3_ticker:
         try:
@@ -273,9 +274,11 @@ def main():
         except Exception as e:
             summary_dict[ticker.upper()] = f"Fehler: {e}"
     logger.info("Serielle KI-Zusammenfassungen abgeschlossen.")
+    t_summary = time.time()
 
     # --- Discord-Benachrichtigung ---
     try:
+        next_crawl_time = get_next_systemd_run()
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
             pickle_name=latest_pickle,
@@ -300,7 +303,7 @@ def main():
     logger.info(
         f"Laufzeit: ENV={t_env-t0:.2f}s, Stats={t_stats-t_env:.2f}s, "
         f"Ticker={t_ticker-t_stats:.2f}s, Crawl={t_crawl-t_ticker:.2f}s, "
-        f"Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_resolver:.2f}s, "
+        f"Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_summary_start:.2f}s, "
         f"Kurse={t_kurse_ende-t_kurse_start:.2f}s, Discord={t_end-t_kurse_ende:.2f}s, Gesamt={t_end-t0:.2f}s"
     )
 
@@ -389,4 +392,5 @@ def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
     # ...restlicher Code...
 
 if __name__ == "__main__":
+    next_crawl_time = get_next_systemd_run()
     main()
