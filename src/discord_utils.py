@@ -115,7 +115,7 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     # Yahoo-Link (Ticker als Fallback, falls symbol nicht im Kursdict)
     symbol = kurs_data.get('symbol') or ticker or ""
     if symbol:
-        kurs_str += f" | [Yahoo Finance](https://finance.yahoo.com/quote/{symbol})"
+        kurs_str += f" | <https://finance.yahoo.com/quote/{symbol}>"
     return kurs_str
 
 def get_discord_legend():
