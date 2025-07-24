@@ -85,7 +85,7 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs_data = row.get('Kurs')
         # Kursblock inkl. Pre-/After-Market, Zeit, Emojis, Yahoo-Link
-        kurs_str = format_price_block_with_börse(ticker, kurs_data)
+        kurs_str = format_price_block_with_börse(kurs_data)
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
