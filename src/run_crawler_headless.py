@@ -213,6 +213,14 @@ def main():
         except Exception as e:
             logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
 
+        # --- KI-Zusammenfassung laden ---
+        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+        summary_dict = {}
+        if summary_path and summary_path.exists():
+            summary_text = load_summary(summary_path)
+            summary_dict = parse_summary_md(summary_text)
+        logger.info(f"summary_dict keys: {list(summary_dict.keys())}")
+
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
         aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
