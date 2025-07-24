@@ -7,6 +7,7 @@ import yfinance as yf
 import subprocess
 import concurrent.futures
 from datetime import datetime, timedelta
+from tqdm import tqdm
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -273,9 +274,10 @@ def main():
                 for future in as_completed(futures):
                     ticker = futures[future]
                     try:
-                        summary_dict[ticker] = future.result()
+                        summary = future.result()
+                        summary_dict[ticker.upper()] = summary  # <--- Key immer upper
                     except Exception as e:
-                        summary_dict[ticker] = f"Fehler: {e}"
+                        summary_dict[ticker.upper()] = f"Fehler: {e}"
             logger.info("Parallele KI-Zusammenfassungen abgeschlossen.")
     except Exception as e:
         logger.error(f"Fehler bei der parallelen KI-Zusammenfassung: {e}")
@@ -433,6 +435,23 @@ def get_kurse_parallel(ticker_list):
     if tickers_ohne_kurs:
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse, kursdiffs
+
+def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
+    sr_data = reddit.subreddit(sr)
+    tqdm_desc = f"[{sr_idx}/{total_subs}] r/{sr}"
+    posts = list(sr_data.new(limit=100))
+    total_posts = len(posts)
+    counters = []
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff, i+1, total_subs)
+            for i, sr in enumerate(subreddits)
+        ]
+        for future in as_completed(futures):
+            sr, sr_result = future.result()
+            results[sr] = sr_result
+            total_counter.update(sr_result["symbol_hits"])
+    # ...restlicher Code...
 
 if __name__ == "__main__":
     main()
