@@ -86,16 +86,8 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
         else:
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs = row.get('Kurs')
-        kursdiff = row.get('Kursdiff')
-        if kurs is not None:
-            kurs_str = f"{kurs:.2f} USD"
-            if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
-                kurs_str += f" ({kursdiff:+.2f} USD)"
-            else:
-                kurs_str += " (keine Kursdifferenz verfügbar)"
-        else:
-            kurs_str = "keine Kursdaten verfügbar"
+        kurs_str = row.get('KursStr', 'keine Kursdaten verfügbar')
+
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
         block = (
             f"\n{emoji} {ticker} - {unternehmen}\n"
