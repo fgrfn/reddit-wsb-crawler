@@ -126,8 +126,8 @@ def main():
 
     # --- KI-Zusammenfassung erzeugen ---
     try:
-        from utils import list_pickle_files
-        import summarizer
+        import pandas as pd
+        from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
             logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
@@ -197,6 +197,21 @@ def main():
         kurse = get_kurse_parallel(top5_ticker)
         for ticker in top5_ticker:
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = [kurse.get(ticker)]
+
+        # --- KI-Zusammenfassung erzeugen ---
+        try:
+            import summarizer
+            latest_pickle = sorted(pickle_files)[-1]
+            logger.info(f"Starte KI-Zusammenfassung für: {latest_pickle}")
+            summarizer.generate_summary(
+                pickle_path=PICKLE_DIR / latest_pickle,
+                include_all=False,
+                streamlit_out=None,
+                only_symbols=top5_ticker
+            )
+            logger.info("KI-Zusammenfassung abgeschlossen.")
+        except Exception as e:
+            logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
