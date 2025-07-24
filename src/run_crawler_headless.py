@@ -7,7 +7,6 @@ import yfinance as yf
 import subprocess
 import concurrent.futures
 from datetime import datetime, timedelta
-from tqdm import tqdm
 
 from pathlib import Path
 from dotenv import load_dotenv
@@ -88,13 +87,13 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
             trend = "→ (0)"
         emoji = platz_emojis[i-1] if i <= 3 else ""
         kurs = row.get('Kurs')
-        marktstatus = row.get('Marktstatus')
+        kursdiff = row.get('Kursdiff')
         if kurs is not None:
             kurs_str = f"{kurs:.2f} USD"
-            if marktstatus:
-                kurs_str += f" ({marktstatus})"
+            if kursdiff is not None and not (isinstance(kursdiff, float) and (kursdiff != kursdiff)):
+                kurs_str += f" ({kursdiff:+.2f} USD)"
             else:
-                kurs_str += " (±0.00 USD)"  # <--- Hier geändert
+                kurs_str += " (keine Kursdifferenz verfügbar)"
         else:
             kurs_str = "keine Kursdaten verfügbar"
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
@@ -137,33 +136,28 @@ def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, na
 
 def get_yf_price(symbol):
     try:
-        symbol = symbol.lstrip("$")
         ticker = yf.Ticker(symbol)
-        info = ticker.info
-        price = info.get("regularMarketPrice")
-        pre = info.get("preMarketPrice")
-        post = info.get("postMarketPrice")
-        return float(price) if price is not None else None, \
-               float(pre) if pre is not None else None, \
-               float(post) if post is not None else None
+        price = ticker.info.get("regularMarketPrice")
+        return float(price) if price is not None else None
     except Exception as e:
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
-        return None, None, None
+        return None
 
 def get_yf_price_hour_ago(symbol):
     try:
-        symbol = symbol.lstrip("$")  # $ entfernen, falls vorhanden
         ticker = yf.Ticker(symbol)
         end = datetime.now()
         start = end - timedelta(hours=1, minutes=5)  # 5 Minuten Puffer
         df = ticker.history(interval="1m", start=start, end=end)
         if not df.empty:
             target_time = end - timedelta(hours=1)
+            # Finde den Kurs, der dem Zielzeitpunkt am nächsten, aber nicht jünger ist
             df = df[df.index <= target_time]
             if not df.empty:
                 price = df["Close"].iloc[-1]
                 return float(price)
             else:
+                # Kein Wert vor exakt einer Stunde, nimm den ältesten verfügbaren
                 price = df["Close"].iloc[0]
                 return float(price)
         else:
@@ -184,13 +178,11 @@ def load_stats(stats_path):
         return data.get("nennungen", {}), data.get("kurs", {})
 
 def main():
-    t0 = time.time()
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
-    t_env = time.time()
 
+    # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)
-    t_stats = time.time()
 
     # --- Tickerliste aktualisieren ---
     try:
@@ -202,7 +194,6 @@ def main():
             pickle.dump(list(tickers["Symbol"]), f)
     except Exception as e:
         logger.error(f"Fehler beim Laden der Tickerliste: {e}")
-    t_ticker = time.time()
 
     # --- Crawl starten ---
     try:
@@ -212,7 +203,6 @@ def main():
         logger.info("✅ Crawl abgeschlossen")
     except Exception as e:
         logger.error(f"Fehler beim Reddit-Crawl: {e}")
-    t_crawl = time.time()
 
     # --- Ticker-Namensauflösung ---
     try:
@@ -229,56 +219,87 @@ def main():
             logger.error("Fehler bei der Namensauflösung.")
     except Exception as e:
         logger.error(f"Fehler beim Resolver: {e}")
-    t_resolver = time.time()
 
-    # --- DataFrame und Top 3 Ticker bestimmen ---
-    import pandas as pd
-    from utils import list_pickle_files, load_pickle, load_ticker_names
-    pickle_files = list_pickle_files(PICKLE_DIR)
-    if not pickle_files:
-        logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
-        return
-    latest_pickle = sorted(pickle_files)[-1]
-    result = load_pickle(PICKLE_DIR / latest_pickle)
-    name_map = load_ticker_names(TICKER_NAME_PATH)
-    df_rows = []
-    for subreddit, srdata in result.get("subreddits", {}).items():
-        for symbol, count in srdata["symbol_hits"].items():
-            df_rows.append({
-                "Ticker": symbol,
-                "Subreddit": subreddit,
-                "Nennungen": count,
-                "Kurs": srdata.get("price", {}).get(symbol),
-            })
-    df = pd.DataFrame(df_rows)
-    df["Unternehmen"] = df["Ticker"].map(name_map)
-    df_ticker = (
-        df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
-        .sum()
-        .sort_values(by="Nennungen", ascending=False)
-    )
-    top3_ticker = df_ticker["Ticker"].head(3).tolist()
-
-    # --- KI-Zusammenfassungen seriell erzeugen ---
-    t_summary_start = time.time()
-    summary_dict = {}
-    for ticker in top3_ticker:
-        try:
-            summary = summarizer.generate_summary(
+    # --- KI-Zusammenfassung erzeugen ---
+    try:
+        from utils import list_pickle_files
+        import summarizer
+        pickle_files = list_pickle_files(PICKLE_DIR)
+        if not pickle_files:
+            logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
+        else:
+            latest_pickle = sorted(pickle_files)[-1]
+            logger.info(f"Starte KI-Zusammenfassung für: {latest_pickle}")
+            summarizer.generate_summary(
                 pickle_path=PICKLE_DIR / latest_pickle,
                 include_all=False,
                 streamlit_out=None,
-                only_symbols=[ticker]
+                only_symbols=None
             )
-            summary_dict[ticker.upper()] = summary
-        except Exception as e:
-            summary_dict[ticker.upper()] = f"Fehler: {e}"
-    logger.info("Serielle KI-Zusammenfassungen abgeschlossen.")
-    t_summary = time.time()
+            logger.info("KI-Zusammenfassung abgeschlossen.")
+    except Exception as e:
+        logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
 
     # --- Discord-Benachrichtigung ---
     try:
+        import pandas as pd
+        from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
+        pickle_files = list_pickle_files(PICKLE_DIR)
+        if not pickle_files:
+            logger.warning("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
+            return
+        latest_pickle = sorted(pickle_files)[-1]
+        result = load_pickle(PICKLE_DIR / latest_pickle)
+        name_map = load_ticker_names(TICKER_NAME_PATH)
+        df_rows = []
+        for subreddit, srdata in result.get("subreddits", {}).items():
+            for symbol, count in srdata["symbol_hits"].items():
+                df_rows.append({
+                    "Ticker": symbol,
+                    "Subreddit": subreddit,
+                    "Nennungen": count,
+                    "Kurs": srdata.get("price", {}).get(symbol),
+                })
+        df = pd.DataFrame(df_rows)
+        df["Unternehmen"] = df["Ticker"].map(name_map)
+        df_ticker = (
+            df.groupby(["Ticker", "Unternehmen"], as_index=False)["Nennungen"]
+            .sum()
+            .sort_values(by="Nennungen", ascending=False)
+        )
+        # Trend-Berechnung
+        if len(pickle_files) >= 2:
+            prev_pickle = sorted(pickle_files)[-2]
+            prev_result = load_pickle(PICKLE_DIR / prev_pickle)
+            prev_rows = []
+            for subreddit, srdata in prev_result.get("subreddits", {}).items():
+                for symbol, count in srdata["symbol_hits"].items():
+                    prev_rows.append({"Ticker": symbol, "Nennungen": count})
+            prev_df = pd.DataFrame(prev_rows)
+            prev_nennungen = prev_df.groupby("Ticker")["Nennungen"].sum().to_dict()
+        else:
+            prev_nennungen = {}
+
+        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+        summary_dict = {}
+        if summary_path and summary_path.exists():
+            summary_text = load_summary(summary_path)
+            summary_dict = parse_summary_md(summary_text)
+
+        # Kursdaten für die Top 3 Ticker holen
+        top3_ticker = df_ticker["Ticker"].head(3).tolist()
+        kurse, kursdiffs = get_kurse_parallel(top3_ticker)
+        for ticker in top3_ticker:
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = kurse.get(ticker)
+            df_ticker.loc[df_ticker["Ticker"] == ticker, "Kursdiff"] = kursdiffs.get(ticker)
+
+        # Nach dem Erstellen von df_ticker:
+        aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
+        aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
+        save_stats(STATS_PATH, aktuelle_nennungen, aktuelle_kurse)
+
         next_crawl_time = get_next_systemd_run()
+
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
             pickle_name=latest_pickle,
@@ -294,18 +315,10 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.error("Fehler beim Senden der Discord-Benachrichtigung.")
+        # Logfile direkt nach Benachrichtigung archivieren!
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
-
-    # --- Performance-Metriken loggen ---
-    t_end = time.time()
-    logger.info(
-        f"Laufzeit: ENV={t_env-t0:.2f}s, Stats={t_stats-t_env:.2f}s, "
-        f"Ticker={t_ticker-t_stats:.2f}s, Crawl={t_crawl-t_ticker:.2f}s, "
-        f"Resolver={t_resolver-t_crawl:.2f}s, Summary={t_summary-t_summary_start:.2f}s, "
-        f"Kurse={t_kurse_ende-t_kurse_start:.2f}s, Discord={t_end-t_kurse_ende:.2f}s, Gesamt={t_end-t0:.2f}s"
-    )
 
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
@@ -368,29 +381,5 @@ def get_kurse_parallel(ticker_list):
         logger.warning(f"Keine Kursdaten für folgende Ticker verfügbar: {', '.join(tickers_ohne_kurs)}")
     return kurse, kursdiffs
 
-def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
-    from concurrent.futures import ThreadPoolExecutor, as_completed
-    sr_data = reddit.subreddit(sr)
-    tqdm_desc = f"[{sr_idx}/{total_subs}] r/{sr}"
-    posts = list(sr_data.new(limit=100))
-    total_posts = len(posts)
-    counters = []
-    # Define subreddits list before using it
-    subreddits = [sr]  # or provide a list of subreddit names as needed
-    import collections
-    results = {}  # <--- Fix: results initialisieren
-    total_counter = collections.Counter()  # <--- Fix: total_counter initialisieren
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [
-            executor.submit(crawl_subreddit, sr, reddit, symbols, cutoff, i+1, total_subs)
-            for i, sr in enumerate(subreddits)
-        ]
-        for future in as_completed(futures):
-            sr, sr_result = future.result()
-            results[sr] = sr_result
-            total_counter.update(sr_result["symbol_hits"])
-    # ...restlicher Code...
-
 if __name__ == "__main__":
-    next_crawl_time = get_next_systemd_run()
     main()
