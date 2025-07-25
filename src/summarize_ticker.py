@@ -42,7 +42,7 @@ def summarize_ticker(ticker, context):
     )
     try:
         response = openai.ChatCompletion.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "Du bist ein Finanz-Analyst, der Reddit-Stimmungen zusammenfasst."},
                 {"role": "user", "content": prompt}
