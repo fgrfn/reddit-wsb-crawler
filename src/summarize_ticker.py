@@ -41,7 +41,7 @@ def summarize_ticker(ticker, context):
         f"- Wie ist die allgemeine Stimmung (positiv, negativ, gemischt)?\n"
         f"- Welche konkreten Gründe, Argumente oder Trends werden genannt?\n"
         f"- Gibt es besondere Ereignisse, Nachrichten oder Meinungen, die häufig erwähnt werden?\n"
-        f"Formuliere sachlich, kompakt und ohne Wiederholungen."
+        f"Formuliere sachlich, kompakt und ohne Wiederholungen evtl. auch bezug auf den aktuellen Börsenkurs bzw. Börsen News"
         f"nutze nur Wahre aktuelle Fakten, nicht erfundendes, nichts fiktives oder hypothetisches"
     )
     try:
