@@ -35,10 +35,14 @@ def extract_text(result, ticker):
 def summarize_ticker(ticker, context):
     print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
     prompt = (
-        f"Fasse zusammen, was Reddit-User über das Aktienkürzel {ticker} diskutieren:\n"
+        f"Fasse die wichtigsten Erkenntnisse aus Reddit-Diskussionen zum Aktienkürzel {ticker} zusammen:\n"
         f"{context}\n\n"
-        f"Bitte in 3–5 Sätzen erklären, ob der Ton positiv, negativ oder gemischt ist "
-        f"und ob konkrete Gründe oder Trends genannt werden."
+        f"Bitte beantworte folgende Punkte in 3–5 Sätzen:\n"
+        f"- Wie ist die allgemeine Stimmung (positiv, negativ, gemischt)?\n"
+        f"- Welche konkreten Gründe, Argumente oder Trends werden genannt?\n"
+        f"- Gibt es besondere Ereignisse, Nachrichten oder Meinungen, die häufig erwähnt werden?\n"
+        f"Formuliere sachlich, kompakt und ohne Wiederholungen."
+        f"nutze nur Wahre aktuelle Fakten, nicht erfundendes, nichts fiktives oder hypothetisches"
     )
     try:
         response = openai.ChatCompletion.create(
