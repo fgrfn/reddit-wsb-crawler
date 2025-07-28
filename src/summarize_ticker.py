@@ -37,17 +37,14 @@ def extract_text(result, ticker):
 def summarize_ticker(ticker, context):
     print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
     prompt = (
-        f"Fasse die wichtigsten Erkenntnisse aus Reddit-Diskussionen zum Aktienkürzel {ticker} zusammen:\n"
+        f"Fasse die wichtigsten Erkenntnisse zum Aktienkürzel {ticker} zusammen:\n"
         f"{context}\n\n"
+        f"Wenn keine Reddit-Diskussionen vorliegen, beziehe dich ausschließlich auf die Kursdaten und die aktuellen Nachrichten-Headlines. "
         f"Bitte beantworte folgende Punkte in 3–5 Sätzen:\n"
-        f"- Wie ist die allgemeine Stimmung (positiv, negativ, gemischt)?\n"
-        f"- Welche konkreten Gründe, Argumente oder Trends werden genannt?\n"
-        f"- Gibt es besondere Ereignisse, Nachrichten oder Meinungen, die häufig erwähnt werden?\n"
-        f"Formuliere sachlich, kompakt und ohne Wiederholungen. "
-        f"Beziehe dich auf den aktuellen Börsenkurs und relevante Börsennachrichten, falls vorhanden. "
-        f"Verwende ausschließlich wahre und aktuelle Fakten, keine erfundenen, fiktiven oder hypothetischen Inhalte. "
-        f"Erwähne NICHT, wie oft oder in welchen Subreddits der Ticker genannt wurde. "
-        f"Verzichte auf Sätze wie 'Der Ticker wurde X-mal erwähnt' oder 'In r/wallstreetbets wurde Y-mal darüber gesprochen'."
+        f"- Gibt es relevante Nachrichten oder Kursbewegungen?\n"
+        f"- Gibt es Hinweise auf Trends, Stimmungen oder besondere Ereignisse?\n"
+        f"Vermeide jegliche Erwähnung von Subreddits, Nennungszahlen oder Reddit-Diskussionen, wenn keine konkreten Inhalte vorliegen. "
+        f"Erfinde keine Reddit-Diskussionen, wenn keine im Kontext stehen."
     )
     try:
         response = openai.ChatCompletion.create(
@@ -69,7 +66,7 @@ def get_yf_news(symbol):
     try:
         ticker = yf.Ticker(symbol)
         news = ticker.news  # Gibt eine Liste von Dicts zurück
-        # Filtere nur News mit Titel und (optional) passendem Symbol
+        # Filtere nur News mit Titel und (optional) passendem Symbol bzw. verwandten Tickers aus er selben Branche
         headlines = [item.get("title") for item in news if "title" in item and (item.get("relatedTickers") is None or symbol in item.get("relatedTickers", []))]
         return headlines[:5]  # z.B. die 5 aktuellsten Headlines
     except Exception as e:
@@ -82,6 +79,8 @@ def build_context_with_yahoo(ticker, kursdaten, news_headlines=None):
     news_str = ""
     if news_headlines:
         news_str = "\nAktuelle Nachrichten:\n" + "\n".join(f"- {headline}" for headline in news_headlines)
+    else:
+        news_str = "\nKeine aktuellen Nachrichten-Headlines verfügbar."
     return f"{kurs_str}\n{news_str}\nEs liegen keine konkreten Reddit-Diskussionsinhalte vor."
 
 def main():
@@ -98,6 +97,9 @@ def main():
         kursdaten = get_yf_price(ticker)
         news_headlines = get_yf_news(ticker)
         context = build_context_with_yahoo(ticker, kursdaten, news_headlines)
+        print(f"{ticker}: News-Kontext für KI:", news_headlines)
+        print("Kursdaten:", kursdaten)
+        print("KI-Kontext:", context)
         summary = summarize_ticker(ticker, context)
         summaries[ticker] = summary
 
