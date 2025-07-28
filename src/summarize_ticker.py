@@ -29,8 +29,9 @@ def extract_text(result, ticker):
     for sr_name, sr_data in result.get("subreddits", {}).items():
         for s, hits in sr_data["symbol_hits"].items():
             if s == ticker and hits >= 1:
-                texts.append(f"[{sr_name}] {s} wurde {hits}× erwähnt.")
-    return "\n".join(texts)
+                # Hier KEINE Subreddit- oder Nennungs-Infos mehr!
+                texts.append("")  # oder: texts.append(f"{s}")
+    return "\n".join([t for t in texts if t])
 
 def summarize_ticker(ticker, context):
     print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
