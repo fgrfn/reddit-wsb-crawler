@@ -43,7 +43,7 @@ def summarize_ticker(ticker, context):
         f"- Gibt es besondere Ereignisse, Nachrichten oder Meinungen, die häufig erwähnt werden?\n"
         f"Formuliere sachlich, kompakt und ohne Wiederholungen und auch in bezug auf den aktuellen Börsenkurs bzw. den Börsen News"
         f"nutze nur Wahre und aktuelle Fakten, nicht erfundendes, nichts fiktives oder hypothetisches"
-        f"erwähne nicht mehr in welcher Reddit Community bzw. in welchem Subreddit wie oft der Ticker eräwhnt wurde    "
+        f"erwähne nicht mehr in welcher Reddit Community bzw. in welchem Subreddit wie oft der Ticker eräwhnt wurde - z.b. Der Ticker ASML wurde insgesamt sechs Mal auf Reddit erwähnt, zweimal in r/wallstreetbets und viermal in r/wallstreetbetsGER"
     )
     try:
         response = openai.ChatCompletion.create(
