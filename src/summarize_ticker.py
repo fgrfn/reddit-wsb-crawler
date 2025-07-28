@@ -36,25 +36,27 @@ def extract_text(result, ticker):
 
 def summarize_ticker(ticker, context):
     print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
+    system_msg = (
+        "Du bist ein erfahrener Finanzanalyst. Analysiere Kursdaten, Nachrichten und ggf. Reddit-Stimmung zu Aktien."
+    )
     prompt = (
-        f"Fasse die wichtigsten Erkenntnisse zum Aktienkürzel {ticker} zusammen:\n"
+        f"Fasse die wichtigsten Erkenntnisse zu {ticker} zusammen:\n"
         f"{context}\n\n"
-        f"Wenn keine Reddit-Diskussionen vorliegen, beziehe dich ausschließlich auf die Kursdaten und die aktuellen Nachrichten-Headlines. "
-        f"Bitte beantworte folgende Punkte in 3–5 Sätzen:\n"
+        f"Wenn keine Reddit-Diskussionen im Kontext stehen, beziehe dich nur auf Kursdaten und Nachrichten. "
+        f"Antworte in 3–5 Sätzen:\n"
         f"- Gibt es relevante Nachrichten oder Kursbewegungen?\n"
-        f"- Gibt es Hinweise auf Trends, Stimmungen oder besondere Ereignisse?\n"
-        f"Vermeide jegliche Erwähnung von Subreddits, Nennungszahlen oder Reddit-Diskussionen, wenn keine konkreten Inhalte vorliegen. "
-        f"Erfinde keine Reddit-Diskussionen, wenn keine im Kontext stehen."
+        f"- Gibt es Hinweise auf Trends oder besondere Ereignisse?\n"
+        f"Keine erfundenen Reddit-Inhalte."
     )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Du bist Warren Buffett, ein US-amerikanischer Investor, Unternehmer und Philanthrop – bekannt als einer der erfolgreichsten Anleger der Geschichte und analysiert die Stimmung der Reddit Community. Dein Ziel ist es, Trendaktien frühzeitig zu erkennen, um entsprechend vor einem 'Hype' oder 'Gamma Squeeze' zu kaufen und mit Gewinn zu verkaufen."},
+                {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5,
-            max_tokens=500
+            max_tokens=400  # ggf. weiter reduzieren
         )
         return response['choices'][0]['message']['content'].strip()
     except Exception as e:
