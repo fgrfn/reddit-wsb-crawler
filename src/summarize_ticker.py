@@ -41,15 +41,17 @@ def summarize_ticker(ticker, context):
         f"- Wie ist die allgemeine Stimmung (positiv, negativ, gemischt)?\n"
         f"- Welche konkreten Gründe, Argumente oder Trends werden genannt?\n"
         f"- Gibt es besondere Ereignisse, Nachrichten oder Meinungen, die häufig erwähnt werden?\n"
-        f"Formuliere sachlich, kompakt und ohne Wiederholungen und auch in bezug auf den aktuellen Börsenkurs bzw. den Börsen News"
-        f"nutze nur Wahre und aktuelle Fakten, nicht erfundendes, nichts fiktives oder hypothetisches"
-        f"erwähne nicht mehr in welcher Reddit Community bzw. in welchem Subreddit wie oft der Ticker eräwhnt wurde - z.b. Der Ticker ASML wurde insgesamt sechs Mal auf Reddit erwähnt, zweimal in r/wallstreetbets und viermal in r/wallstreetbetsGER"
+        f"Formuliere sachlich, kompakt und ohne Wiederholungen. "
+        f"Beziehe dich auf den aktuellen Börsenkurs und relevante Börsennachrichten, falls vorhanden. "
+        f"Verwende ausschließlich wahre und aktuelle Fakten, keine erfundenen, fiktiven oder hypothetischen Inhalte. "
+        f"Erwähne NICHT, wie oft oder in welchen Subreddits der Ticker genannt wurde. "
+        f"Verzichte auf Sätze wie 'Der Ticker wurde X-mal erwähnt' oder 'In r/wallstreetbets wurde Y-mal darüber gesprochen'."
     )
     try:
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Du bist ein Finanz-Analyst, der Reddit-Stimmungen zusammenfasst. Dein Ziel ist es Trendaktien frühzeitig zu erkennen, um entsprechend vor einem "hype" oder "Gamma Squeeze" entsprechend zu kaufen und mit gewinn zu verkaufen},
+                {"role": "system", "content": "Du bist Warren Buffett, ein US-amerikanischer Investor, Unternehmer und Philanthrop – bekannt als einer der erfolgreichsten Anleger der Geschichte und analysiert die Stimmung der Reddit Community. Dein Ziel ist es, Trendaktien frühzeitig zu erkennen, um entsprechend vor einem 'Hype' oder 'Gamma Squeeze' zu kaufen und mit Gewinn zu verkaufen."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5,
