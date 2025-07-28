@@ -74,10 +74,10 @@ def main():
     for ticker, count in relevant.items():
         if count < 10:
             continue  # nur „diskussionsreiche“ Ticker
-        text_block = extract_text(result, ticker)
-        if text_block:
-            summary = summarize_ticker(ticker, text_block)
-            summaries[ticker] = summary
+        # context = extract_text(result, ticker)
+        context = "Es liegen keine konkreten Diskussionsinhalte vor, nur die Information, dass der Ticker in den letzten Tagen auf Reddit diskutiert wurde."
+        summary = summarize_ticker(ticker, context)
+        summaries[ticker] = summary
 
     # 📁 Ergebnisse speichern
     ts = datetime.now().strftime("%Y%m%d-%H%M")
