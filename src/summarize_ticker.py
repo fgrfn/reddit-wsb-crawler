@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from collections import defaultdict
 import logging
+from run_crawler_headless import get_yf_price  # Importiere die Funktion, falls nötig
 
 openai.api_key = None
 
@@ -63,6 +64,26 @@ def summarize_ticker(ticker, context):
         logging.error(f"OpenAI-Fehler für {ticker}: {e}")
         return f"❌ Fehler für {ticker}: {e}"
 
+def get_yf_news(symbol):
+    import yfinance as yf
+    try:
+        ticker = yf.Ticker(symbol)
+        news = ticker.news  # Gibt eine Liste von Dicts zurück
+        # Filtere nur News mit Titel und (optional) passendem Symbol
+        headlines = [item.get("title") for item in news if "title" in item and (item.get("relatedTickers") is None or symbol in item.get("relatedTickers", []))]
+        return headlines[:5]  # z.B. die 5 aktuellsten Headlines
+    except Exception as e:
+        print(f"News-Abfrage für {symbol} fehlgeschlagen: {e}")
+        return []
+
+def build_context_with_yahoo(ticker, kursdaten, news_headlines=None):
+    kurs_str = f"Aktueller Kurs: {kursdaten.get('regular', 'unbekannt')} {kursdaten.get('currency', 'USD')}, " \
+               f"Veränderung: {kursdaten.get('change', 'unbekannt')} ({kursdaten.get('changePercent', 'unbekannt')}%)"
+    news_str = ""
+    if news_headlines:
+        news_str = "\nAktuelle Nachrichten:\n" + "\n".join(f"- {headline}" for headline in news_headlines)
+    return f"{kurs_str}\n{news_str}\nEs liegen keine konkreten Reddit-Diskussionsinhalte vor."
+
 def main():
     load_env()
     result, filename = load_latest_pickle()
@@ -74,8 +95,9 @@ def main():
     for ticker, count in relevant.items():
         if count < 10:
             continue  # nur „diskussionsreiche“ Ticker
-        # context = extract_text(result, ticker)
-        context = "Es liegen keine konkreten Diskussionsinhalte vor, nur die Information, dass der Ticker in den letzten Tagen auf Reddit diskutiert wurde."
+        kursdaten = get_yf_price(ticker)
+        news_headlines = get_yf_news(ticker)
+        context = build_context_with_yahoo(ticker, kursdaten, news_headlines)
         summary = summarize_ticker(ticker, context)
         summaries[ticker] = summary
 
