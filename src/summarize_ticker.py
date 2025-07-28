@@ -49,7 +49,7 @@ def summarize_ticker(ticker, context):
         response = openai.ChatCompletion.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": "Du bist ein Finanz-Analyst, der Reddit-Stimmungen zusammenfasst."},
+                {"role": "system", "content": "Du bist ein Finanz-Analyst, der Reddit-Stimmungen zusammenfasst. Dein Ziel ist es Trendaktien frühzeitig zu erkennen, um entsprechend vor einem "hype" oder "Gamma Squeeze" entsprechend zu kaufen und mit gewinn zu verkaufen},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.5,
