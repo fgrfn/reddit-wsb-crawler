@@ -66,7 +66,7 @@ def summarize_ticker(ticker, context):
         logging.info(f"OpenAI-Kosten für {ticker}: {cost:.4f} USD (Input: {input_tokens}, Output: {output_tokens})")
         # Separate Kostenstatistik
         with open("logs/openai_costs.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens}\n")
+            f.write(f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens},{ticker}\n")
         if not summary:
             summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
         return summary[:400]
