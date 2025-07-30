@@ -44,8 +44,8 @@ def summarize_ticker(ticker, context):
         f"{context}\n\n"
         f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
         f"- Gibt es relevante Nachrichten zu {ticker}?\n"
-        f"Falls keine Kursbewegung oder Nachrichten vorliegen, schreibe: 'Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum.'"
-        f"Nutze ausschließlich die im Kontext genannten Daten und Headlines zu {ticker}. Erfinde keine weiteren Inhalte."
+        f"Falls keine Kursbewegung oder Nachrichten vorliegen, gib eine kurze allgemeine Einschätzung ab."
+        f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
     )
     try:
         response = openai.ChatCompletion.create(
