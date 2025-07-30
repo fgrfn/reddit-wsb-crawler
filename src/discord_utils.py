@@ -35,7 +35,8 @@ def format_discord_message(
             kosten_str += f" / Gesamt: {openai_cost_total:.4f} USD"
 
     msg = (
-        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str} 💸 {kosten_str}\n"
+        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
+        f"💸 {kosten_str}\n"
         f"\n"
         f"🏆 Top 3 Ticker:\n"
     )

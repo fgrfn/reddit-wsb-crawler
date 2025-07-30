@@ -114,11 +114,10 @@ def get_today_openai_cost():
     total_cost = 0.0
     with open(log_path, "r", encoding="utf-8") as f:
         for line in f:
-            if line.startswith(today):
-                # Extrahiere den Betrag zwischen ": " und " USD"
+            if ",COST," in line and line.startswith(today):
                 try:
-                    cost_str = line.split(":")[1].split("USD")[0].strip()
-                    total_cost += float(cost_str)
+                    cost = float(line.strip().split(",COST,")[1])
+                    total_cost += cost
                 except Exception:
                     pass
     return total_cost
@@ -130,11 +129,10 @@ def get_total_openai_cost():
     total_cost = 0.0
     with open(log_path, "r", encoding="utf-8") as f:
         for line in f:
-            # Nur Zeilen mit Kosten (also mit ": " und "USD")
-            if ": " in line and "USD" in line:
+            if ",COST," in line:
                 try:
-                    cost_str = line.split(":")[1].split("USD")[0].strip()
-                    total_cost += float(cost_str)
+                    cost = float(line.strip().split(",COST,")[1])
+                    total_cost += cost
                 except Exception:
                     pass
     return total_cost
