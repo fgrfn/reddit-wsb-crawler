@@ -47,7 +47,7 @@ def summarize_ticker(ticker, context):
         f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = openai.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_msg},
@@ -56,7 +56,7 @@ def summarize_ticker(ticker, context):
             temperature=0.0,
             max_tokens=250
         )
-        summary = response['choices'][0]['message']['content'].strip()
+        summary = response.choices[0].message.content.strip()
         if not summary:
             summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
         return summary[:400]
