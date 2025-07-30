@@ -5,7 +5,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 from collections import defaultdict
 import logging
-from run_crawler_headless import get_yf_price  # Importiere die Funktion, falls nötig
 
 openai.api_key = None
 
