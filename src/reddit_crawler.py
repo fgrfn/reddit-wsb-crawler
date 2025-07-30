@@ -114,17 +114,18 @@ def reddit_crawler():
         logger.info(f"[{sr_idx}/{total_subs}] r/{sr} analysieren ...")
         posts = list(sr_data.new(limit=100))
         total_posts = len(posts)
-        counters = []  # <--- Diese Zeile ergänzen!
+        counters = []
         for idx, post in enumerate(posts, 1):
             result = process_post(post, symbols, cutoff)
             if result:
                 counters.append(result)
             if idx % 10 == 0 or idx == total_posts:
-                logger.info(f"  → {sr}: {make_progress_bar(idx, total_posts)}")
+                logger.info(f"  → {sr}: {make_progress_bar(idx, total_posts)} ({idx}/{total_posts})")
         # Alle Counter zusammenführen
         counter = Counter()
         for c in counters:
             counter.update(c)
+        logger.info(f"{sr}: {sum(counter.values())} Treffer in {total_posts} Posts verarbeitet.")
         return sr, {
             "symbol_hits": dict(counter),
             "posts_checked": total_posts
