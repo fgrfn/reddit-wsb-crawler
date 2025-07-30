@@ -83,6 +83,31 @@ def load_stats(stats_path):
         data = pickle.load(f)
         return data.get("nennungen", {}), data.get("kurs", {})
 
+def get_today_openai_stats():
+    from datetime import datetime
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return 0.0, 0, 0
+    today = datetime.now().strftime("%Y-%m-%d")
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            # Beispielzeile: 2025-07-30T17:23:23.089,COST,0.0020,TOKENS,174,76
+            if line.startswith(today) and ",COST," in line and ",TOKENS," in line:
+                parts = line.strip().split(",")
+                try:
+                    cost = float(parts[2])
+                    input_tokens = int(parts[4])
+                    output_tokens = int(parts[5])
+                    total_cost += cost
+                    total_input += input_tokens
+                    total_output += output_tokens
+                except Exception:
+                    pass
+    return total_cost, total_input, total_output
+
 def post_daily_openai_cost():
     import pandas as pd
     from datetime import datetime
