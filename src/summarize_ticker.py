@@ -67,6 +67,15 @@ def summarize_ticker(ticker, context):
         # Separate Kostenstatistik
         with open("logs/openai_costs.log", "a", encoding="utf-8") as f:
             f.write(f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens},{ticker}\n")
+        log_crawl = "logs/openai_costs_crawl.log"
+        log_day = "logs/openai_costs_day.log"
+        log_total = "logs/openai_costs_total.log"
+
+        log_entry = f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens},{ticker}\n"
+
+        for log_path in [log_crawl, log_day, log_total]:
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(log_entry)
         if not summary:
             summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
         return summary[:400]

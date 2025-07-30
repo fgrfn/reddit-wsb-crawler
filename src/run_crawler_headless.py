@@ -219,9 +219,31 @@ def get_openai_stats(mode="day", crawl_ticker_list=None):
                     total_output += output_tokens
     return total_cost, total_input, total_output
 
+def get_openai_stats_from_file(log_path):
+    if not Path(log_path).exists():
+        return 0.0, 0, 0
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if ",COST," in line and ",TOKENS," in line:
+                parts = line.strip().split(",")
+                cost = float(parts[2])
+                input_tokens = int(parts[4])
+                output_tokens = int(parts[5])
+                total_cost += cost
+                total_input += input_tokens
+                total_output += output_tokens
+    return total_cost, total_input, total_output
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
+
+    # --- Crawl-Logfile leeren ---
+    with open("logs/openai_costs_crawl.log", "w", encoding="utf-8") as f:
+        pass  # Datei leeren
 
     # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)
@@ -325,9 +347,9 @@ def main():
         openai_cost, openai_count, openai_avg = get_today_openai_stats()
         openai_cost_total = get_total_openai_cost()
 
-        crawl_cost, crawl_input, crawl_output = get_openai_stats("crawl", top5_ticker)
-        day_cost, day_input, day_output = get_openai_stats("day")
-        total_cost, total_input, total_output = get_openai_stats("total")
+        crawl_cost, crawl_input, crawl_output = get_openai_stats_from_file("logs/openai_costs_crawl.log")
+        day_cost, day_input, day_output = get_openai_stats_from_file("logs/openai_costs_day.log")
+        total_cost, total_input, total_output = get_openai_stats_from_file("logs/openai_costs_total.log")
 
         msg = format_discord_message(
             pickle_name=latest_pickle,
