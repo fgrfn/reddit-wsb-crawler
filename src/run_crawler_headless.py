@@ -124,6 +124,25 @@ def get_today_openai_cost():
                             pass
     return total_cost
 
+def get_total_openai_cost():
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return 0.0
+    total_cost = 0.0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            # Summenzeilen überspringen
+            if "Tageskosten" in line:
+                continue
+            parts = line.strip().split()
+            for p in parts:
+                if p.endswith("USD"):
+                    try:
+                        total_cost += float(p.replace("USD", "").replace(":", ""))
+                    except:
+                        pass
+    return total_cost
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
@@ -225,7 +244,19 @@ def main():
 
         # OpenAI Kosten für heute abrufen
         openai_cost = get_today_openai_cost()
-        kosten_str = f"💸 OpenAI Kosten heute: {openai_cost:.4f} USD"
+        openai_cost_total = get_total_openai_cost()
+
+        msg = format_discord_message(
+            pickle_name=latest_pickle,
+            timestamp=timestamp,
+            df_ticker=df_ticker,
+            prev_nennungen=prev_nennungen,
+            name_map=name_map,
+            summary_dict=summary_dict,
+            next_crawl_time=next_crawl_time,
+            openai_cost=openai_cost,
+            openai_cost_total=openai_cost_total
+        )
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
@@ -243,7 +274,8 @@ def main():
             name_map=name_map,
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time,
-            openai_cost=openai_cost  # <--- NEU
+            openai_cost=openai_cost,
+            openai_cost_total=openai_cost_total
         )
         # Kosten an die Nachricht anhängen
         #msg += f"\n{kosten_str}"
@@ -273,16 +305,21 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         if line:
             logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
             parts = line[0].split()
-            if len(parts) >= 3 and "-" in parts[1] and ":" in parts[2]:
-                try:
-                    dt = datetime.strptime(f"{parts[1]} {parts[2]}", "%Y-%m-%d %H:%M:%S")
-                    next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
-                except Exception:
-                    logger.warning(f"Unerwartetes Zeitformat in systemd-Timer: {parts}")
-                    next_time = "unbekannt"
-                return next_time
-            else:
-                logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
+            # Suche nach Datum und Uhrzeit im Format: Wochentag YYYY-MM-DD HH:MM:SS
+            for i in range(len(parts) - 2):
+                if (
+                    parts[i].count("-") == 2 and
+                    ":" in parts[i + 1]
+                ):
+                    try:
+                        # Beispiel: Wed 2025-07-30 16:00:25
+                        dt_str = f"{parts[i]} {parts[i + 1]}"
+                        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                        next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
+                        return next_time
+                    except Exception:
+                        continue
+            logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
     return "unbekannt"
