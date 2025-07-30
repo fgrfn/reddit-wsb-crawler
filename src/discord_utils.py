@@ -35,15 +35,15 @@ def format_discord_message(
     if openai_cost_crawl is not None:
         kosten_str += f"Crawl: {openai_cost_crawl:.4f} USD"
         if openai_tokens_crawl:
-            kosten_str += f" (I: {openai_tokens_crawl[0]} / O: {openai_tokens_crawl[1]} Tokens)"
+            kosten_str += f" (I: {format_tokens(openai_tokens_crawl[0])} / O: {format_tokens(openai_tokens_crawl[1])} Tokens)"
     if openai_cost_day is not None:
         kosten_str += f" | Tag: {openai_cost_day:.4f} USD"
         if openai_tokens_day:
-            kosten_str += f" (I: {openai_tokens_day[0]} / O: {openai_tokens_day[1]} Tokens)"
+            kosten_str += f" (I: {format_tokens(openai_tokens_day[0])} / O: {format_tokens(openai_tokens_day[1])} Tokens)"
     if openai_cost_total is not None:
         kosten_str += f" | Gesamt: {openai_cost_total:.4f} USD"
         if openai_tokens_total:
-            kosten_str += f" (I: {openai_tokens_total[0]} / O: {openai_tokens_total[1]} Tokens)"
+            kosten_str += f" (I: {format_tokens(openai_tokens_total[0])} / O: {format_tokens(openai_tokens_total[1])} Tokens)"
 
     msg = (
         f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
@@ -148,3 +148,11 @@ def get_discord_legend():
         "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
         "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
     )
+
+def format_tokens(n):
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    elif n >= 1_000:
+        return f"{n/1_000:.1f}k"
+    else:
+        return str(n)
