@@ -242,10 +242,11 @@ def main():
             prev_nennungen=prev_nennungen,
             name_map=name_map,
             summary_dict=summary_dict,
-            next_crawl_time=next_crawl_time
+            next_crawl_time=next_crawl_time,
+            openai_cost=openai_cost  # <--- NEU
         )
         # Kosten an die Nachricht anhängen
-        msg += f"\n{kosten_str}"
+        #msg += f"\n{kosten_str}"
 
         # Nachricht 1: Crawl-Info, Top 3, Zusammenfassungen, Kosten
         send_discord_notification(msg)

@@ -19,14 +19,19 @@ def send_discord_notification(message, webhook_url=None):
         logging.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
-def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None):
+def format_discord_message(pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict, next_crawl_time=None, openai_cost=None):
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     warntext = "… [gekürzt wegen Discord-Limit]"
-    maxlen = 1900
+    maxlen = 2000
+
+    kosten_str = ""
+    if openai_cost is not None:
+        kosten_str = f"\n💸 OpenAI Kosten heute: {openai_cost:.4f} USD\n"
 
     msg = (
-        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n\n"
+        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}"
+        f"{kosten_str}\n"
         f"🏆 Top 3 Ticker:\n"
     )
 
