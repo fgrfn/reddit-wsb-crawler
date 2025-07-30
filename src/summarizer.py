@@ -46,20 +46,22 @@ def ask_openai_summary(ticker, context):
         f"{context}\n\n"
         f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
         f"- Gibt es relevante Nachrichten zu {ticker}?\n"
-        f"Falls keine Kursbewegung oder Nachrichten vorliegen, schreibe: 'Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum.'"
-        f"Nutze ausschließlich die im Kontext genannten Daten und Headlines zu {ticker}. Erfinde keine weiteren Inhalte."
+        f"Falls keine Kursbewegung oder Nachrichten vorliegen, gib eine kurze allgemeine Einschätzung ab."
+        f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
     )
-
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.0,
-        max_tokens=250
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,
+            max_tokens=250
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Fehler bei der Zusammenfassung: {e}"
 
 def generate_summary(pickle_path, include_all=False, streamlit_out=None, only_symbols=None):
     with open(pickle_path, "rb") as f:
