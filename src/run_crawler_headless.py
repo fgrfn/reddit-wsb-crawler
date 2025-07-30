@@ -189,6 +189,7 @@ def main():
     try:
         import pandas as pd
         from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
+        next_crawl_time = "unbekannt"  # <-- Standardwert setzen!
         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")  # <-- direkt am Anfang!
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
@@ -290,7 +291,7 @@ def main():
         logger.info("Discord-Benachrichtigung gesendet!")
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
-        logger.error(f"Fehler bei der Discord-Benachrichtigung: {e} (timestamp: {timestamp if 'timestamp' in locals() else 'unbekannt'})")
+        logger.error(f"Fehler bei der Discord-Benachrichtigung: {e} (next_crawl_time: {next_crawl_time if 'next_crawl_time' in locals() else 'unbekannt'})")
 
     # Am Ende des Tages (z.B. nach dem letzten Crawl):
     if datetime.now().strftime("%H:%M") == "00:00":
