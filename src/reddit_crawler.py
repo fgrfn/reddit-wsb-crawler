@@ -119,6 +119,7 @@ def reddit_crawler():
             result = process_post(post, symbols, cutoff)
             if result:
                 counters.append(result)
+            # Fortschritt with Zahlen anzeigen:
             if idx % 10 == 0 or idx == total_posts:
                 logger.info(f"  → {sr}: {make_progress_bar(idx, total_posts)} ({idx}/{total_posts})")
         # Alle Counter zusammenführen
