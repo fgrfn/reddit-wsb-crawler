@@ -41,10 +41,13 @@ def ask_openai_summary(ticker, context):
     client = get_openai_client()
     trend = get_market_trend(ticker)
     system = "Du bist ein Analyst, der Reddit-Diskussionen zu Aktien auswertet."
+    price = yf.Ticker(ticker).info['last_price']  # Aktuellen Preis abrufen
+
     prompt = (
-        f"Fasse den Diskussionsverlauf zum Ticker {ticker} aus folgendem Reddit-Kontext zusammen:\n\n"
-        f"{context}\n\n"
-        f"Berücksichtige dabei, dass der Kurs von {ticker} in den letzten 7 Tagen {trend} war."
+        f"Fasse die wichtigsten Erkenntnisse zu {ticker} in maximal 3 Sätzen zusammen. "
+        f"Berücksichtige den aktuellen Kurs: {price} USD und den Trend der letzten 7 Tage: {trend}. "
+        f"Beziehe relevante Nachrichten und Reddit-Diskussionen ein, falls vorhanden. "
+        f"Keine erfundenen Reddit-Inhalte."
     )
 
     response = client.chat.completions.create(
@@ -53,7 +56,8 @@ def ask_openai_summary(ticker, context):
             {"role": "system", "content": system},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.7
+        temperature=0.0
+        max_tokens=250
     )
     return response.choices[0].message.content.strip()
 

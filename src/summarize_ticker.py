@@ -37,16 +37,14 @@ def extract_text(result, ticker):
 def summarize_ticker(ticker, context):
     print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
     system_msg = (
-        "Du bist ein erfahrener Finanzanalyst. Analysiere Kursdaten, Nachrichten und ggf. Reddit-Stimmung zu Aktien."
+        f"Du bist ein erfahrener Finanzanalyst. Analysiere Kursdaten, Nachrichten und ggf. Reddit-Stimmung zur Aktie {ticker}."
     )
     prompt = (
-        f"Fasse die wichtigsten Erkenntnisse zu {ticker} zusammen:\n"
+        f"Fasse die wichtigsten Erkenntnisse zur Aktie {ticker} in maximal 3 Sätzen und höchstens 400 Zeichen zusammen:\n"
         f"{context}\n\n"
-        f"Wenn keine Reddit-Diskussionen im Kontext stehen, beziehe dich nur auf Kursdaten und Nachrichten. "
-        f"Antworte in 3–5 Sätzen:\n"
-        f"- Gibt es relevante Nachrichten oder Kursbewegungen?\n"
-        f"- Gibt es Hinweise auf Trends oder besondere Ereignisse?\n"
-        f"Keine erfundenen Reddit-Inhalte."
+        f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
+        f"- Gibt es relevante Nachrichten zu {ticker}?\n"
+        f"Nutze ausschließlich die im Kontext genannten Daten und Headlines zu {ticker}. Erfinde keine weiteren Inhalte."
     )
     try:
         response = openai.ChatCompletion.create(
@@ -55,10 +53,12 @@ def summarize_ticker(ticker, context):
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.5,
-            max_tokens=400  # ggf. weiter reduzieren
+            temperature=0.0,
+            max_tokens=250
         )
-        return response['choices'][0]['message']['content'].strip()
+        summary = response['choices'][0]['message']['content'].strip()
+        # Fallback: Falls die KI trotzdem zu lang antwortet, hart kürzen
+        return summary[:400]
     except Exception as e:
         logging.error(f"OpenAI-Fehler für {ticker}: {e}")
         return f"❌ Fehler für {ticker}: {e}"
