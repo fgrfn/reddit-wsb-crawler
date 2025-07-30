@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from discord_utils import send_discord_notification, get_discord_legend, format_discord_message
+from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_price, get_yf_news
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -124,27 +125,7 @@ def main():
     except Exception as e:
         logger.error(f"Fehler beim Resolver: {e}")
 
-    # --- KI-Zusammenfassung erzeugen ---
-    try:
-        import pandas as pd
-        from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
-        pickle_files = list_pickle_files(PICKLE_DIR)
-        if not pickle_files:
-            logger.warning("Keine Pickle-Datei für Zusammenfassung gefunden.")
-        else:
-            latest_pickle = sorted(pickle_files)[-1]
-            logger.info(f"Starte KI-Zusammenfassung für: {latest_pickle}")
-            summarizer.generate_summary(
-                pickle_path=PICKLE_DIR / latest_pickle,
-                include_all=False,
-                streamlit_out=None,
-                only_symbols=top5_ticker
-            )
-            logger.info("KI-Zusammenfassung abgeschlossen.")
-    except Exception as e:
-        logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
-
-    # --- Discord-Benachrichtigung ---
+    # --- Discord-Benachrichtigung inkl. KI-Zusammenfassung ---
     try:
         import pandas as pd
         from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
@@ -184,41 +165,21 @@ def main():
         else:
             prev_nennungen = {}
 
-        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
-        summary_dict = {}
-        if summary_path and summary_path.exists():
-            summary_text = load_summary(summary_path)
-            summary_dict = parse_summary_md(summary_text)
-
-        print("summary_dict keys:", list(summary_dict.keys()))  # <-- Hier ist die Änderung
-
         # Kursdaten für die Top 5 Ticker holen
         top5_ticker = df_ticker["Ticker"].head(5).tolist()
         kurse = get_kurse_parallel(top5_ticker)
         for ticker in top5_ticker:
             df_ticker.loc[df_ticker["Ticker"] == ticker, "Kurs"] = [kurse.get(ticker)]
 
-        # --- KI-Zusammenfassung erzeugen ---
-        try:
-            import summarizer
-            latest_pickle = sorted(pickle_files)[-1]
-            logger.info(f"Starte KI-Zusammenfassung für: {latest_pickle}")
-            summarizer.generate_summary(
-                pickle_path=PICKLE_DIR / latest_pickle,
-                include_all=False,
-                streamlit_out=None,
-                only_symbols=top5_ticker
-            )
-            logger.info("KI-Zusammenfassung abgeschlossen.")
-        except Exception as e:
-            logger.error(f"Fehler bei der KI-Zusammenfassung: {e}")
-
-        # --- KI-Zusammenfassung laden ---
-        summary_path = find_summary_for(latest_pickle, SUMMARY_DIR)
+        # --- KI-Zusammenfassung direkt erzeugen ---
         summary_dict = {}
-        if summary_path and summary_path.exists():
-            summary_text = load_summary(summary_path)
-            summary_dict = parse_summary_md(summary_text)
+        for ticker in top5_ticker:
+            kursdaten = get_yf_price(ticker)
+            news = get_yf_news(ticker)
+            context = build_context_with_yahoo(ticker, kursdaten, news)
+            summary = summarize_ticker(ticker, context)
+            summary_dict[ticker] = summary
+
         logger.info(f"summary_dict keys: {list(summary_dict.keys())}")
 
         # Nach dem Erstellen von df_ticker:

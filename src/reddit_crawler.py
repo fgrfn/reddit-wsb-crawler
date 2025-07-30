@@ -121,10 +121,11 @@ def reddit_crawler():
                 result = future.result()
                 if result:
                     counters.append(result)
-                # Fortschritt als Balken loggen
+                # Fortschritt als Balken in der Konsole aktualisieren
                 if idx % 10 == 0 or idx == total_posts:
                     bar = make_progress_bar(idx, total_posts)
-                    logger.info(f"  → {sr}: {bar}")
+                    print(f"\r  → {sr}: {bar}", end="", flush=True)
+                    logger.info(f"  → {sr}: {bar}")  # Loggt weiterhin jede Stufe als neue Zeile
         # Alle Counter zusammenführen
         counter = Counter()
         for c in counters:
