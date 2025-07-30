@@ -41,25 +41,27 @@ def ask_openai_summary(ticker, context):
     client = get_openai_client()
     trend = get_market_trend(ticker)
     system = "Du bist ein Analyst, der Reddit-Diskussionen zu Aktien auswertet."
-    price = yf.Ticker(ticker).info['last_price']  # Aktuellen Preis abrufen
-
     prompt = (
-        f"Fasse die wichtigsten Erkenntnisse zu {ticker} in maximal 3 Sätzen zusammen. "
-        f"Berücksichtige den aktuellen Kurs: {price} USD und den Trend der letzten 7 Tage: {trend}. "
-        f"Beziehe relevante Nachrichten und Reddit-Diskussionen ein, falls vorhanden. "
-        f"Keine erfundenen Reddit-Inhalte."
+        f"Fasse die wichtigsten Erkenntnisse zur Aktie {ticker} in maximal 3 Sätzen und höchstens 400 Zeichen zusammen:\n"
+        f"{context}\n\n"
+        f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
+        f"- Gibt es relevante Nachrichten zu {ticker}?\n"
+        f"Falls keine Kursbewegung oder Nachrichten vorliegen, gib eine kurze allgemeine Einschätzung ab."
+        f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
     )
-
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": system},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.0
-        max_tokens=250
-    )
-    return response.choices[0].message.content.strip()
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.0,
+            max_tokens=250
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        return f"Fehler bei der Zusammenfassung: {e}"
 
 def generate_summary(pickle_path, include_all=False, streamlit_out=None, only_symbols=None):
     with open(pickle_path, "rb") as f:
