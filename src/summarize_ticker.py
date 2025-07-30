@@ -44,6 +44,7 @@ def summarize_ticker(ticker, context):
         f"{context}\n\n"
         f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
         f"- Gibt es relevante Nachrichten zu {ticker}?\n"
+        f"Falls keine Kursbewegung oder Nachrichten vorliegen, schreibe: 'Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum.'"
         f"Nutze ausschließlich die im Kontext genannten Daten und Headlines zu {ticker}. Erfinde keine weiteren Inhalte."
     )
     try:
@@ -57,7 +58,8 @@ def summarize_ticker(ticker, context):
             max_tokens=250
         )
         summary = response['choices'][0]['message']['content'].strip()
-        # Fallback: Falls die KI trotzdem zu lang antwortet, hart kürzen
+        if not summary:
+            summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
         return summary[:400]
     except Exception as e:
         logging.error(f"OpenAI-Fehler für {ticker}: {e}")
