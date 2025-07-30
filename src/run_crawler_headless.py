@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from discord_utils import send_discord_notification, get_discord_legend, format_discord_message
-from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_price, get_yf_news
+from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_news
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
