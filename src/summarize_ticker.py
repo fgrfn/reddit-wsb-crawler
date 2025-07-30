@@ -1,5 +1,5 @@
-import os
 import openai
+import os
 import pickle
 from dotenv import load_dotenv
 from datetime import datetime
