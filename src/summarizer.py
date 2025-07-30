@@ -50,10 +50,10 @@ def ask_openai_summary(ticker, context):
         f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
     )
     try:
-        response = openai.ChatCompletion.create(
+        response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
-                {"role": "system", "content": system_msg},
+                {"role": "system", "content": system},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
