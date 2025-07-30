@@ -142,6 +142,7 @@ def format_price_block_with_börse(kurs_data, ticker=None):
 
 def get_discord_legend():
     return (
+        "\n"
         "Legende:\n"
         "🔢 = Nennungen in Subreddits 🧠 = KI Zusammenfassungen\n"
         "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
