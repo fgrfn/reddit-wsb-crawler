@@ -105,6 +105,25 @@ def post_daily_openai_cost():
     send_discord_notification(msg)
     logging.info(msg)
 
+def get_today_openai_cost():
+    from datetime import datetime
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return 0.0
+    today = datetime.now().strftime("%Y-%m-%d")
+    total_cost = 0.0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if today in line:
+                parts = line.strip().split()
+                for p in parts:
+                    if p.endswith("USD"):
+                        try:
+                            total_cost += float(p.replace("USD", "").replace(":", ""))
+                        except:
+                            pass
+    return total_cost
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
@@ -204,6 +223,10 @@ def main():
 
         logger.info(f"summary_dict keys: {list(summary_dict.keys())}")
 
+        # OpenAI Kosten für heute abrufen
+        openai_cost = get_today_openai_cost()
+        kosten_str = f"💸 OpenAI Kosten heute: {openai_cost:.4f} USD"
+
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
         aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
@@ -221,7 +244,10 @@ def main():
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time
         )
-        # Nachricht 1: Crawl-Info, Top 3, Zusammenfassungen
+        # Kosten an die Nachricht anhängen
+        msg += f"\n{kosten_str}"
+
+        # Nachricht 1: Crawl-Info, Top 3, Zusammenfassungen, Kosten
         send_discord_notification(msg)
         # Nachricht 2: Legende
         legend = get_discord_legend()
