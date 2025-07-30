@@ -112,20 +112,12 @@ def reddit_crawler():
     def crawl_subreddit(sr, reddit, symbols, cutoff, sr_idx=1, total_subs=1):
         sr_data = reddit.subreddit(sr)
         logger.info(f"[{sr_idx}/{total_subs}] r/{sr} analysieren ...")
-        counters = []
         posts = list(sr_data.new(limit=100))
         total_posts = len(posts)
-        with ThreadPoolExecutor(max_workers=2) as post_executor:
-            futures = [post_executor.submit(process_post, post, symbols, cutoff) for post in posts]
-            for idx, future in enumerate(as_completed(futures), 1):
-                result = future.result()
-                if result:
-                    counters.append(result)
-                # Fortschritt als Balken in der Konsole aktualisieren
-                if idx % 10 == 0 or idx == total_posts:
-                    bar = make_progress_bar(idx, total_posts)
-                    print(f"\r  → {sr}: {bar}", end="", flush=True)
-                    logger.info(f"  → {sr}: {bar}")  # Loggt weiterhin jede Stufe als neue Zeile
+        for idx, post in enumerate(posts, 1):
+            # ...deine Analyse...
+            if idx % 10 == 0 or idx == total_posts:
+                logger.info(f"  → {sr}: {make_progress_bar(idx, total_posts)}")
         # Alle Counter zusammenführen
         counter = Counter()
         for c in counters:
@@ -167,6 +159,6 @@ def reddit_crawler():
         logger.info("Keine relevanten Ticker gefunden.")
 
 def make_progress_bar(current, total, length=20):
-    filled = int(length * current // total)
+    filled = int(length * current // total) if total > 0 else 0
     bar = "█" * filled + "░" * (length - filled)
     return f"[{bar}] {current}/{total}"
