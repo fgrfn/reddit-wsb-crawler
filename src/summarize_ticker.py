@@ -57,6 +57,16 @@ def summarize_ticker(ticker, context):
             max_tokens=250
         )
         summary = response.choices[0].message.content.strip()
+        # Kosten grob berechnen
+        usage = response.usage
+        input_tokens = usage.prompt_tokens
+        output_tokens = usage.completion_tokens
+        # GPT-4o Preise (Stand Juli 2025, ggf. anpassen!)
+        cost = (input_tokens / 1000 * 0.005) + (output_tokens / 1000 * 0.015)
+        logging.info(f"OpenAI-Kosten für {ticker}: {cost:.4f} USD (Input: {input_tokens}, Output: {output_tokens})")
+        # Separate Kostenstatistik
+        with open("logs/openai_costs.log", "a", encoding="utf-8") as cost_log:
+            cost_log.write(f"{datetime.now()} {ticker}: {cost:.4f} USD (Input: {input_tokens}, Output: {output_tokens})\n")
         if not summary:
             summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
         return summary[:400]

@@ -83,6 +83,28 @@ def load_stats(stats_path):
         data = pickle.load(f)
         return data.get("nennungen", {}), data.get("kurs", {})
 
+def post_daily_openai_cost():
+    import pandas as pd
+    from datetime import datetime
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return
+    today = datetime.now().strftime("%Y-%m-%d")
+    total_cost = 0.0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if today in line:
+                parts = line.strip().split()
+                for p in parts:
+                    if p.endswith("USD"):
+                        try:
+                            total_cost += float(p.replace("USD", "").replace(":", ""))
+                        except:
+                            pass
+    msg = f"💸 OpenAI Tageskosten ({today}): {total_cost:.4f} USD"
+    send_discord_notification(msg)
+    logging.info(msg)
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
@@ -209,6 +231,10 @@ def main():
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e}")
+
+    # Am Ende des Tages (z.B. nach dem letzten Crawl):
+    if datetime.now().strftime("%H:%M") == "00:00":
+        post_daily_openai_cost()
 
 def get_next_systemd_run(timer_name="reddit_crawler.timer"):
     try:
