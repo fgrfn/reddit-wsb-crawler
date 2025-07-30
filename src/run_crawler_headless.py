@@ -203,16 +203,16 @@ def get_openai_stats(mode="day", crawl_ticker_list=None):
                 cost = float(parts[2])
                 input_tokens = int(parts[4])
                 output_tokens = int(parts[5])
+                ticker_in_log = parts[6] if len(parts) > 6 else None
                 if mode == "day" and date_part.startswith(today):
                     total_cost += cost
                     total_input += input_tokens
                     total_output += output_tokens
-                elif mode == "crawl" and crawl_ticker_list:
-                    for ticker in crawl_ticker_list:
-                        if f",{ticker}," in line or f" {ticker}:" in line:
-                            total_cost += cost
-                            total_input += input_tokens
-                            total_output += output_tokens
+                elif mode == "crawl" and crawl_ticker_list and ticker_in_log:
+                    if ticker_in_log in crawl_ticker_list:
+                        total_cost += cost
+                        total_input += input_tokens
+                        total_output += output_tokens
                 elif mode == "total":
                     total_cost += cost
                     total_input += input_tokens
