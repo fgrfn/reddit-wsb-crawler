@@ -137,6 +137,63 @@ def get_total_openai_cost():
                     pass
     return total_cost
 
+def get_crawl_openai_cost(crawl_ticker_list):
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return 0.0
+    crawl_cost = 0.0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            # Suche nach Ticker in der Zeile
+            for ticker in crawl_ticker_list:
+                if f",{ticker}," in line or f" {ticker}:" in line:
+                    if ",COST," in line:
+                        try:
+                            cost = float(line.strip().split(",COST,")[1])
+                            crawl_cost += cost
+                        except Exception:
+                            pass
+                    elif ":" in line and "USD" in line:
+                        try:
+                            cost_part = line.split(":")[1].split("USD")[0].strip()
+                            crawl_cost += float(cost_part)
+                        except Exception:
+                            pass
+    return crawl_cost
+
+def get_openai_stats(mode="day", crawl_ticker_list=None):
+    from datetime import datetime
+    log_path = Path("logs/openai_costs.log")
+    if not log_path.exists():
+        return 0.0, 0, 0  # Kosten, Input-Tokens, Output-Tokens
+    today = datetime.now().strftime("%Y-%m-%d")
+    total_cost = 0.0
+    total_input = 0
+    total_output = 0
+    with open(log_path, "r", encoding="utf-8") as f:
+        for line in f:
+            if ",COST," in line and ",TOKENS," in line:
+                parts = line.strip().split(",")
+                date_part = parts[0]
+                cost = float(parts[2])
+                input_tokens = int(parts[4])
+                output_tokens = int(parts[5])
+                if mode == "day" and date_part.startswith(today):
+                    total_cost += cost
+                    total_input += input_tokens
+                    total_output += output_tokens
+                elif mode == "crawl" and crawl_ticker_list:
+                    for ticker in crawl_ticker_list:
+                        if f",{ticker}," in line or f" {ticker}:" in line:
+                            total_cost += cost
+                            total_input += input_tokens
+                            total_output += output_tokens
+                elif mode == "total":
+                    total_cost += cost
+                    total_input += input_tokens
+                    total_output += output_tokens
+    return total_cost, total_input, total_output
+
 def main():
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
@@ -239,8 +296,13 @@ def main():
         logger.info(f"summary_dict keys: {list(summary_dict.keys())}")
 
         # OpenAI Kosten für heute abrufen
-        openai_cost = get_today_openai_cost()
+        crawl_cost = get_crawl_openai_cost(top5_ticker)
+        openai_cost, openai_count, openai_avg = get_today_openai_stats()
         openai_cost_total = get_total_openai_cost()
+
+        crawl_cost, crawl_input, crawl_output = get_openai_stats("crawl", top5_ticker)
+        day_cost, day_input, day_output = get_openai_stats("day")
+        total_cost, total_input, total_output = get_openai_stats("total")
 
         msg = format_discord_message(
             pickle_name=latest_pickle,
@@ -250,8 +312,12 @@ def main():
             name_map=name_map,
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time,
-            openai_cost=openai_cost,
-            openai_cost_total=openai_cost_total
+            openai_cost_crawl=crawl_cost,
+            openai_tokens_crawl=(crawl_input, crawl_output),
+            openai_cost_day=day_cost,
+            openai_tokens_day=(day_input, day_output),
+            openai_cost_total=total_cost,
+            openai_tokens_total=(total_input, total_output)
         )
 
         # Nach dem Erstellen von df_ticker:
@@ -270,8 +336,12 @@ def main():
             name_map=name_map,
             summary_dict=summary_dict,
             next_crawl_time=next_crawl_time,
-            openai_cost=openai_cost,
-            openai_cost_total=openai_cost_total
+            openai_cost_crawl=crawl_cost,
+            openai_tokens_crawl=(crawl_input, crawl_output),
+            openai_cost_day=day_cost,
+            openai_tokens_day=(day_input, day_output),
+            openai_cost_total=total_cost,
+            openai_tokens_total=(total_input, total_output)
         )
         # Kosten an die Nachricht anhängen
         #msg += f"\n{kosten_str}"

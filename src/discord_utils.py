@@ -21,7 +21,10 @@ def send_discord_notification(message, webhook_url=None):
 
 def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
-    next_crawl_time=None, openai_cost=None, openai_cost_total=None
+    next_crawl_time=None,
+    openai_cost_crawl=None, openai_tokens_crawl=None,
+    openai_cost_day=None, openai_tokens_day=None,
+    openai_cost_total=None, openai_tokens_total=None
 ):
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
@@ -29,10 +32,18 @@ def format_discord_message(
     maxlen = 2000
 
     kosten_str = ""
-    if openai_cost is not None:
-        kosten_str = f"OpenAI Kosten heute: {openai_cost:.4f} USD"
-        if openai_cost_total is not None:
-            kosten_str += f" / Gesamt: {openai_cost_total:.4f} USD"
+    if openai_cost_crawl is not None:
+        kosten_str += f"Crawl: {openai_cost_crawl:.4f} USD"
+        if openai_tokens_crawl:
+            kosten_str += f" (Input: {openai_tokens_crawl[0]} / Output: {openai_tokens_crawl[1]} Tokens)"
+    if openai_cost_day is not None:
+        kosten_str += f" | Tag: {openai_cost_day:.4f} USD"
+        if openai_tokens_day:
+            kosten_str += f" (Input: {openai_tokens_day[0]} / Output: {openai_tokens_day[1]} Tokens)"
+    if openai_cost_total is not None:
+        kosten_str += f" | Gesamt: {openai_cost_total:.4f} USD"
+        if openai_tokens_total:
+            kosten_str += f" (Input: {openai_tokens_total[0]} / Output: {openai_tokens_total[1]} Tokens)"
 
     msg = (
         f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
