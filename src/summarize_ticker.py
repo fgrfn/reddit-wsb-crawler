@@ -64,14 +64,42 @@ def summarize_ticker(ticker, context):
         logging.error(f"OpenAI-Fehler für {ticker}: {e}")
         return f"❌ Fehler für {ticker}: {e}"
 
+def get_yf_price(symbol):
+    import yfinance as yf
+    try:
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        price_data = {
+            "regular": info.get("regularMarketPrice", "unbekannt"),
+            "currency": info.get("currency", "USD"),
+            "change": info.get("regularMarketChange", "unbekannt"),
+            "changePercent": info.get("regularMarketChangePercent", "unbekannt")
+        }
+        return price_data
+    except Exception as e:
+        print(f"Kursdaten-Abfrage für {symbol} fehlgeschlagen: {e}")
+        return {
+            "regular": "unbekannt",
+            "currency": "USD",
+            "change": "unbekannt",
+            "changePercent": "unbekannt"
+        }
+
 def get_yf_news(symbol):
     import yfinance as yf
     try:
         ticker = yf.Ticker(symbol)
-        news = ticker.news  # Gibt eine Liste von Dicts zurück
-        # Filtere nur News mit Titel und (optional) passendem Symbol bzw. verwandten Tickers aus er selben Branche
-        headlines = [item.get("title") for item in news if "title" in item and (item.get("relatedTickers") is None or symbol in item.get("relatedTickers", []))]
-        return headlines[:5]  # z.B. die 5 aktuellsten Headlines
+        news = ticker.news
+        # Nur News, bei denen der Ticker explizit in relatedTickers steht
+        headlines = [
+            item.get("title") for item in news
+            if "title" in item and symbol in item.get("relatedTickers", [])
+        ]
+        # Falls zu wenig Treffer, ergänze allgemeine News
+        if len(headlines) < 5:
+            extra = [item.get("title") for item in news if "title" in item and item.get("title") not in headlines]
+            headlines.extend(extra[:5 - len(headlines)])
+        return headlines[:20]  # z.B. bis zu 20 Headlines
     except Exception as e:
         print(f"News-Abfrage für {symbol} fehlgeschlagen: {e}")
         return []
