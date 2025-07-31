@@ -425,12 +425,14 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         )
         line = result.stdout.strip().splitlines()
         if line:
-            # Die zweite Spalte ist der nächste geplante Start
+            # Die erste Spalte ist der nächste geplante Start (NEXT)
             parts = line[0].split()
-            # parts[1] = Datum, parts[2] = Uhrzeit
-            if len(parts) >= 3:
-                dt_str = f"{parts[1]} {parts[2]}"
+            # parts[0] = NEXT (Datum+Uhrzeit)
+            if len(parts) >= 1:
+                # Format: YYYY-MM-DD HH:MM:SS
+                dt_str = parts[0] + " " + parts[1] if len(parts) > 1 else parts[0]
                 try:
+                    # systemd gibt oft "YYYY-MM-DD HH:MM:SS" zurück
                     dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
                     return dt.strftime("%d.%m.%Y %H:%M:%S")
                 except Exception:
