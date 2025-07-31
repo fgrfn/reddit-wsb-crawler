@@ -245,6 +245,15 @@ def main():
     with open("logs/openai_costs_crawl.log", "w", encoding="utf-8") as f:
         pass  # Datei leeren
 
+    # --- Tages-Logfile leeren, wenn ein neuer Tag begonnen hat ---
+    day_log = "logs/openai_costs_day.log"
+    if os.path.exists(day_log):
+        mtime = os.path.getmtime(day_log)
+        last_mod = datetime.fromtimestamp(mtime)
+        if last_mod.date() < datetime.now().date():
+            with open(day_log, "w", encoding="utf-8") as f:
+                pass  # Datei leeren
+
     # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)
 
