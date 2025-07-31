@@ -416,23 +416,16 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         )
         line = result.stdout.strip().splitlines()
         if line:
-            logger.info(f"Systemd-Timer-Rohzeile: {line[0]}")
+            # Die zweite Spalte ist der nächste geplante Start
             parts = line[0].split()
-            # Suche nach Datum und Uhrzeit im Format: Wochentag YYYY-MM-DD HH:MM:SS
-            for i in range(len(parts) - 2):
-                if (
-                    parts[i].count("-") == 2 and
-                    ":" in parts[i + 1]
-                ):
-                    try:
-                        # Beispiel: Wed 2025-07-30 16:00:25
-                        dt_str = f"{parts[i]} {parts[i + 1]}"
-                        dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                        next_time = dt.strftime("%d.%m.%Y %H:%M:%S")
-                        return next_time
-                    except Exception:
-                        continue
-            logger.warning(f"Systemd-Timer-Ausgabe unerwartet: {line[0]}")
+            # parts[1] = Datum, parts[2] = Uhrzeit
+            if len(parts) >= 3:
+                dt_str = f"{parts[1]} {parts[2]}"
+                try:
+                    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    return dt.strftime("%d.%m.%Y %H:%M:%S")
+                except Exception:
+                    pass
     except Exception as e:
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
     return "unbekannt"
