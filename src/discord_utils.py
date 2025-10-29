@@ -23,34 +23,16 @@ def send_discord_notification(message, webhook_url=None):
 
 def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
-    next_crawl_time=None,
-    openai_cost_crawl=None, openai_tokens_crawl=None,
-    openai_cost_day=None, openai_tokens_day=None,
-    openai_cost_total=None, openai_tokens_total=None
+    next_crawl_time=None
 ):
     platz_emojis = ["🥇", "🥈", "🥉"]
     next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
     warntext = "… [gekürzt wegen Discord-Limit]"
     maxlen = 2000
 
-    kosten_str = ""
-    if openai_cost_crawl is not None:
-        kosten_str += f"Crawl: {openai_cost_crawl:.4f} USD"
-        if openai_tokens_crawl:
-            kosten_str += f" (I: {format_tokens(openai_tokens_crawl[0])} / O: {format_tokens(openai_tokens_crawl[1])} Tokens)"
-    if openai_cost_day is not None:
-        kosten_str += f" | Tag: {openai_cost_day:.4f} USD"
-        if openai_tokens_day:
-            kosten_str += f" (I: {format_tokens(openai_tokens_day[0])} / O: {format_tokens(openai_tokens_day[1])} Tokens)"
-    if openai_cost_total is not None:
-        kosten_str += f" | Gesamt: {openai_cost_total:.4f} USD"
-        if openai_tokens_total:
-            kosten_str += f" (I: {format_tokens(openai_tokens_total[0])} / O: {format_tokens(openai_tokens_total[1])} Tokens)"
-
     top_n = min(3, len(df_ticker)) if hasattr(df_ticker, '__len__') else 3
     msg = (
         f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
-        f"💸 {kosten_str}\n"
         f"\n"
         f"🏆 Top {top_n} Ticker:\n"
     )
@@ -104,27 +86,33 @@ def format_price_block_with_börse(kurs_data, ticker=None):
         return "keine Kursdaten verfügbar"
     currency = kurs_data.get("currency", "USD")
     regular = kurs_data.get("regular")
-    previous = kurs_data.get("previousClose")
+    previous = kurs_data.get("previousClose") or kurs_data.get("previous")
     change = kurs_data.get("change")
     changePercent = kurs_data.get("changePercent")
     pre = kurs_data.get("pre")
     post = kurs_data.get("post")
     timestamp = kurs_data.get("timestamp")
+    market_state = kurs_data.get("market_state")
+    # Trends
+    t1 = kurs_data.get("change_1h")
+    t24 = kurs_data.get("change_24h")
+    t7 = kurs_data.get("change_7d")
+
     # Emoji je nach Kursentwicklung
     if change is not None:
-        if change > 0:
-            emoji = "📈"
-        elif change < 0:
-            emoji = "📉"
-        else:
-            emoji = "⏸️"
+        emoji = "📈" if change > 0 else "📉" if change < 0 else "⏸️"
     else:
         emoji = "❔"
+
     # Zeitformat
     if timestamp:
-        zeit = time.strftime("%d.%m.%Y %H:%M", time.localtime(timestamp))
+        try:
+            zeit = time.strftime("%d.%m.%Y %H:%M", time.localtime(timestamp))
+        except Exception:
+            zeit = "unbekannt"
     else:
         zeit = "unbekannt"
+
     # Hauptkurs
     if regular is not None:
         kurs_str = f"{regular:.2f} {currency} ({change:+.2f} {currency}, {changePercent:+.2f}%) {emoji} [{zeit}]"
@@ -132,13 +120,39 @@ def format_price_block_with_börse(kurs_data, ticker=None):
         kurs_str = f"Vortag: {previous:.2f} {currency} [{zeit}]"
     else:
         kurs_str = "keine Kursdaten verfügbar"
+
     # Pre-/After-Market
+    extras = []
     if pre is not None:
-        kurs_str += f" | 🌅 Pre-Market: {pre:.2f} {currency}"
+        extras.append(f"🌅 Pre-Market: {pre:.2f} {currency}")
     if post is not None:
-        kurs_str += f" | 🌙 After-Market: {post:.2f} {currency}"
+        extras.append(f"🌙 After-Market: {post:.2f} {currency}")
+    if extras:
+        kurs_str += " | " + " | ".join(extras)
+
+    # Market state
+    if market_state:
+        kurs_str += f" | Status: {market_state}"
+
+    # Trends (1h / 24h / 7d)
+    def tlabel(v):
+        if v is None:
+            return None
+        arrow = "▲" if v > 0 else "▼" if v < 0 else "→"
+        return f"{arrow} {v:+.2f}%"
+
+    trend_parts = []
+    if t1 is not None:
+        trend_parts.append(f"1h {tlabel(t1)}")
+    if t24 is not None:
+        trend_parts.append(f"24h {tlabel(t24)}")
+    if t7 is not None:
+        trend_parts.append(f"7d {tlabel(t7)}")
+    if trend_parts:
+        kurs_str += " | Trends: " + " · ".join(trend_parts)
+
     # Yahoo-Link (Ticker als Fallback, falls symbol nicht im Kursdict)
-    symbol = kurs_data.get('symbol') or ticker or ""
+    symbol = kurs_data.get("symbol") or ticker or ""
     if symbol:
         kurs_str += f" | <https://finance.yahoo.com/quote/{symbol}>"
     return kurs_str
@@ -160,10 +174,17 @@ def build_test_message(
     change: float = 0.56,
     change_percent: float = 4.75,
     summary: str = "Das ist eine Test-Zusammenfassung.",
-    pickle_name: str = "test_payload.pkl",
-    timestamp: str = None,
-    timestamp_unix: float = None,
-    next_crawl_time: str = "unbekannt",
+    # optional extended price info for preview
+    pre: float | None = None,
+    post: float | None = None,
+    market_state: str | None = None,
+    change_1h: float | None = None,
+    change_24h: float | None = None,
+    change_7d: float | None = None,
+     pickle_name: str = "test_payload.pkl",
+     timestamp: str = None,
+     timestamp_unix: float = None,
+     next_crawl_time: str = "unbekannt",
     openai_cost_crawl: float = 0.0,
 ):
     """Build a preview Discord message (string) using the existing formatter.
@@ -197,6 +218,12 @@ def build_test_message(
             "changePercent": change_percent,
             "symbol": ticker,
             "timestamp": timestamp_unix,
+            "pre": pre,
+            "post": post,
+            "market_state": market_state,
+            "change_1h": change_1h,
+            "change_24h": change_24h,
+            "change_7d": change_7d,
         }}
     ])
 
@@ -212,12 +239,6 @@ def build_test_message(
         name_map=name_map,
         summary_dict=summary_dict,
         next_crawl_time=next_crawl_time,
-        openai_cost_crawl=openai_cost_crawl,
-        openai_tokens_crawl=(0, 0),
-        openai_cost_day=None,
-        openai_tokens_day=None,
-        openai_cost_total=None,
-        openai_tokens_total=None,
     )
     return msg
 
