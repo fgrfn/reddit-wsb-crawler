@@ -23,7 +23,8 @@ def send_discord_notification(message, webhook_url=None):
 
 def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
-    next_crawl_time=None
+    next_crawl_time=None,
+    openai_cost_crawl: float = 0.0,
 ):
     """Kompakte Alarm-Ansicht für Discord: zeigt Top-Ticker mit Kurs, Trends und Pre/Post-Market.
     Möglichst kurz, damit Alerts sofort ins Auge fallen."""
