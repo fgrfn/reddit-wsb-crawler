@@ -241,8 +241,11 @@ def get_yf_price(symbol):
         }
 
 def get_yf_news(symbol):
-    # Use NewsAPI.org exclusively when an API key is configured.
-    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY") or os.getenv("NEWS_API_KEY")
+    import requests
+    import logging
+    from datetime import datetime, timedelta
+
+    NEWSAPI_KEY = os.getenv("NEWSAPI_KEY") or os.getenv("NEWSAPI")
     NEWSAPI_LANG = os.getenv("NEWSAPI_LANG", "en")
     NEWSAPI_WINDOW_HOURS = int(os.getenv("NEWSAPI_WINDOW_HOURS", "48"))
     if not NEWSAPI_KEY:
@@ -250,50 +253,59 @@ def get_yf_news(symbol):
         return []
 
     try:
-        # Try to get a company name from yfinance to improve query (best-effort, non-fatal)
+        # try to get a company name to improve query
         company = None
         try:
             import yfinance as yf
-            info = yf.Ticker(symbol).info or {}
+            info = getattr(yf.Ticker(symbol), "info", {}) or {}
             company = info.get("longName") or info.get("shortName")
         except Exception:
             company = None
 
         url = "https://newsapi.org/v2/everything"
-        from datetime import datetime, timedelta
         to_dt = datetime.utcnow()
         from_dt = to_dt - timedelta(hours=NEWSAPI_WINDOW_HOURS)
         from_iso = from_dt.isoformat("T") + "Z"
 
         def fetch(params):
             try:
-                resp = requests.get(url, params=params, timeout=10)
-                if not resp.ok:
-                    logging.warning(f"NewsAPI response not OK: {resp.status_code} {resp.text[:200]}")
-                    return []
-                data = resp.json()
-                articles = data.get("articles", []) or []
-                seen = set()
-                uniq = []
-                for a in articles:
-                    title = a.get("title") or a.get("description") or ""
-                    if not title:
-                        continue
-                    key = (a.get("url") or title).strip()
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    uniq.append({
-                        "title": title,
-                        "source": (a.get("source") or {}).get("name") or a.get("source"),
-                        "url": a.get("url")
-                    })
-                return uniq
+                resp = requests.get(url, params=params, timeout=12)
             except Exception as e:
-                logging.warning(f"NewsAPI request failed: {e}")
+                logging.warning(f"NewsAPI request network error for {symbol}: {e}")
                 return []
+            if not resp.ok:
+                logging.warning(f"NewsAPI response not OK for {symbol}: {resp.status_code} {resp.text[:300]}")
+                return []
+            try:
+                data = resp.json()
+            except Exception as e:
+                logging.warning(f"NewsAPI returned non-json for {symbol}: {e}")
+                return []
+            articles = data.get("articles", []) or []
+            out = []
+            seen = set()
+            for a in articles:
+                # robust extraction of title/url/source
+                title = (a.get("title") or a.get("description") or a.get("content") or "").strip()
+                url_ = (a.get("url") or a.get("link") or "").strip()
+                src = ""
+                src_field = a.get("source") or {}
+                if isinstance(src_field, dict):
+                    src = (src_field.get("name") or "").strip()
+                else:
+                    src = str(src_field).strip()
+                # skip completely empty items
+                if not title and not url_:
+                    continue
+                # deduplicate by url or title
+                key = url_ or title
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                out.append({"title": title or "", "source": src or "", "url": url_ or ""})
+            return out
 
-        # prefer company in title, then symbol, then broader query
+        # try queries from specific -> general
         if company:
             params = {
                 "qInTitle": company,
@@ -319,7 +331,7 @@ def get_yf_news(symbol):
         if res:
             return res[:20]
 
-        # fallback broader query
+        # broader fallback
         query_parts = [symbol]
         if company:
             query_parts.append(f'"{company}"')
@@ -333,7 +345,7 @@ def get_yf_news(symbol):
         }
         return fetch(params)[:20]
     except Exception as e:
-        logging.warning(f"NewsAPI-Abfrage fehlgeschlagen für {symbol}: {e}")
+        logging.warning(f"NewsAPI general failure for {symbol}: {e}")
         return []
 
 def build_context_with_yahoo(ticker, kursdaten, news_headlines=None):

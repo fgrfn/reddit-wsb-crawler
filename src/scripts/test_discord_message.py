@@ -42,6 +42,10 @@ try:
     from summarize_ticker import get_yf_price
 except Exception:
     get_yf_price = None
+try:
+    from summarize_ticker import get_yf_news
+except Exception:
+    get_yf_news = None
 
 PICKLE_DIR = Path("data/output/pickle")
 SUMMARY_DIR = Path("data/output/summaries")
@@ -94,6 +98,13 @@ def build_from_real_data(preferred_ticker=None):
             change_percent = p.get("changePercent")
         except Exception:
             price = None
+    # news: try NewsAPI via summarize_ticker.get_yf_news (if available)
+    news = []
+    if get_yf_news:
+        try:
+            news = get_yf_news(ticker) or []
+        except Exception:
+            news = []
     # nennungen: aus result (sum over subreddits) or relevant
     nennungen = 0
     if "relevant" in result and isinstance(result["relevant"], dict):
@@ -111,6 +122,7 @@ def build_from_real_data(preferred_ticker=None):
         "change_percent": change_percent,
         "summary": summary,
         "pickle_name": latest,
+        "news": news,
     }
 
 def main():
@@ -153,6 +165,7 @@ def main():
         change_percent = real["change_percent"] if real["change_percent"] is not None else args.change_percent
         summary = real["summary"] or args.summary
         pickle_name = real.get("pickle_name", "test_payload.pkl")
+        news = real.get("news", [])
     else:
         ticker = args.ticker or "AAPL"
         company = args.company
@@ -162,6 +175,7 @@ def main():
         change_percent = args.change_percent
         summary = args.summary
         pickle_name = "test_payload.pkl"
+        news = []
 
     msg = build_test_message(
         ticker=ticker,
@@ -171,6 +185,7 @@ def main():
         change=change,
         change_percent=change_percent,
         summary=summary,
+        news=news,
         pickle_name=pickle_name,
     )
     print('--- Preview Discord Message ---')
