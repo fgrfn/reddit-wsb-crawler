@@ -132,56 +132,103 @@ def summarize_ticker(ticker, context):
 
 def get_yf_price(symbol):
     import yfinance as yf
+    import time
     try:
         ticker = yf.Ticker(symbol)
         price = None
         currency = None
         change = None
         changePercent = None
+        pre_market = None
+        post_market = None
+        market_state = None
+        change_1h = None
+        change_24h = None
+        change_7d = None
 
-        # 1) Try fast_info (more reliable / lightweight)
+        # fast_info / info
         try:
-            fi = getattr(ticker, 'fast_info', None) or {}
+            fi = getattr(ticker, "fast_info", {}) or {}
             if isinstance(fi, dict):
-                price = fi.get('lastPrice') or fi.get('regularMarketPrice')
-                currency = fi.get('currency')
+                price = fi.get("lastPrice") or fi.get("regularMarketPrice")
+                currency = fi.get("currency")
+                pre_market = fi.get("preMarketPrice") or fi.get("preMarketLastPrice")
+                post_market = fi.get("postMarketPrice") or fi.get("postMarketLastPrice")
         except Exception:
             fi = {}
 
-        # 2) fallback to info
-        if price is None:
-            try:
-                info = ticker.info or {}
-                price = info.get('regularMarketPrice') or info.get('previousClose')
-                currency = currency or info.get('currency', 'USD')
-                change = info.get('regularMarketChange')
-                changePercent = info.get('regularMarketChangePercent')
-            except Exception:
-                info = {}
+        try:
+            info = ticker.info or {}
+            if price is None:
+                price = info.get("regularMarketPrice") or info.get("previousClose")
+            currency = currency or info.get("currency", "USD")
+            change = info.get("regularMarketChange")
+            changePercent = info.get("regularMarketChangePercent")
+            pre_market = pre_market or info.get("preMarketPrice")
+            post_market = post_market or info.get("postMarketPrice")
+            market_state = info.get("marketState") or info.get("market")
+        except Exception:
+            info = {}
 
-        # 3) fallback to history
-        if price is None:
-            try:
-                hist = ticker.history(period='2d')
-                if not hist.empty:
-                    price = float(hist['Close'].iloc[-1])
-                    prev = float(hist['Close'].iloc[-2]) if len(hist) > 1 else None
-                    if prev:
-                        change = price - prev
-                        changePercent = (change / prev) * 100 if prev != 0 else None
-            except Exception:
-                pass
+        # Trends: 1h/24h/7d (best-effort, may be None)
+        try:
+            h1 = ticker.history(period="2h", interval="1m", prepost=True)
+            if not h1.empty and len(h1) > 1:
+                recent = float(h1["Close"].iloc[-1])
+                older = float(h1["Close"].iloc[max(0, len(h1)-61)])
+                change_1h = ((recent - older) / older) * 100 if older != 0 else None
+        except Exception:
+            change_1h = None
+
+        try:
+            h24 = ticker.history(period="2d", interval="15m", prepost=True)
+            if not h24.empty:
+                recent = float(h24["Close"].iloc[-1])
+                older = float(h24["Close"].iloc[0])
+                change_24h = ((recent - older) / older) * 100 if older != 0 else None
+        except Exception:
+            change_24h = None
+
+        try:
+            h7 = ticker.history(period="8d", interval="1d", prepost=True)
+            if not h7.empty:
+                recent = float(h7["Close"].iloc[-1])
+                older = float(h7["Close"].iloc[0])
+                change_7d = ((recent - older) / older) * 100 if older != 0 else None
+        except Exception:
+            change_7d = None
 
         return {
-            'regular': float(price) if price is not None else None,
-            'currency': currency or 'USD',
-            'change': float(change) if change is not None else None,
-            'changePercent': float(changePercent) if changePercent is not None else None,
-            'symbol': symbol,
+            "regular": float(price) if price is not None else None,
+            "currency": currency or "USD",
+            "change": float(change) if change is not None else None,
+            "changePercent": float(changePercent) if changePercent is not None else None,
+            "pre": float(pre_market) if pre_market is not None else None,
+            "post": float(post_market) if post_market is not None else None,
+            "market_state": market_state,
+            "change_1h": float(change_1h) if change_1h is not None else None,
+            "change_24h": float(change_24h) if change_24h is not None else None,
+            "change_7d": float(change_7d) if change_7d is not None else None,
+            "symbol": symbol,
+            "timestamp": time.time(),
         }
     except Exception as e:
+        import logging
         logging.warning(f"Kursdaten-Abfrage für {symbol} fehlgeschlagen: {e}")
-        return {'regular': None, 'currency': 'USD', 'change': None, 'changePercent': None, 'symbol': symbol}
+        return {
+            "regular": None,
+            "currency": "USD",
+            "change": None,
+            "changePercent": None,
+            "pre": None,
+            "post": None,
+            "market_state": None,
+            "change_1h": None,
+            "change_24h": None,
+            "change_7d": None,
+            "symbol": symbol,
+            "timestamp": None,
+        }
 
 def get_yf_news(symbol):
     # Prefer NewsAPI.org when an API key is configured (more reliable headlines)

@@ -84,6 +84,7 @@ def format_discord_message(
 def format_price_block_with_börse(kurs_data, ticker=None):
     if not isinstance(kurs_data, dict):
         return "keine Kursdaten verfügbar"
+    import time
     currency = kurs_data.get("currency", "USD")
     regular = kurs_data.get("regular")
     previous = kurs_data.get("previousClose") or kurs_data.get("previous")
@@ -93,27 +94,23 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     post = kurs_data.get("post")
     timestamp = kurs_data.get("timestamp")
     market_state = kurs_data.get("market_state")
-    # Trends
+    # trends
     t1 = kurs_data.get("change_1h")
     t24 = kurs_data.get("change_24h")
     t7 = kurs_data.get("change_7d")
 
-    # Emoji je nach Kursentwicklung
+    # emoji by change
+    emoji = "❔"
     if change is not None:
         emoji = "📈" if change > 0 else "📉" if change < 0 else "⏸️"
-    else:
-        emoji = "❔"
 
-    # Zeitformat
+    zeit = "unbekannt"
     if timestamp:
         try:
             zeit = time.strftime("%d.%m.%Y %H:%M", time.localtime(timestamp))
         except Exception:
-            zeit = "unbekannt"
-    else:
-        zeit = "unbekannt"
+            pass
 
-    # Hauptkurs
     if regular is not None:
         kurs_str = f"{regular:.2f} {currency} ({change:+.2f} {currency}, {changePercent:+.2f}%) {emoji} [{zeit}]"
     elif previous is not None:
@@ -121,7 +118,6 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     else:
         kurs_str = "keine Kursdaten verfügbar"
 
-    # Pre-/After-Market
     extras = []
     if pre is not None:
         extras.append(f"🌅 Pre-Market: {pre:.2f} {currency}")
@@ -130,11 +126,9 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     if extras:
         kurs_str += " | " + " | ".join(extras)
 
-    # Market state
     if market_state:
         kurs_str += f" | Status: {market_state}"
 
-    # Trends (1h / 24h / 7d)
     def tlabel(v):
         if v is None:
             return None
@@ -151,10 +145,9 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     if trend_parts:
         kurs_str += " | Trends: " + " · ".join(trend_parts)
 
-    # Yahoo-Link (Ticker als Fallback, falls symbol nicht im Kursdict)
     symbol = kurs_data.get("symbol") or ticker or ""
     if symbol:
-        kurs_str += f" | <https://finance.yahoo.com/quote/{symbol}>"
+        kurs_str += f" | https://finance.yahoo.com/quote/{symbol}"
     return kurs_str
 
 def format_tokens(n):
