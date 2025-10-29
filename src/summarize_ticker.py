@@ -241,109 +241,99 @@ def get_yf_price(symbol):
         }
 
 def get_yf_news(symbol):
-    # Prefer NewsAPI.org when an API key is configured (more reliable headlines)
+    # Use NewsAPI.org exclusively when an API key is configured.
     NEWSAPI_KEY = os.getenv("NEWSAPI_KEY") or os.getenv("NEWS_API_KEY")
     NEWSAPI_LANG = os.getenv("NEWSAPI_LANG", "en")
     NEWSAPI_WINDOW_HOURS = int(os.getenv("NEWSAPI_WINDOW_HOURS", "48"))
-    if NEWSAPI_KEY:
-        try:
-            # Try to get a company name from yfinance to improve query
-            company = None
-            try:
-                import yfinance as yf
-                info = yf.Ticker(symbol).info or {}
-                company = info.get("longName") or info.get("shortName")
-            except Exception:
-                company = None
+    if not NEWSAPI_KEY:
+        logging.info("No NEWSAPI_KEY configured — skipping news fetch (NewsAPI only).")
+        return []
 
-            url = "https://newsapi.org/v2/everything"
-            # time window
-            from datetime import datetime, timedelta
-            to_dt = datetime.utcnow()
-            from_dt = to_dt - timedelta(hours=NEWSAPI_WINDOW_HOURS)
-            from_iso = from_dt.isoformat("T") + "Z"
-
-            def fetch(params):
-                try:
-                    resp = requests.get(url, params=params, timeout=10)
-                    if not resp.ok:
-                        return []
-                    data = resp.json()
-                    articles = data.get("articles", [])
-                    headlines = [a.get("title") for a in articles if a.get("title")]
-                    # dedupe
-                    seen = set()
-                    uniq = []
-                    for h in headlines:
-                        if h and h not in seen:
-                            seen.add(h)
-                            uniq.append(h)
-                    return uniq
-                except Exception as e:
-                    logging.warning(f"NewsAPI request failed: {e}")
-                    return []
-
-            # 1) Try company name in title (best signal)
-            if company:
-                params = {
-                    "qInTitle": company,
-                    "language": NEWSAPI_LANG,
-                    "from": from_iso,
-                    "sortBy": "publishedAt",
-                    "pageSize": 20,
-                    "apiKey": NEWSAPI_KEY,
-                }
-                res = fetch(params)
-                if res:
-                    return res[:20]
-
-            # 2) Try symbol in title
-            params = {
-                "qInTitle": symbol,
-                "language": NEWSAPI_LANG,
-                "from": from_iso,
-                "sortBy": "publishedAt",
-                "pageSize": 20,
-                "apiKey": NEWSAPI_KEY,
-            }
-            res = fetch(params)
-            if res:
-                return res[:20]
-
-            # 3) Fallback to broader query (company OR symbol)
-            query_parts = [symbol]
-            if company:
-                query_parts.append(f'"{company}"')
-            query = " OR ".join(query_parts)
-            params = {
-                "q": query,
-                "language": NEWSAPI_LANG,
-                "from": from_iso,
-                "sortBy": "publishedAt",
-                "pageSize": 20,
-                "apiKey": NEWSAPI_KEY,
-            }
-            res = fetch(params)
-            if res:
-                return res[:20]
-        except Exception as e:
-            logging.warning(f"NewsAPI-Abfrage fehlgeschlagen für {symbol}: {e}")
-
-    # Fallback to yfinance news if NewsAPI not configured or fails
-    import yfinance as yf
     try:
-        ticker_obj = yf.Ticker(symbol)
-        news_raw = getattr(ticker_obj, "news", [])[:3]
-        news = []
-        for n in news_raw:
-            news.append({
-                "title": n.get("title", ""),
-                "source": n.get("publisher", ""),
-                "url": n.get("link", "")
-            })
-        return news
+        # Try to get a company name from yfinance to improve query (best-effort, non-fatal)
+        company = None
+        try:
+            import yfinance as yf
+            info = yf.Ticker(symbol).info or {}
+            company = info.get("longName") or info.get("shortName")
+        except Exception:
+            company = None
+
+        url = "https://newsapi.org/v2/everything"
+        from datetime import datetime, timedelta
+        to_dt = datetime.utcnow()
+        from_dt = to_dt - timedelta(hours=NEWSAPI_WINDOW_HOURS)
+        from_iso = from_dt.isoformat("T") + "Z"
+
+        def fetch(params):
+            try:
+                resp = requests.get(url, params=params, timeout=10)
+                if not resp.ok:
+                    logging.warning(f"NewsAPI response not OK: {resp.status_code} {resp.text[:200]}")
+                    return []
+                data = resp.json()
+                articles = data.get("articles", []) or []
+                seen = set()
+                uniq = []
+                for a in articles:
+                    title = a.get("title") or a.get("description") or ""
+                    if not title:
+                        continue
+                    key = (a.get("url") or title).strip()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    uniq.append({
+                        "title": title,
+                        "source": (a.get("source") or {}).get("name") or a.get("source"),
+                        "url": a.get("url")
+                    })
+                return uniq
+            except Exception as e:
+                logging.warning(f"NewsAPI request failed: {e}")
+                return []
+
+        # prefer company in title, then symbol, then broader query
+        if company:
+            params = {
+                "qInTitle": company,
+                "language": NEWSAPI_LANG,
+                "from": from_iso,
+                "sortBy": "publishedAt",
+                "pageSize": 20,
+                "apiKey": NEWSAPI_KEY,
+            }
+            res = fetch(params)
+            if res:
+                return res[:20]
+
+        params = {
+            "qInTitle": symbol,
+            "language": NEWSAPI_LANG,
+            "from": from_iso,
+            "sortBy": "publishedAt",
+            "pageSize": 20,
+            "apiKey": NEWSAPI_KEY,
+        }
+        res = fetch(params)
+        if res:
+            return res[:20]
+
+        # fallback broader query
+        query_parts = [symbol]
+        if company:
+            query_parts.append(f'"{company}"')
+        params = {
+            "q": " OR ".join(query_parts),
+            "language": NEWSAPI_LANG,
+            "from": from_iso,
+            "sortBy": "publishedAt",
+            "pageSize": 20,
+            "apiKey": NEWSAPI_KEY,
+        }
+        return fetch(params)[:20]
     except Exception as e:
-        logging.warning(f"News-Abfrage für {symbol} fehlgeschlagen: {e}")
+        logging.warning(f"NewsAPI-Abfrage fehlgeschlagen für {symbol}: {e}")
         return []
 
 def build_context_with_yahoo(ticker, kursdaten, news_headlines=None):
