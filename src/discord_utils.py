@@ -25,60 +25,59 @@ def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
     next_crawl_time=None
 ):
+    """Kompakte Alarm-Ansicht für Discord: zeigt Top-Ticker mit Kurs, Trends und Pre/Post-Market.
+    Möglichst kurz, damit Alerts sofort ins Auge fallen."""
     platz_emojis = ["🥇", "🥈", "🥉"]
-    next_crawl_str = f"{next_crawl_time}" if next_crawl_time else "unbekannt"
-    warntext = "… [gekürzt wegen Discord-Limit]"
-    maxlen = 2000
+    when = timestamp or "unbekannt"
+    # Schwelle für Hervorhebung (env oder default)
+    try:
+        alert_delta = float(os.getenv("ALERT_MIN_DELTA", "10"))
+    except Exception:
+        alert_delta = 10.0
 
+    lines = []
+    # Minimal-Header (nicht zwingend, aber Zeit kurz anzeigen)
+    lines.append("⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt")
+    lines.append(f"⏰ {when}")
+    lines.append("")  # Leerzeile
+
+    # Top-N (max 3)
     top_n = min(3, len(df_ticker)) if hasattr(df_ticker, '__len__') else 3
-    msg = (
-        f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
-        f"\n"
-        f"🏆 Top {top_n} Ticker:\n"
-    )
-
-    ticker_blocks = []
-    for i, (_, row) in enumerate(df_ticker.head(3).iterrows(), 1):
+    for i, (_, row) in enumerate(df_ticker.head(top_n).iterrows(), 1):
         ticker = row["Ticker"]
         nennungen = row["Nennungen"]
-        diff = nennungen - prev_nennungen.get(ticker, 0)
-        trend = f"▲ (+{diff})" if diff > 0 else f"▼ ({diff})" if diff < 0 else "→ (0)"
-        emoji = platz_emojis[i-1] if i <= 3 else ""
-        kurs = row.get('Kurs')
-        kurs_str = format_price_block_with_börse(kurs, ticker)
+        prev = prev_nennungen.get(ticker, 0)
+        diff = nennungen - prev
+        rank_emoji = platz_emojis[i-1] if i <= 3 else ""
+        # Highlight, wenn Delta groß
+        highlight = " 🚨" if diff >= alert_delta else ""
+        # compact header line
         unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
-        block = (
-            f"\n{emoji} {ticker} - {unternehmen}\n"
-            f"🔢 {nennungen} {trend}\n"
-            f"💵 {kurs_str}\n"
-            f"🧠\n"
-        )
+        lines.append(f"{rank_emoji} {ticker} - {unternehmen}{highlight}")
+        lines.append(f"🔢 Nennungen: {nennungen} (Δ {diff:+d})")
+        # Kursblock
+        kurs = row.get("Kurs") or {}
+        kurs_str = format_price_block_with_börse(kurs, ticker)
+        lines.append(f"💵 {kurs_str}")
+        # kurze Summary (falls vorhanden)
         summary = summary_dict.get(str(ticker).strip().upper())
         if summary:
-            block += summary.strip() + "\n"
-        block += "\n"
-        ticker_blocks.append(block)
+            # nur die ersten ~200 Zeichen der Summary
+            s = summary.strip().replace("\n", " ")
+            if len(s) > 200:
+                s = s[:197].rstrip() + "…"
+            lines.append(f"🧠 {s}")
+        # Trennlinie zwischen Ticker
+        lines.append("---")
 
-    for i, block in enumerate(ticker_blocks):
-        if i < 2:
-            msg += block
-        else:
-            if len(msg) + len(block) > maxlen - len(warntext):
-                split_idx = block.find("🧠 \n")
-                if split_idx != -1:
-                    head = block[:split_idx + len("🧠 \n")]
-                    summary = block[split_idx + len("🧠 \n"):]
-                    allowed = maxlen - len(msg) - len(warntext) - 2
-                    summary = summary[:allowed] + warntext
-                    block = head + summary + "\n\n"
-                else:
-                    block = block[:maxlen - len(msg) - len(warntext)] + warntext
-            msg += block
-            break
+    # Entferne letzte Trennlinie
+    if lines and lines[-1] == "---":
+        lines.pop()
 
-    if len(msg) > 2000:
-        msg = msg[:2000 - len(warntext)] + warntext
-
+    # Baue Nachricht zusammen, achte auf Discord-Limit ~2000 Zeichen
+    msg = "\n".join(lines)
+    if len(msg) > 1900:
+        msg = msg[:1900].rstrip() + "\n… [gekürzt]"
     return msg
 
 def format_price_block_with_börse(kurs_data, ticker=None):
