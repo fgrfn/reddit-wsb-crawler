@@ -115,8 +115,17 @@ def summarize_ticker(ticker, context):
         parts.append(price_part + ".")
     # headlines sentence
     if headlines:
-        top = headlines[:2]
-        parts.append("Aktuelle Headlines: " + " — ".join([h for h in top]) + ".")
+        top = []
+        # headlines may be list of dicts (from get_yf_news) or list of strings (NewsAPI path)
+        for h in headlines[:2]:
+            if isinstance(h, dict):
+                title = h.get("title") or h.get("headline") or ""
+            else:
+                title = str(h)
+            if title:
+                top.append(title)
+        if top:
+            parts.append("Aktuelle Headlines: " + " — ".join(top) + ".")
     # context/reddit sentence
     if ctx_lines:
         top_ctx = " | ".join(ctx_lines[:2])
@@ -124,11 +133,12 @@ def summarize_ticker(ticker, context):
 
     # fallback if nothing collected
     if not parts:
-        return f"Keine Kursdaten oder Nachrichten für {ticker} gefunden."
+        summary_text = f"Keine Kursdaten oder Nachrichten für {ticker} gefunden."
+        return {"summary": summary_text, "news": headlines}
 
     # Build up to 3 short sentences and respect ~400 char limit
-    summary = " ".join(parts)[:400]
-    return summary
+    summary_text = " ".join(parts)[:400]
+    return {"summary": summary_text, "news": headlines}
 
 def get_yf_price(symbol):
     import yfinance as yf
@@ -364,6 +374,7 @@ def main():
         print("Kursdaten:", kursdaten)
         print("KI-Kontext:", context)
         summary = summarize_ticker(ticker, context)
+        # summary is now a dict: {"summary": "...", "news": [...]}
         summaries[ticker] = summary
 
     # 📁 Ergebnisse speichern
@@ -373,7 +384,26 @@ def main():
 
     with open(out_path, "w", encoding="utf-8") as f:
         for ticker, summary in summaries.items():
-            f.write(f"## {ticker}\n{summary}\n\n")
+            # write human-readable summary text; include news headlines below
+            s_text = summary.get("summary") if isinstance(summary, dict) else str(summary)
+            f.write(f"## {ticker}\n{s_text}\n\n")
+            news = summary.get("news") if isinstance(summary, dict) else []
+            if news:
+                f.write("### Headlines\n")
+                for n in news[:5]:
+                    if isinstance(n, dict):
+                        title = n.get("title") or n.get("headline") or ""
+                        url = n.get("url") or n.get("link") or ""
+                        src = n.get("source") or n.get("publisher") or ""
+                        line = f"- {title}"
+                        if src:
+                            line += f" ({src})"
+                        if url:
+                            line += f" | {url}"
+                    else:
+                        line = f"- {str(n)}"
+                    f.write(line + "\n")
+                f.write("\n")
 
     print(f"\n✅ Zusammenfassungen gespeichert unter: {out_path}")
 
