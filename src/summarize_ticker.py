@@ -1,28 +1,36 @@
-import openai
 import os
 import requests
 import pickle
 from dotenv import load_dotenv
 from datetime import datetime
-from collections import defaultdict
+from pathlib import Path
 import logging
 
-openai.api_key = None
-
 def load_env():
-    load_dotenv(dotenv_path="config/.env")
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        raise ValueError("❌ OPENAI_API_KEY fehlt in config/.env")
-    global openai
-    openai.api_key = key
+    # Robust .env loading (relative to this file, fallback to CWD/config/.env)
+    base = Path(__file__).resolve().parent
+    dotenv_path = base / "config" / ".env"
+    if not dotenv_path.exists():
+        alt = Path.cwd() / "config" / ".env"
+        if alt.exists():
+            dotenv_path = alt
+    load_dotenv(dotenv_path=str(dotenv_path))
+    # Ensure at least a basic logging config so warnings/info are visible when run standalone.
+    if not logging.getLogger().handlers:
+        logging.basicConfig(level=logging.INFO)
+    return
 
 def load_latest_pickle():
-    files = sorted(os.listdir("data/output/pickle"), reverse=True)
+    p = Path(__file__).resolve().parent.parent / "data" / "output" / "pickle"
+    if not p.exists() or not p.is_dir():
+        raise FileNotFoundError(f"Kein pickle-Ordner gefunden: {p}")
+    files = sorted([f for f in p.iterdir() if f.suffix == ".pkl"], reverse=True)
     for file in files:
-        if file.endswith(".pkl"):
-            with open(f"data/output/pickle/{file}", "rb") as f:
-                return pickle.load(f), file
+        try:
+            with file.open("rb") as f:
+                return pickle.load(f), file.name
+        except Exception as e:
+            logging.warning(f"Fehler beim Laden {file}: {e}")
     raise FileNotFoundError("Keine .pkl-Dateien gefunden.")
 
 def extract_text(result, ticker):
@@ -64,63 +72,58 @@ def extract_text(result, ticker):
     return "\n".join([t for t in texts if t])
 
 def summarize_ticker(ticker, context):
-    print(f"📄 Sende {ticker}-Kontext an OpenAI ...")
-    # Ensure OpenAI key is present. Try to load if not set and provide a
-    # graceful fallback when OpenAI is not configured.
-    if not openai.api_key:
-        try:
-            load_env()
-        except Exception as e:
-            logging.warning(f"OpenAI nicht konfiguriert: {e} — Summary wird übersprungen.")
-            return f"🛑 OpenAI nicht konfiguriert — Zusammenfassung übersprungen für {ticker}."
-    system_msg = (
-        f"Du bist ein erfahrener Finanzanalyst. Analysiere Kursdaten, Nachrichten und ggf. Reddit-Stimmung zur Aktie {ticker}."
-    )
-    prompt = (
-        f"Fasse die wichtigsten Erkenntnisse zur Aktie {ticker} in maximal 3 Sätzen und höchstens 400 Zeichen zusammen:\n"
-        f"{context}\n\n"
-        f"- Wie hat sich der Kurs von {ticker} zuletzt entwickelt?\n"
-        f"- Gibt es relevante Nachrichten zu {ticker}?\n"
-        f"Falls keine Kursbewegung oder Nachrichten vorliegen, gib eine kurze allgemeine Einschätzung ab."
-        f"Nutze die im Kontext genannten Daten und Headlines zu {ticker} und vermeide Fantasie."
-    )
+    # Hinweis: OpenAI-Aufrufe wurden entfernt — lokale Zusammenfassung (Yahoo/NewsAPI)
+    print(f"📄 Erstelle lokale Zusammenfassung für {ticker} ...")
     try:
-        # Use the newer Chat Completions API if available, but keep a generic
-        # call that works with common OpenAI client versions. Prefer `chat.completions`.
-        response = openai.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "system", "content": system_msg}, {"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=250,
-        )
-        summary = response.choices[0].message.content.strip()
-        # Kosten grob berechnen
-        usage = response.usage
-        input_tokens = usage.prompt_tokens
-        output_tokens = usage.completion_tokens
-        # GPT-4o Preise (Stand Juli 2025, ggf. anpassen!)
-        cost = (input_tokens / 1000 * 0.005) + (output_tokens / 1000 * 0.015)
-        logging.info(f"OpenAI-Kosten für {ticker}: {cost:.4f} USD (Input: {input_tokens}, Output: {output_tokens})")
-        # Separate Kostenstatistik
-        with open("logs/openai_costs.log", "a", encoding="utf-8") as f:
-            f.write(f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens},{ticker}\n")
-        log_crawl = "logs/openai_costs_crawl.log"
-        log_day = "logs/openai_costs_day.log"
-        log_total = "logs/openai_costs_total.log"
+        # Ensure env loaded (for optional NEWSAPI_KEY)
+        load_env()
+    except Exception:
+        pass
 
-        log_entry = f"{datetime.now().isoformat()},COST,{cost:.4f},TOKENS,{input_tokens},{output_tokens},{ticker}\n"
-
-        for log_path in [log_crawl, log_day, log_total]:
-            with open(log_path, "a", encoding="utf-8") as f:
-                f.write(log_entry)
-        if not summary:
-            summary = f"Keine relevanten Kursbewegungen oder Nachrichten zu {ticker} im angegebenen Zeitraum."
-        return summary[:400]
+    # 1) price info (may return None fields)
+    try:
+        price = get_yf_price(ticker)
     except Exception as e:
-        logging.error(f"OpenAI-Fehler für {ticker}: {e}")
-        # Return a short, friendly message so downstream code still has a string
-        # to show instead of completely missing content.
-        return f"❌ OpenAI-Fehler für {ticker}: {str(e)}"
+        logging.warning(f"get_yf_price failed for {ticker}: {e}")
+        price = {'regular': None, 'currency': 'USD', 'change': None, 'changePercent': None}
+
+    # 2) news headlines (prefer NewsAPI if configured, otherwise keep empty)
+    try:
+        headlines = get_yf_news(ticker) or []
+    except Exception as e:
+        logging.warning(f"get_yf_news failed for {ticker}: {e}")
+        headlines = []
+
+    # 3) reddit/context snippets (context param likely from extract_text)
+    ctx_lines = [l.strip() for l in (context or "").splitlines() if l.strip()]
+
+    parts = []
+    # price sentence
+    if price and price.get('regular') is not None:
+        p = price['regular']
+        cur = price.get('currency', 'USD') or 'USD'
+        ch = price.get('change')
+        chp = price.get('changePercent')
+        price_part = f"Kurs: {p:.2f} {cur}"
+        if ch is not None and chp is not None:
+            price_part += f" (Δ {ch:+.2f}, {chp:+.2f}%)"
+        parts.append(price_part + ".")
+    # headlines sentence
+    if headlines:
+        top = headlines[:2]
+        parts.append("Aktuelle Headlines: " + " — ".join([h for h in top]) + ".")
+    # context/reddit sentence
+    if ctx_lines:
+        top_ctx = " | ".join(ctx_lines[:2])
+        parts.append("Reddit/Context: " + top_ctx + ".")
+
+    # fallback if nothing collected
+    if not parts:
+        return f"Keine Kursdaten oder Nachrichten für {ticker} gefunden."
+
+    # Build up to 3 short sentences and respect ~400 char limit
+    summary = " ".join(parts)[:400]
+    return summary
 
 def get_yf_price(symbol):
     import yfinance as yf
