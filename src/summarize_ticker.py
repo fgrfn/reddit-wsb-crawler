@@ -322,24 +322,16 @@ def get_yf_news(symbol):
     # Fallback to yfinance news if NewsAPI not configured or fails
     import yfinance as yf
     try:
-        ticker = yf.Ticker(symbol)
-        news = getattr(ticker, 'news', None) or []
-        headlines = []
-        for item in news:
-            title = item.get('title')
-            if not title:
-                continue
-            related = item.get('relatedTickers') or []
-            if symbol in related:
-                headlines.append(title)
-        if len(headlines) < 5:
-            for item in news:
-                title = item.get('title')
-                if title and title not in headlines:
-                    headlines.append(title)
-                if len(headlines) >= 5:
-                    break
-        return headlines[:20]
+        ticker_obj = yf.Ticker(symbol)
+        news_raw = getattr(ticker_obj, "news", [])[:3]
+        news = []
+        for n in news_raw:
+            news.append({
+                "title": n.get("title", ""),
+                "source": n.get("publisher", ""),
+                "url": n.get("link", "")
+            })
+        return news
     except Exception as e:
         logging.warning(f"News-Abfrage für {symbol} fehlgeschlagen: {e}")
         return []
