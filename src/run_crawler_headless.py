@@ -1,13 +1,5 @@
 import os
-import sys
-import time
-import logging
-import pickle
-import yfinance as yf
-import subprocess
-import concurrent.futures
 from datetime import datetime, timedelta
-
 from pathlib import Path
 from dotenv import load_dotenv
 from discord_utils import send_discord_notification, format_discord_message
@@ -15,9 +7,20 @@ from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
+# Load environment variables from repo-root/config/.env (preferred) or src/config/.env if not present
+env_path = BASE_DIR / "config" / ".env"
+if not env_path.exists():
+    alt = BASE_DIR / "src" / "config" / ".env"
+    if alt.exists():
+        env_path = alt
+try:
+    load_dotenv(dotenv_path=str(env_path))
+    logging.info(f"Loaded .env from {env_path}")
+except Exception:
+    logging.warning("No .env loaded (config/.env not found)")
+
 LOG_PATH = BASE_DIR / "logs" / "crawler.log"
 ARCHIVE_DIR = BASE_DIR / "logs" / "archive"
-ENV_PATH = BASE_DIR / "config" / ".env"
 SYMBOLS_PKL = BASE_DIR / "data" / "input" / "symbols_list.pkl"
 NAME_RESOLVER_SCRIPT = BASE_DIR / "src" / "build_ticker_name_cache.py"
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"

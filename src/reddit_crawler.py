@@ -61,9 +61,9 @@ def fetch_name_with_retry(symbol, retries=3, delay=2):
 def reddit_crawler():
     logger.info("Reddit Crawl gestartet")
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    # Load .env: prefer src/config/.env, fallback to repo-root/config/.env
-    candidate1 = os.path.join(base_dir, "config", ".env")            # src/config/.env
-    candidate2 = os.path.join(base_dir, "..", "config", ".env")      # repo-root/config/.env
+    # Load .env: prefer repo-root/config/.env, fallback to src/config/.env
+    candidate1 = os.path.join(base_dir, "..", "config", ".env")      # repo-root/config/.env (preferred)
+    candidate2 = os.path.join(base_dir, "config", ".env")            # src/config/.env (fallback)
     for p in (candidate1, candidate2):
         if p and os.path.exists(p):
             load_dotenv(p)

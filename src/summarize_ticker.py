@@ -7,13 +7,18 @@ from pathlib import Path
 import logging
 
 def load_env():
-    # Robust .env loading (relative to this file, fallback to CWD/config/.env)
+    # Robust .env loading: prefer repo-root/config/.env, fallback to src/config/.env or CWD/config/.env
     base = Path(__file__).resolve().parent
-    dotenv_path = base / "config" / ".env"
+    repo_root = base.parent
+    dotenv_path = repo_root / "config" / ".env"
     if not dotenv_path.exists():
-        alt = Path.cwd() / "config" / ".env"
+        alt = base / "config" / ".env"
         if alt.exists():
             dotenv_path = alt
+        else:
+            alt2 = Path.cwd() / "config" / ".env"
+            if alt2.exists():
+                dotenv_path = alt2
     load_dotenv(dotenv_path=str(dotenv_path))
     # Ensure at least a basic logging config so warnings/info are visible when run standalone.
     if not logging.getLogger().handlers:
