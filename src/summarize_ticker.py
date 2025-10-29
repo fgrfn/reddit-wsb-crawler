@@ -143,6 +143,7 @@ def summarize_ticker(ticker, context):
 def get_yf_price(symbol):
     import yfinance as yf
     import time
+    import pandas as pd
     try:
         ticker = yf.Ticker(symbol)
         price = None
@@ -172,7 +173,7 @@ def get_yf_price(symbol):
             if price is None:
                 price = info.get("regularMarketPrice") or info.get("previousClose")
             currency = currency or info.get("currency", "USD")
-            change = info.get("regularMarketChange")
+            change = info.get("regularMarketChange") or (price - info.get("previousClose", price) if price is not None else None)
             changePercent = info.get("regularMarketChangePercent")
             pre_market = pre_market or info.get("preMarketPrice")
             post_market = post_market or info.get("postMarketPrice")
@@ -180,31 +181,53 @@ def get_yf_price(symbol):
         except Exception:
             info = {}
 
-        # Trends: 1h/24h/7d (best-effort, may be None)
+        # history to compute trends - use allowed periods
         try:
-            h1 = ticker.history(period="2h", interval="1m", prepost=True)
-            if not h1.empty and len(h1) > 1:
-                recent = float(h1["Close"].iloc[-1])
-                older = float(h1["Close"].iloc[max(0, len(h1)-61)])
-                change_1h = ((recent - older) / older) * 100 if older != 0 else None
+            # 1h: use last trading day with 1m interval and find ~1h-ago point
+            hist_1d = ticker.history(period="1d", interval="1m", prepost=True)
+            if not hist_1d.empty and price is not None:
+                recent = float(hist_1d["Close"].iloc[-1])
+                # find row closest to now - 1 hour
+                tz_index = hist_1d.index
+                cutoff = tz_index[-1] - pd.Timedelta(hours=1)
+                try:
+                    idx = tz_index.get_indexer([cutoff], method="nearest")[0]
+                    older = float(hist_1d["Close"].iloc[idx])
+                    change_1h = ((recent - older) / older) * 100 if older != 0 else None
+                except Exception:
+                    change_1h = None
         except Exception:
             change_1h = None
 
         try:
-            h24 = ticker.history(period="2d", interval="15m", prepost=True)
-            if not h24.empty:
-                recent = float(h24["Close"].iloc[-1])
-                older = float(h24["Close"].iloc[0])
-                change_24h = ((recent - older) / older) * 100 if older != 0 else None
+            # 24h: use 5d with 15m to have sufficient history, then pick point ~24h ago
+            hist_5d = ticker.history(period="5d", interval="15m", prepost=True)
+            if not hist_5d.empty:
+                recent = float(hist_5d["Close"].iloc[-1])
+                tz_index = hist_5d.index
+                cutoff = tz_index[-1] - pd.Timedelta(hours=24)
+                try:
+                    idx = tz_index.get_indexer([cutoff], method="nearest")[0]
+                    older = float(hist_5d["Close"].iloc[idx])
+                    change_24h = ((recent - older) / older) * 100 if older != 0 else None
+                except Exception:
+                    change_24h = None
         except Exception:
             change_24h = None
 
         try:
-            h7 = ticker.history(period="8d", interval="1d", prepost=True)
-            if not h7.empty:
-                recent = float(h7["Close"].iloc[-1])
-                older = float(h7["Close"].iloc[0])
-                change_7d = ((recent - older) / older) * 100 if older != 0 else None
+            # 7d: use 1mo daily to compute weekly change
+            hist_1mo = ticker.history(period="1mo", interval="1d", prepost=True)
+            if not hist_1mo.empty and len(hist_1mo) >= 2:
+                recent = float(hist_1mo["Close"].iloc[-1])
+                tz_index = hist_1mo.index
+                cutoff = tz_index[-1] - pd.Timedelta(days=7)
+                try:
+                    idx = tz_index.get_indexer([cutoff], method="nearest")[0]
+                    older = float(hist_1mo["Close"].iloc[idx])
+                    change_7d = ((recent - older) / older) * 100 if older != 0 else None
+                except Exception:
+                    change_7d = None
         except Exception:
             change_7d = None
 

@@ -202,23 +202,25 @@ def build_test_message(
     change_1h: float | None = None,
     change_24h: float | None = None,
     change_7d: float | None = None,
-     pickle_name: str = "test_payload.pkl",
-     timestamp: str = None,
-     timestamp_unix: float = None,
-     next_crawl_time: str = "unbekannt",
+    # optional news items for preview: list[dict] with keys title/source/url
+    news: list | None = None,
+    pickle_name: str = "test_payload.pkl",
+    timestamp: str = None,
+    timestamp_unix: float = None,
+    next_crawl_time: str = "unbekannt",
     openai_cost_crawl: float = 0.0,
 ):
     """Build a preview Discord message (string) using the existing formatter.
-
-    Returns the rendered message string (does not send).
-    """
-    if timestamp is None:
-        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
-
+ 
+     Returns the rendered message string (does not send).
+     """
+     if timestamp is None:
+         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
+ 
     # provide a unix timestamp for price block display if not provided
-    if timestamp_unix is None:
-        timestamp_unix = time.time()
-
+     if timestamp_unix is None:
+         timestamp_unix = time.time()
+ 
     # Build a small DataFrame similar to what the crawler produces
     # try to resolve company name if not explicitly provided
     if company in (None, '', 'Test Company GmbH'):
@@ -250,7 +252,8 @@ def build_test_message(
 
     prev_nennungen = {ticker: max(0, nennungen - 5)}
     name_map = {ticker: company}
-    summary_dict = {ticker: summary}
+    # provide summary as dict with optional news so formatter shows headlines
+    summary_dict = {ticker: {"summary": summary, "news": news or []}}
 
     msg = format_discord_message(
         pickle_name=pickle_name,
