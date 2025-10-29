@@ -38,6 +38,9 @@ def format_discord_message(
     lines = []
     # Minimal-Header (nicht zwingend, aber Zeit kurz anzeigen)
     lines.append("⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt")
+    # include pickle name (like before) for traceability
+    if pickle_name:
+        lines.append(f"💾 {pickle_name}")
     lines.append(f"⏰ {when}")
     lines.append("")  # Leerzeile
 
@@ -59,14 +62,40 @@ def format_discord_message(
         kurs = row.get("Kurs") or {}
         kurs_str = format_price_block_with_börse(kurs, ticker)
         lines.append(f"💵 {kurs_str}")
-        # kurze Summary (falls vorhanden)
-        summary = summary_dict.get(str(ticker).strip().upper())
-        if summary:
-            # nur die ersten ~200 Zeichen der Summary
-            s = summary.strip().replace("\n", " ")
-            if len(s) > 200:
-                s = s[:197].rstrip() + "…"
-            lines.append(f"🧠 {s}")
+        # kurze Summary + News (falls vorhanden)
+        entry = summary_dict.get(str(ticker).strip().upper())
+        if entry:
+            # entry kann entweder ein String (legacy) oder ein Dict sein
+            if isinstance(entry, dict):
+                summ = entry.get("summary", "") or ""
+                news = entry.get("news", []) or []
+            else:
+                summ = str(entry)
+                news = []
+
+            # Summary (kurz)
+            if summ:
+                s = summ.strip().replace("\n", " ")
+                if len(s) > 200:
+                    s = s[:197].rstrip() + "…"
+                lines.append(f"🧠 {s}")
+
+            # News-Headlines (max 3) — kurz, mit Quelle/URL
+            if news:
+                max_head = 3
+                for art in news[:max_head]:
+                    title = art.get("title") or art.get("headline") or ""
+                    src = art.get("source") or art.get("source_name") or ""
+                    url = art.get("url") or art.get("link") or ""
+                    # kurze einzeilige Darstellung
+                    short = title
+                    if len(short) > 140:
+                        short = short[:137].rstrip() + "…"
+                    if src:
+                        short = f"{short} ({src})"
+                    if url:
+                        short = f"{short} | {url}"
+                    lines.append(f"📰 {short}")
         # Trennlinie zwischen Ticker
         lines.append("---")
 
