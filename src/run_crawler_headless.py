@@ -1,21 +1,42 @@
 import os
+import sys
+import time
+import pickle
+import subprocess
+import logging
+import yfinance as yf
+import concurrent.futures
 from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Ensure imports of local modules work regardless of CWD
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+SRC_DIR = REPO_ROOT / "src"
+sys.path.insert(0, str(SRC_DIR))
+sys.path.insert(0, str(REPO_ROOT))
+
 from discord_utils import send_discord_notification, format_discord_message
 from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_news, extract_text
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = REPO_ROOT
 os.chdir(BASE_DIR)
-# Load environment variables from repo-root/config/.env (preferred) or src/config/.env if not present
+
+# Load environment variables from repo-root/config/.env (preferred) or src/config/.env if present
 env_path = BASE_DIR / "config" / ".env"
 if not env_path.exists():
     alt = BASE_DIR / "src" / "config" / ".env"
     if alt.exists():
         env_path = alt
+ENV_PATH = str(env_path) if env_path.exists() else None
 try:
-    load_dotenv(dotenv_path=str(env_path))
-    logging.info(f"Loaded .env from {env_path}")
+    if ENV_PATH:
+        load_dotenv(dotenv_path=ENV_PATH)
+        logging.info(f"Loaded .env from {ENV_PATH}")
+    else:
+        load_dotenv()  # fallback: default behaviour (env or .env in CWD)
+        logging.info("No explicit config/.env found — loaded defaults if present")
 except Exception:
     logging.warning("No .env loaded (config/.env not found)")
 
