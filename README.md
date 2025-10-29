@@ -124,6 +124,3 @@ PY
 
 ## Lizenz
 MIT — passe bei Bedarf an.
-
----
-Bei Bedarf lege ich die README als Datei an (commit) oder ergänze ein `config/.env.example`. Sag kurz, welche Ergänzung du bevorzugst.
