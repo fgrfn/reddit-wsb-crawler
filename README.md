@@ -123,4 +123,5 @@ PY
   - Erhöhe `ALERT_COOLDOWN_H`, `ALERT_MIN_ABS`, `ALERT_MIN_DELTA` oder senke `ALERT_MAX_PER_RUN`.
 
 ## Lizenz
-MIT — passe bei Bedarf an.
+MIT
+
