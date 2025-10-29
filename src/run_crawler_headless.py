@@ -10,8 +10,8 @@ from datetime import datetime, timedelta
 
 from pathlib import Path
 from dotenv import load_dotenv
-from discord_utils import send_discord_notification, get_discord_legend, format_discord_message
-from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_news
+from discord_utils import send_discord_notification, format_discord_message
+from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_news, extract_text
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 os.chdir(BASE_DIR)
@@ -82,6 +82,33 @@ def load_stats(stats_path):
     with open(stats_path, "rb") as f:
         data = pickle.load(f)
         return data.get("nennungen", {}), data.get("kurs", {})
+
+
+def check_triggers(aktuelle_nennungen, stats_path=STATS_PATH, alert_ratio=2.0, alert_min_delta=10, alert_min_abs=20):
+    """Prüft, welche Ticker die Alert-Kriterien erfüllen.
+
+    Returns: list of tuples (ticker, prev, curr, delta)
+    """
+    try:
+        baseline_prev_nennungen, _ = load_stats(stats_path)
+    except Exception:
+        baseline_prev_nennungen = {}
+
+    triggered = []
+    for ticker, curr in aktuelle_nennungen.items():
+        try:
+            curr_i = int(curr)
+        except Exception:
+            continue
+        prev = int(baseline_prev_nennungen.get(ticker, 0))
+        delta = curr_i - prev
+        if prev == 0:
+            if curr_i >= alert_min_abs:
+                triggered.append((ticker, prev, curr_i, delta))
+        else:
+            if delta >= alert_min_delta and curr_i >= prev * alert_ratio:
+                triggered.append((ticker, prev, curr_i, delta))
+    return triggered
 
 def get_today_openai_stats():
     from datetime import datetime
@@ -345,7 +372,14 @@ def main():
         for ticker in top5_ticker:
             kursdaten = get_yf_price(ticker)
             news = get_yf_news(ticker)
+            # Build context including Yahoo data, news and snippets from Reddit picks
             context = build_context_with_yahoo(ticker, kursdaten, news)
+            try:
+                reddit_ctx = extract_text(result, ticker)
+            except Exception:
+                reddit_ctx = ""
+            if reddit_ctx:
+                context = context + "\n\nReddit-Diskussion:\n" + reddit_ctx
             summary = summarize_ticker(ticker, context)
             summary_dict[ticker] = summary
 
@@ -402,13 +436,45 @@ def main():
         # Kosten an die Nachricht anhängen
         #msg += f"\n{kosten_str}"
 
-        # Nachricht 1: Crawl-Info, Top 3, Zusammenfassungen, Kosten
-        send_discord_notification(msg)
-        # Nachricht 2: Legende
-        legend = get_discord_legend()
-        send_discord_notification(legend)
-        # Logging wie gehabt
-        logger.info("Discord-Benachrichtigung gesendet!")
+        # Nur bei signifikantem Anstieg Benachrichtigung senden
+        ALERT_RATIO = float(os.getenv("ALERT_RATIO", "2.0"))
+        ALERT_MIN_DELTA = int(os.getenv("ALERT_MIN_DELTA", "10"))
+        ALERT_MIN_ABS = int(os.getenv("ALERT_MIN_ABS", "20"))
+
+        triggered = check_triggers(
+            aktuelle_nennungen,
+            stats_path=STATS_PATH,
+            alert_ratio=ALERT_RATIO,
+            alert_min_delta=ALERT_MIN_DELTA,
+            alert_min_abs=ALERT_MIN_ABS,
+        )
+
+        if triggered:
+            tickers_str = ", ".join([t[0] for t in triggered])
+            logger.info(f"Signifikante Erhöhungen entdeckt: {tickers_str} — sende Discord-Benachrichtigung.")
+            # Nur Top-1 Ticker in der Benachrichtigung zeigen
+            df_top1 = df_ticker.head(1).copy()
+            msg_top1 = format_discord_message(
+                pickle_name=latest_pickle,
+                timestamp=timestamp,
+                df_ticker=df_top1,
+                prev_nennungen=prev_nennungen,
+                name_map=name_map,
+                summary_dict=summary_dict,
+                next_crawl_time=next_crawl_time,
+                openai_cost_crawl=crawl_cost,
+                openai_tokens_crawl=(crawl_input, crawl_output),
+                openai_cost_day=day_cost,
+                openai_tokens_day=(day_input, day_output),
+                openai_cost_total=total_cost,
+                openai_tokens_total=(total_input, total_output)
+            )
+            # Nur die Top-1 Nachricht senden (Legende weggelassen)
+            send_discord_notification(msg_top1)
+            logger.info("Discord-Benachrichtigung gesendet!")
+        else:
+            logger.info("Keine signifikanten Nennungsanstiege — Discord-Benachrichtigung übersprungen.")
+
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e} (next_crawl_time: {next_crawl_time if 'next_crawl_time' in locals() else 'unbekannt'})")

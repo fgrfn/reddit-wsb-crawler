@@ -2,7 +2,9 @@ import os
 import requests
 import logging
 import time
+from pathlib import Path
 from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for
+import pandas as pd
 
 def send_discord_notification(message, webhook_url=None):
     if webhook_url is None:
@@ -45,11 +47,12 @@ def format_discord_message(
         if openai_tokens_total:
             kosten_str += f" (I: {format_tokens(openai_tokens_total[0])} / O: {format_tokens(openai_tokens_total[1])} Tokens)"
 
+    top_n = min(3, len(df_ticker)) if hasattr(df_ticker, '__len__') else 3
     msg = (
         f"🕷️ Crawl abgeschlossen! 💾 {pickle_name} 🕒 {timestamp} ⏰ {next_crawl_str}\n"
         f"💸 {kosten_str}\n"
         f"\n"
-        f"🏆 Top 3 Ticker:\n"
+        f"🏆 Top {top_n} Ticker:\n"
     )
 
     ticker_blocks = []
@@ -141,13 +144,11 @@ def format_price_block_with_börse(kurs_data, ticker=None):
     return kurs_str
 
 def get_discord_legend():
-    return (
-        "\n"
-        "Legende:\n"
-        "🔢 = Nennungen in Subreddits 🧠 = KI Zusammenfassungen\n"
-        "💵 Kurs = letzter Börsenkurs 🌅 Pre-Market = vorbörslich 🌙 After-Market = nachbörslich\n"
-        "💵 Kurs (+X.XX USD, +Y.YY%) = Veränderung zum Vortag | 📈 = gestiegen | 📉 = gefallen | ⏸️ = unverändert"
-    )
+    # Legende wird nicht mehr per Discord gesendet. Diese Funktion bleibt als
+    # kompatibler Stub zurück, falls andere Module sie importieren.
+    # Sie liefert einen leeren String, sodass keine zusätzliche Nachricht
+    # angehängt wird.
+    return ""
 
 def format_tokens(n):
     if n >= 1_000_000:
@@ -156,3 +157,83 @@ def format_tokens(n):
         return f"{n/1_000:.1f}k"
     else:
         return str(n)
+
+
+def build_test_message(
+    ticker: str = "TEST",
+    nennungen: int = 42,
+    company: str = "Test Company GmbH",
+    price: float = 12.34,
+    change: float = 0.56,
+    change_percent: float = 4.75,
+    summary: str = "Das ist eine Test-Zusammenfassung.",
+    pickle_name: str = "test_payload.pkl",
+    timestamp: str = None,
+    timestamp_unix: float = None,
+    next_crawl_time: str = "unbekannt",
+    openai_cost_crawl: float = 0.0,
+):
+    """Build a preview Discord message (string) using the existing formatter.
+
+    Returns the rendered message string (does not send).
+    """
+    if timestamp is None:
+        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
+
+    # provide a unix timestamp for price block display if not provided
+    if timestamp_unix is None:
+        timestamp_unix = time.time()
+
+    # Build a small DataFrame similar to what the crawler produces
+    # try to resolve company name if not explicitly provided
+    if company in (None, '', 'Test Company GmbH'):
+        try:
+            name_map = load_ticker_names(Path('data/input/ticker_name_map.pkl'))
+            company = name_map.get(ticker, company)
+        except Exception:
+            pass
+    # fallback to ticker if no company name could be resolved
+    if not company:
+        company = str(ticker)
+
+    df = pd.DataFrame([
+        {"Ticker": ticker, "Unternehmen": company, "Nennungen": nennungen, "Kurs": {
+            "regular": price,
+            "currency": "USD",
+            "change": change,
+            "changePercent": change_percent,
+            "symbol": ticker,
+            "timestamp": timestamp_unix,
+        }}
+    ])
+
+    prev_nennungen = {ticker: max(0, nennungen - 5)}
+    name_map = {ticker: company}
+    summary_dict = {ticker: summary}
+
+    msg = format_discord_message(
+        pickle_name=pickle_name,
+        timestamp=timestamp,
+        df_ticker=df,
+        prev_nennungen=prev_nennungen,
+        name_map=name_map,
+        summary_dict=summary_dict,
+        next_crawl_time=next_crawl_time,
+        openai_cost_crawl=openai_cost_crawl,
+        openai_tokens_crawl=(0, 0),
+        openai_cost_day=None,
+        openai_tokens_day=None,
+        openai_cost_total=None,
+        openai_tokens_total=None,
+    )
+    return msg
+
+
+def send_test_notification(webhook_url: str = None, **kwargs) -> bool:
+    """Build and send a test notification to the configured webhook (or given URL).
+
+    Returns True on success, False on failure.
+    """
+    msg = build_test_message(**kwargs)
+    return send_discord_notification(msg, webhook_url=webhook_url)
+
