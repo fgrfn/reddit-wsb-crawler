@@ -211,27 +211,18 @@ def build_test_message(
     openai_cost_crawl: float = 0.0,
 ):
     """Build a preview Discord message (string) using the existing formatter.
- 
-     Returns the rendered message string (does not send).
-     """
-     if timestamp is None:
-         timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
- 
+
+    Returns the rendered message string (does not send).
+    """
+    import time
+    import pandas as pd
+
+    if timestamp is None:
+        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
+
     # provide a unix timestamp for price block display if not provided
-     if timestamp_unix is None:
-         timestamp_unix = time.time()
- 
-    # Build a small DataFrame similar to what the crawler produces
-    # try to resolve company name if not explicitly provided
-    if company in (None, '', 'Test Company GmbH'):
-        try:
-            name_map = load_ticker_names(Path('data/input/ticker_name_map.pkl'))
-            company = name_map.get(ticker, company)
-        except Exception:
-            pass
-    # fallback to ticker if no company name could be resolved
-    if not company:
-        company = str(ticker)
+    if timestamp_unix is None:
+        timestamp_unix = time.time()
 
     df = pd.DataFrame([
         {"Ticker": ticker, "Unternehmen": company, "Nennungen": nennungen, "Kurs": {
