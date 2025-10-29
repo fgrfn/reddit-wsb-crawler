@@ -143,13 +143,6 @@ def format_price_block_with_börse(kurs_data, ticker=None):
         kurs_str += f" | <https://finance.yahoo.com/quote/{symbol}>"
     return kurs_str
 
-def get_discord_legend():
-    # Legende wird nicht mehr per Discord gesendet. Diese Funktion bleibt als
-    # kompatibler Stub zurück, falls andere Module sie importieren.
-    # Sie liefert einen leeren String, sodass keine zusätzliche Nachricht
-    # angehängt wird.
-    return ""
-
 def format_tokens(n):
     if n >= 1_000_000:
         return f"{n/1_000_000:.1f}M"
