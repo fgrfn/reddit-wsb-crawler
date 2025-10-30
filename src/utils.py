@@ -111,3 +111,6 @@ def load_tickerlist():
     if not TICKER_CSV.exists():
         return download_and_clean_tickerlist()
     return pd.read_csv(TICKER_CSV)
+
+# Kompatibilitäts‑Wrapper: importiere alle Hilfsfunktionen aus ticker_data
+from ticker_data import *
