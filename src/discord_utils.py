@@ -21,6 +21,106 @@ def send_discord_notification(message, webhook_url=None):
         logging.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
+def send_or_edit_discord_message(message, webhook_url=None, message_id=None):
+    """Sendet eine neue Nachricht oder editiert eine bestehende.
+    
+    Args:
+        message: Nachrichtentext
+        webhook_url: Discord Webhook URL (optional, nutzt ENV wenn None)
+        message_id: ID der zu editierenden Nachricht (optional)
+    
+    Returns:
+        dict mit {"success": bool, "message_id": str} oder None bei Fehler
+    """
+    if webhook_url is None:
+        webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
+    if not webhook_url:
+        logging.warning("Kein Discord-Webhook-URL gesetzt.")
+        return None
+    
+    try:
+        data = {"content": message}
+        
+        if message_id:
+            # Editiere bestehende Nachricht
+            # Format: https://discord.com/api/webhooks/WEBHOOK_ID/TOKEN/messages/MESSAGE_ID
+            edit_url = f"{webhook_url}/messages/{message_id}"
+            response = requests.patch(edit_url, json=data, timeout=10)
+        else:
+            # Sende neue Nachricht mit ?wait=true um message_id zu erhalten
+            response = requests.post(f"{webhook_url}?wait=true", json=data, timeout=10)
+        
+        response.raise_for_status()
+        
+        if not message_id and response.status_code == 200:
+            # Bei neuer Nachricht: ID aus Response extrahieren
+            response_data = response.json()
+            new_message_id = response_data.get("id")
+            return {"success": True, "message_id": new_message_id}
+        
+        return {"success": True, "message_id": message_id}
+    
+    except Exception as e:
+        logging.error(f"❌ Discord-Nachricht fehlgeschlagen: {e}")
+        return None
+
+def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_crawl_time="unbekannt", triggered_count=0):
+    """Erstellt eine kompakte Heartbeat/Status-Nachricht.
+    
+    Args:
+        timestamp: Zeitstempel des Crawls
+        run_id: Run-ID (z.B. "251210-143022")
+        total_posts: Anzahl überprüfter Posts
+        top_tickers: Liste von (ticker, count) Tupeln
+        next_crawl_time: Nächster geplanter Crawl
+        triggered_count: Anzahl ausgelöster Alerts
+    """
+    import time
+    from datetime import datetime
+    
+    # Berechne "vor X Minuten"
+    try:
+        # Parse timestamp (Format: "dd.mm.yyyy HH:MM:SS")
+        dt = datetime.strptime(timestamp, "%d.%m.%Y %H:%M:%S")
+        diff_seconds = (datetime.now() - dt).total_seconds()
+        
+        if diff_seconds < 60:
+            time_ago = "vor wenigen Sekunden"
+            status_emoji = "🟢"
+        elif diff_seconds < 3600:
+            mins = int(diff_seconds / 60)
+            time_ago = f"vor {mins} Minute{'n' if mins != 1 else ''}"
+            status_emoji = "🟢" if mins < 30 else "🟡"
+        elif diff_seconds < 86400:
+            hours = int(diff_seconds / 3600)
+            time_ago = f"vor {hours} Stunde{'n' if hours != 1 else ''}"
+            status_emoji = "🟡" if hours < 6 else "🔴"
+        else:
+            days = int(diff_seconds / 86400)
+            time_ago = f"vor {days} Tag{'en' if days != 1 else ''}"
+            status_emoji = "🔴"
+    except Exception:
+        time_ago = ""
+        status_emoji = "💚"
+    
+    lines = []
+    lines.append(f"{status_emoji} **WSB-Crawler Status**")
+    lines.append(f"🕐 Letzter Crawl: {timestamp}{(' (' + time_ago + ')') if time_ago else ''}")
+    lines.append(f"📊 Posts überprüft: {total_posts}")
+    lines.append(f"🔔 Alerts ausgelöst: {triggered_count}")
+    
+    if next_crawl_time and next_crawl_time != "unbekannt":
+        lines.append(f"⏭️ Nächster Crawl: {next_crawl_time}")
+    
+    if top_tickers:
+        lines.append("\n**Top 5 Erwähnungen:**")
+        for i, (ticker, count) in enumerate(top_tickers[:5], 1):
+            lines.append(f"{i}. {ticker}: {count}")
+    
+    lines.append(f"\n🆔 Run-ID: `{run_id}`")
+    
+    return "\n".join(lines)
+
 def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
     next_crawl_time=None, **kwargs

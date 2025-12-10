@@ -17,7 +17,7 @@ SRC_DIR = REPO_ROOT / "src"
 sys.path.insert(0, str(SRC_DIR))
 sys.path.insert(0, str(REPO_ROOT))
 
-from discord_utils import send_discord_notification, format_discord_message
+from discord_utils import send_discord_notification, format_discord_message, send_or_edit_discord_message, format_heartbeat_message
 from summarize_ticker import summarize_ticker, build_context_with_yahoo, get_yf_news, extract_text
 
 BASE_DIR = REPO_ROOT
@@ -48,6 +48,7 @@ PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
 TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
 STATS_PATH = BASE_DIR / "data" / "output" / "ticker_stats.pkl"  # <--- NEU
+HEARTBEAT_STATE_PATH = BASE_DIR / "data" / "state" / "heartbeat.json"  # <--- Heartbeat Message-ID
 
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
@@ -498,6 +499,44 @@ def main():
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.info("Keine signifikanten Nennungsanstiege — Discord-Benachrichtigung übersprungen.")
+        
+        # Status-Nachricht editieren (kein Ping, nur stille Aktualisierung)
+        status_update = os.getenv("DISCORD_STATUS_UPDATE", "true").lower() in ("true", "1", "yes")
+        if status_update:
+            try:
+                import json
+                top_tickers_list = [(row["Ticker"], row["Nennungen"]) for _, row in df_ticker.head(5).iterrows()]
+                status_msg = format_heartbeat_message(
+                    timestamp=timestamp,
+                    run_id=result.get("run_id", "unknown"),
+                    total_posts=result.get("total_posts", 0),
+                    top_tickers=top_tickers_list,
+                    next_crawl_time=next_crawl_time,
+                    triggered_count=len(triggered)
+                )
+                
+                # Lade gespeicherte Message-ID
+                status_id = None
+                if HEARTBEAT_STATE_PATH.exists():
+                    try:
+                        with open(HEARTBEAT_STATE_PATH, "r") as f:
+                            state = json.load(f)
+                            status_id = state.get("message_id")
+                    except Exception:
+                        pass
+                
+                result_status = send_or_edit_discord_message(status_msg, message_id=status_id)
+                
+                if result_status and result_status.get("success"):
+                    # Speichere neue Message-ID
+                    new_id = result_status.get("message_id")
+                    if new_id:
+                        HEARTBEAT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+                        with open(HEARTBEAT_STATE_PATH, "w") as f:
+                            json.dump({"message_id": new_id, "last_update": timestamp}, f)
+                    logger.info(f"Status-Nachricht {'editiert' if status_id else 'erstellt'} (kein Ping).")
+            except Exception as e:
+                logger.warning(f"Fehler beim Aktualisieren der Status-Nachricht: {e}")
 
         archive_log(LOG_PATH, ARCHIVE_DIR)
     except Exception as e:
