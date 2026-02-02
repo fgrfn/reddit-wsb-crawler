@@ -3,6 +3,9 @@
 
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 echo "🚀 WSB-Crawler Setup"
 echo "===================="
 echo ""
@@ -14,13 +17,19 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null; then
+# Check if Docker is running
+if ! docker info &> /dev/null; then
+    echo "❌ Docker läuft nicht. Bitte starte Docker und versuche es erneut."
+    exit 1
+fi
+
+if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
     echo "❌ Docker Compose ist nicht installiert. Bitte installiere Docker Compose erst:"
     echo "   https://docs.docker.com/compose/install/"
     exit 1
 fi
 
-echo "✅ Docker gefunden"
+echo "✅ Docker gefunden und läuft"
 echo ""
 
 # Check if config/.env exists
@@ -60,16 +69,15 @@ echo ""
 echo "Nächste Schritte:"
 echo "=================="
 echo ""
-echo "1. Einmaliger Test-Crawl:"
-echo "   docker-compose up"
+echo "📝 1. Bearbeite config/.env und trage deine API-Keys ein"
 echo ""
-echo "2. Mit Scheduler (stündliche Crawls im Hintergrund):"
-echo "   docker-compose --profile scheduler up -d"
+echo "🚀 2. Starte den Crawler mit:"
+echo "   ./start.sh"
 echo ""
-echo "3. Logs anzeigen:"
-echo "   docker-compose logs -f"
+echo "   Oder manuell:"
+echo "   - Einmaliger Crawl:    docker-compose up"
+echo "   - Mit Scheduler:       docker-compose --profile scheduler up -d"
+echo "   - Logs anzeigen:       docker-compose logs -f"
+echo "   - Stoppen:             docker-compose down"
 echo ""
-echo "4. Stoppen:"
-echo "   docker-compose down"
-echo ""
-echo "📚 Mehr Infos: siehe DOCKER.md"
+echo "📚 Mehr Infos: siehe README.md und DOCKER.md"
