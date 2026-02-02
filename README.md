@@ -1,8 +1,8 @@
 <div align="center">
 
-<img src="logo.png" alt="WSB-Crawler Logo" width="200"/>
+<img src="logo.png" alt="WSB-Crawler Logo" width="400"/>
 
-# 🚀 WSB-Crawler
+# WSB-Crawler
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://github.com/fgrfn/reddit-wsb-crawler/pkgs/container/reddit-wsb-crawler)
