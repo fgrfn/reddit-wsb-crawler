@@ -279,12 +279,12 @@ def main():
         name_map = load_ticker_names(TICKER_NAME_PATH)
         df_rows = []
         for subreddit, srdata in result.get("subreddits", {}).items():
-            for symbol, count in srdata["symbol_hits"].items():
+            for symbol, count in srdata.get("symbol_hits", {}).items():
                 df_rows.append({
                     "Ticker": symbol,
                     "Subreddit": subreddit,
                     "Nennungen": count,
-                    "Kurs": srdata.get("price", {}).get(symbol),
+                    "Kurs": None,  # Kurse werden später separat geladen
                 })
         df = pd.DataFrame(df_rows)
         df["Unternehmen"] = df["Ticker"].map(name_map)
@@ -463,6 +463,11 @@ def get_next_systemd_run(timer_name: str = "reddit_crawler.timer") -> str:
     Returns:
         str: Formatierter Zeitstempel oder "unbekannt"
     """
+    # In Docker-Containern ist systemctl nicht verfügbar
+    import shutil
+    if not shutil.which("systemctl"):
+        return "unbekannt (Docker)"
+    
     try:
         result = subprocess.run(
             ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],

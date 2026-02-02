@@ -55,7 +55,7 @@ def download_and_clean_tickerlist() -> pd.DataFrame:
         logger.info(f"NYSE: {len(nyse)} Einträge geladen.")
     else:
         nyse = pd.DataFrame(columns=["Symbol", "Security Name", "Exchange"])
-        logger.warning("⚠️ Keine NYSE-Liste gefunden!")
+        logger.info("ℹ️ Keine NYSE-Liste gefunden (optional, wird übersprungen)")
 
     # Deutschland/Europa laden (lokale Datei)
     if DE_LOCAL.exists():
@@ -79,7 +79,7 @@ def download_and_clean_tickerlist() -> pd.DataFrame:
             de = pd.DataFrame(columns=["Symbol", "Security Name", "Exchange"])
     else:
         de = pd.DataFrame(columns=["Symbol", "Security Name", "Exchange"])
-        logger.warning("⚠️ Keine DE/EU-Liste gefunden!")
+        logger.info("ℹ️ Keine DE/EU-Liste gefunden (optional, wird übersprungen)")
 
     # NYSE: Exchange-Spalte ergänzen, falls Datei nicht existiert
     if not NYSE_LOCAL.exists():
