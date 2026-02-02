@@ -424,31 +424,6 @@ python src/check_ticker_mentions.py
 
 ---
 
-## 🤝 Contributing
-
-Beiträge sind willkommen! So kannst du helfen:
-
-### Pull Request erstellen
-
-1. **Fork** das Repository
-2. **Branch** erstellen: `git checkout -b feature/amazing-feature`
-3. **Commit** mit [Conventional Commits](https://www.conventionalcommits.org/):
-   - `feat:` für neue Features
-   - `fix:` für Bugfixes
-   - `docs:` für Dokumentation
-   - `chore:` für Wartungsarbeiten
-4. **Push**: `git push origin feature/amazing-feature`
-5. **Pull Request** öffnen
-
-### Code-Qualität
-
-- Type Hints für alle Funktionen
-- Docstrings für öffentliche APIs
-- Tests für neue Features
-- Docker-Kompatibilität sicherstellen
-
----
-
 ## 📊 Monitoring & Logs
 
 ### Logs ansehen
@@ -484,48 +459,9 @@ python -c "from src.ticker_utils import download_and_clean_tickerlist; download_
 
 ---
 
-## 🔒 Security
-
-### Best Practices
-
-- **Nie** `.env`-Dateien committen!
-- API-Keys in GitHub Secrets für CI/CD
-- Docker Secrets für Production
-- Regelmäßige Dependency-Updates
-
-### Secrets Management
-
-```bash
-# Für Production: Docker Secrets
-echo "my_secret_key" | docker secret create reddit_client_secret -
-
-# In docker-compose.yml
-secrets:
-  - reddit_client_secret
-```
-
----
-
 ## 📝 License
 
 MIT License - siehe [LICENSE](LICENSE)
-
----
-
-## 🙏 Credits
-
-- **Reddit API**: [PRAW](https://praw.readthedocs.io/)
-- **Kursdaten**: [yfinance](https://github.com/ranaroussi/yfinance)
-- **News**: [NewsAPI](https://newsapi.org/)
-- **Discord**: [Webhooks](https://discord.com/developers/docs/resources/webhook)
-
----
-
-## 💬 Support
-
-- **Issues**: [GitHub Issues](https://github.com/fgrfn/reddit-wsb-crawler/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/fgrfn/reddit-wsb-crawler/discussions)
-- **Discord**: [Server beitreten](#) _(falls vorhanden)_
 
 ---
 
@@ -591,128 +527,81 @@ ALERT_COOLDOWN_H=4
 ```
 Hinweis: `config/.env` (Repo‑Root) wird bevorzugt; es gibt Fallbacks (`src/config/.env`, `./config/.env`).
 
-## 🐳 Docker (empfohlen)
+---
 
-Schnellster Weg zum Starten:
+## 🔄 Versioning & Releases
 
-```bash
-# 1. Config erstellen
-cp config/.env.example config/.env
-# Bearbeite config/.env mit deinen API-Keys
+Das Projekt nutzt [Semantic Versioning](https://semver.org/) mit **vollautomatischem Release-Management**.
 
-# 2. Container starten
-docker-compose up --build
+### Automatischer Workflow
 
-# Oder mit Scheduler (stündliche Crawls)
-docker-compose --profile scheduler up -d
+Bei jedem Push auf `main`:
+
+```mermaid
+graph LR
+    A[Code Push] --> B{Version geändert?}
+    B -->|Nein| C[Auto-Increment Patch]
+    B -->|Ja| D[Release erstellen]
+    C --> D
+    D --> E[Docker bauen]
+    E --> F[Publish zu GHCR]
 ```
 
-Siehe [DOCKER.md](DOCKER.md) für Details.
+1. **Version-Check**: Prüft ob `version.txt` manuell geändert wurde
+2. **Auto-Increment**: Erhöht Patch-Version (1.0.0 → 1.0.1) falls nicht
+3. **Release**: Erstellt GitHub Release mit automatischem Changelog
+4. **Docker**: Baut und pusht Image zu `ghcr.io/fgrfn/reddit-wsb-crawler`
 
-## Schnellstart / Befehle
-- Voller Headless‑Crawl:
+### Version manuell erhöhen
+
+Für Features oder Breaking Changes:
+
 ```bash
-python src/run_crawler_headless.py
-```
-- Lokale Discord‑Preview (nutzt neueste Pickle):
-```bash
-python src/scripts/test_discord_message.py --use-real
-```
-- Preview + senden (benötigt gültigen `DISCORD_WEBHOOK_URL`):
-```bash
-python src/scripts/test_discord_message.py --use-real --send
-```
+# Feature-Release (1.0.0 → 1.1.0)
+echo "1.1.0" > version.txt
+sed -i 's/__version__ = ".*"/__version__ = "1.1.0"/' src/__version__.py
+sed -i 's/version=".*"/version="1.1.0"/' Dockerfile
+git commit -am "feat: neue Feature-Beschreibung"
+git push
 
-## Dateistruktur (wichtig)
-- data/input/ — Tickerlisten & Caches (`ticker_name_map.pkl`, `all_tickers.csv`)
-- data/output/pickle/ — Crawl‑Pickles (z. B. `251030-000011_crawler-ergebnis.pkl`)
-- data/output/summaries/ — generierte Zusammenfassungen (.md)
-- data/state/ — persistenter Alert‑State (z. B. `alerts.json`)
-- src/ — Quellcode (crawler, summarizer, discord utils, scripts)
-
-## Discord‑Alarm‑Format
-Kompakte Alert‑Nachricht enthält:
-- Kopf (⚠️ WSB‑ALARM) + Pickle‑Name (💾 ...)
-- Zeitstempel
-- Top‑Ticker (bis 3) mit Nennungen, Δ, Kurszeile (inkl. Pre/After‑Market), Trends (1h/24h/7d), Yahoo‑Link
-- Kurz‑Summary + bis zu 3 News‑Headlines (Titel | Quelle | URL)
-
-Ziel: schnelle visuelle Erkennung von plötzlichen Nennungs‑/Trend‑Anstiegen.
-
-## Testen von News‑Fetch
-Beispiel: NewsAPI‑Abruf prüfen:
-```bash
-python - <<'PY'
-import sys
-from pathlib import Path
-sys.path.insert(0, str(Path.cwd()/'src'))
-from summarize_ticker import get_yf_news
-import json
-print(json.dumps(get_yf_news("BYND"), ensure_ascii=False, indent=2))
-PY
+# Breaking Change (1.1.0 → 2.0.0)
+echo "2.0.0" > version.txt
+sed -i 's/__version__ = ".*"/__version__ = "2.0.0"/' src/__version__.py
+sed -i 's/version=".*"/version="2.0.0"/' Dockerfile
+git commit -am "feat!: breaking change Beschreibung"
+git push
 ```
 
-## Alert‑Logik (Kurz)
-Empfohlene, konfigurierte Schwellen (ENV):
-- ALERT_MIN_ABS, ALERT_MIN_DELTA, ALERT_RATIO, ALERT_MIN_PRICE_MOVE, ALERT_MAX_PER_RUN, ALERT_COOLDOWN_H  
-Vorschlag: Score‑basierter Filter + per‑Ticker Cooldown; Ergebnisse persistent in `data/state/alerts.json`.
+**Aktuelle Version:** 1.0.0 | [Alle Releases →](https://github.com/fgrfn/reddit-wsb-crawler/releases)
 
-## Weiteres / Anpassungen
-- `src/scripts/test_discord_message.py` erzeugt eine Vorschau‑Nachricht; mit `--use-real` nutzt es die letzte Crawl‑Pickle.
-
-## 🔄 Updates & Versioning
-
-Das Projekt nutzt [Semantic Versioning](https://semver.org/). Bei jedem Push auf `main` wird automatisch:
-1. Die Version in `version.txt` um 0.0.1 erhöht
-2. Ein GitHub Release mit Changelog erstellt
-3. Ein Docker-Image gebaut und in die GitHub Container Registry gepusht
-
-**Aktuelle Version:** 1.0.0
-
-Siehe [CHANGELOG.md](CHANGELOG.md) für Details zu allen Versionen.
+---
 
 ## 📖 Weitere Dokumentation
 
-- [DOCKER.md](DOCKER.md) - Docker Setup und Best Practices
-- [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) - Code-Refactoring Details
-- [CHANGELOG.md](CHANGELOG.md) - Versions-Historie
+| Dokument | Beschreibung |
+|----------|--------------|
+| [DOCKER.md](DOCKER.md) | Umfassende Docker-Anleitung mit Best Practices |
+| [DOCKER_ENV.md](DOCKER_ENV.md) | Environment-Variablen ohne .env Datei |
+| [CHANGELOG.md](CHANGELOG.md) | Vollständige Versions-Historie |
+| [SETUP_COMPLETE.md](SETUP_COMPLETE.md) | Detaillierte Setup-Übersicht |
+| [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) | Code-Refactoring Details |
 
-## 🤝 Contributing
-
-1. Fork das Repository
-2. Erstelle einen Feature-Branch (`git checkout -b feature/amazing-feature`)
-3. Commit deine Änderungen (`git commit -m 'feat: add amazing feature'`)
-4. Push zum Branch (`git push origin feature/amazing-feature`)
-5. Öffne einen Pull Request
+---
 
 ## 📝 License
 
-MIT License - siehe [LICENSE](LICENSE) für Details.
-- `src/summarize_ticker.py` erzeugt strukturierte Summaries: `{"summary": "...", "news": [...]}`.
-- Änderbare Parameter via ENV (ALERT_*, NEWSAPI_*).
+MIT License - siehe [LICENSE](LICENSE)
 
-## Troubleshooting
-- Keine News angezeigt:
-  - Prüfe `NEWSAPI_KEY` in `config/.env` und Rate‑Limits von NewsAPI.
-  - Stelle `NEWSAPI_WINDOW_HOURS` ggf. auf ein größeres Fenster.
-- yfinance Errors (z. B. ungültige period):
-  - Achte auf gültige `period`/`interval`-Kombinationen (`1d`, `5d`, `1mo`, ...).
-- Falsche/alte Version importiert:
-```bash
-find . -name "__pycache__" -exec rm -rf {} +
-python - <<'PY'
-import inspect, sys
-sys.path.insert(0, "src")
-import discord_utils
-print(discord_utils.__file__)
-PY
-```
-- Logs prüfen:
-  - `logs/` (falls vorhanden) oder stdout der service/cron Unit.
-- Alerts werden zu häufig gesendet:
-  - Erhöhe `ALERT_COOLDOWN_H`, `ALERT_MIN_ABS`, `ALERT_MIN_DELTA` oder senke `ALERT_MAX_PER_RUN`.
+---
 
-## Lizenz
-MIT
+<div align="center">
+
+**Entwickelt mit ❤️ für die WSB-Community**
+
+⭐ Wenn dir dieses Projekt gefällt, gib uns einen Star!
+
+[⬆ Nach oben](#-wsb-crawler)
+
+</div>
 
 
