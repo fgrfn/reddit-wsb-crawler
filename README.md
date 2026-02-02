@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="logo.png" alt="WSB-Crawler Logo" width="200"/>
+
 # 🚀 WSB-Crawler
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
