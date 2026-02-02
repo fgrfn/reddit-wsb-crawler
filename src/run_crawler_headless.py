@@ -274,15 +274,20 @@ def main():
         logger.info("📡 Starte Ticker-Namensauflösung ...")
         result = subprocess.run(
             [sys.executable, str(NAME_RESOLVER_SCRIPT)],
-            capture_output=True, text=True
+            capture_output=True, text=True, timeout=60
         )
         logger.info(result.stdout)
+        if result.stderr:
+            logger.warning(f"Resolver stderr: {result.stderr}")
         if result.returncode == 0:
             logger.info("Namensauflösung abgeschlossen!")
         else:
-            logger.error("Fehler bei der Namensauflösung.")
+            logger.error(f"Fehler bei der Namensauflösung. Return code: {result.returncode}")
+            logger.error(f"Resolver stderr: {result.stderr}")
+    except subprocess.TimeoutExpired:
+        logger.error("Namensauflösung timeout nach 60 Sekunden.")
     except Exception as e:
-        logger.error(f"Fehler beim Resolver: {e}")
+        logger.error(f"Fehler beim Resolver: {e}", exc_info=True)
 
     # --- Discord-Benachrichtigung inkl. KI-Zusammenfassung ---
     try:
@@ -313,6 +318,9 @@ def main():
             .sum()
             .sort_values(by="Nennungen", ascending=False)
         )
+        # Initialize Kurs column with None
+        df_ticker["Kurs"] = None
+        
         # Trend-Berechnung
         if len(pickle_files) >= 2:
             prev_pickle = sorted(pickle_files)[-2]
@@ -373,7 +381,16 @@ def main():
 
         # Nach dem Erstellen von df_ticker:
         aktuelle_nennungen = dict(zip(df_ticker["Ticker"], df_ticker["Nennungen"]))
-        aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
+        # Handle None values in Kurs column - only include valid price data
+        try:
+            aktuelle_kurse = {}
+            for ticker, kurs in zip(df_ticker["Ticker"], df_ticker["Kurs"]):
+                if kurs is not None and isinstance(kurs, dict):
+                    aktuelle_kurse[ticker] = kurs
+        except KeyError:
+            # If Kurs column doesn't exist, use empty dict
+            logger.warning("Kurs-Spalte nicht gefunden in df_ticker, verwende leeres Dictionary.")
+            aktuelle_kurse = {}
         save_stats(STATS_PATH, aktuelle_nennungen, aktuelle_kurse)
 
 

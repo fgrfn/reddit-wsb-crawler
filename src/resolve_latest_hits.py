@@ -94,91 +94,105 @@ def save_ticker_name_map(name_map: dict) -> None:
             writer.writerow([sym, name])
 
 def resolve_from_latest_pickle():
-    load_dotenv()
+    try:
+        load_dotenv()
 
-    # Neueste Pickle-Datei suchen
-    pickle_files = sorted(PICKLE_DIR.glob("*.pkl"), reverse=True)
-    if not pickle_files:
-        print("❌ Keine Pickle-Datei gefunden.")
-        return
-    latest_pickle = pickle_files[0]
-    print(f"\n📜 Lese Treffer aus: {latest_pickle}")
+        # Neueste Pickle-Datei suchen
+        pickle_files = sorted(PICKLE_DIR.glob("*.pkl"), reverse=True)
+        if not pickle_files:
+            print("❌ Keine Pickle-Datei gefunden.")
+            logger.error("❌ Keine Pickle-Datei gefunden.")
+            return
+        latest_pickle = pickle_files[0]
+        print(f"\n📜 Lese Treffer aus: {latest_pickle}")
 
-    with open(latest_pickle, "rb") as f:
-        try:
-            counter = pickle.load(f)
-        except Exception as e:
-            print(f"{Fore.RED}❌ Fehler beim Lesen: {e}")
+        with open(latest_pickle, "rb") as f:
+            try:
+                counter = pickle.load(f)
+            except Exception as e:
+                print(f"{Fore.RED}❌ Fehler beim Lesen: {e}")
+                logger.error(f"❌ Fehler beim Lesen der Pickle-Datei: {e}")
+                raise
+
+        if not counter:
+            print(f"{Fore.YELLOW}⚪️ Keine Ticker in der Pickle-Datei.")
+            logger.warning("⚪️ Keine Ticker in der Pickle-Datei.")
             return
 
-    if not counter:
-        print(f"{Fore.YELLOW}⚪️ Keine Ticker in der Pickle-Datei.")
-        return
+        print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen: {sum(v for v in counter.values() if isinstance(v, int))}")
+        print(f"{Fore.LIGHTBLACK_EX}🔍 Einzigartige Ticker: {len(counter)}")
 
-    print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen: {sum(v for v in counter.values() if isinstance(v, int))}")
-    print(f"{Fore.LIGHTBLACK_EX}🔍 Einzigartige Ticker: {len(counter)}")
+        name_map = load_ticker_name_map()
+        print(f"{Fore.LIGHTBLACK_EX}📦 Ticker im Cache: {len(name_map)}")
 
-    name_map = load_ticker_name_map()
-    print(f"{Fore.LIGHTBLACK_EX}📦 Ticker im Cache: {len(name_map)}")
+        uncached = sorted(s for s in counter if s not in name_map and s not in IGNORED_KEYS)
+        print(f"{Fore.YELLOW}🆕 Neue Ticker zur Auflösung: {len(uncached)}\n")
 
-    uncached = sorted(s for s in counter if s not in name_map and s not in IGNORED_KEYS)
-    print(f"{Fore.YELLOW}🆕 Neue Ticker zur Auflösung: {len(uncached)}\n")
+        # Zeige an, welche Ticker aus dem Cache kommen
+        if name_map:
+            for sym in sorted(counter):
+                if sym in name_map:
+                    print(f"{Fore.LIGHTGREEN_EX}🗃️ {sym:<6}{Style.RESET_ALL} → {name_map[sym]} (aus Cache)")
 
-    # Zeige an, welche Ticker aus dem Cache kommen
-    if name_map:
-        for sym in sorted(counter):
-            if sym in name_map:
-                print(f"{Fore.LIGHTGREEN_EX}🗃️ {sym:<6}{Style.RESET_ALL} → {name_map[sym]} (aus Cache)")
+        if not uncached:
+            print(f"{Fore.GREEN}✅ Alle Ticker bereits bekannt – nichts zu tun.")
+            logger.info("✅ Alle Ticker bereits bekannt.")
+            return
 
-    if not uncached:
-        print(f"{Fore.GREEN}✅ Alle Ticker bereits bekannt – nichts zu tun.")
-        return
+        # Versuche lokale Ticker-Liste
+        tickers = load_tickerlist()
+        symbol_to_name = dict(zip(tickers["Symbol"], tickers["Security Name"]))
 
-    # Versuche lokale Ticker-Liste
-    tickers = load_tickerlist()
-    symbol_to_name = dict(zip(tickers["Symbol"], tickers["Security Name"]))
+        resolved = {}
+        fallback_needed = []
+        for sym in uncached:
+            name = symbol_to_name.get(sym)
+            if name:
+                print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} (lokale Liste)")
+                logger.info(f"✅ {sym} → {name} (lokale Liste)")
+                resolved[sym] = name
+            else:
+                print(f"{Fore.YELLOW}⚠️ {sym:<6} nicht in lokaler Liste, versuche Fallback (API)...")
+                logger.warning(f"⚠️ {sym} nicht in lokaler Liste, versuche Fallback (API)...")
+                fallback_needed.append(sym)
 
-    resolved = {}
-    fallback_needed = []
-    for sym in uncached:
-        name = symbol_to_name.get(sym)
-        if name:
-            print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} (lokale Liste)")
-            logger.info(f"✅ {sym} → {name} (lokale Liste)")
-            resolved[sym] = name
+        # Fallback: API (parallel)
+        if fallback_needed:
+            with ThreadPoolExecutor(max_workers=10) as pool:
+                futures = {pool.submit(resolve_symbol_parallel, s): s for s in fallback_needed}
+                for future in as_completed(futures):
+                    sym, name, src = future.result()
+                    if name:
+                        print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} ({src} Fallback)")
+                        logger.info(f"✅ {sym} → {name} ({src} Fallback)")
+                        resolved[sym] = name
+                    else:
+                        print(f"{Fore.LIGHTBLACK_EX}🕳️ {sym:<6} konnte nicht aufgelöst werden")
+                        logger.error(f"❌ {sym} konnte nicht aufgelöst werden")
+
+        if resolved:
+            name_map.update(resolved)
+            save_ticker_name_map(name_map)
+            print(f"\n{Fore.GREEN}💾 Cache aktualisiert mit {len(resolved)} neuen Einträgen.")
+            logger.info(f"💾 Cache aktualisiert mit {len(resolved)} neuen Einträgen.")
+
+            CSV_EXPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(CSV_EXPORT_PATH, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Ticker", "Company"])
+                for sym in sorted(resolved):
+                    writer.writerow([sym, resolved[sym]])
+            print(f"{Fore.BLUE}📎 Exportiert nach: {CSV_EXPORT_PATH}")
         else:
-            print(f"{Fore.YELLOW}⚠️ {sym:<6} nicht in lokaler Liste, versuche Fallback (API)...")
-            logger.warning(f"⚠️ {sym} nicht in lokaler Liste, versuche Fallback (API)...")
-            fallback_needed.append(sym)
+            print(f"\n{Fore.YELLOW}⚠️ Keine neuen Namen auflösbar.")
+            logger.warning("⚠️ Keine neuen Namen auflösbar.")
 
-    # Fallback: API (parallel)
-    if fallback_needed:
-        with ThreadPoolExecutor(max_workers=10) as pool:
-            futures = {pool.submit(resolve_symbol_parallel, s): s for s in fallback_needed}
-            for future in as_completed(futures):
-                sym, name, src = future.result()
-                if name:
-                    print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} ({src} Fallback)")
-                    logger.info(f"✅ {sym} → {name} ({src} Fallback)")
-                    resolved[sym] = name
-                else:
-                    print(f"{Fore.LIGHTBLACK_EX}🕳️ {sym:<6} konnte nicht aufgelöst werden")
-                    logger.error(f"❌ {sym} konnte nicht aufgelöst werden")
+        logger.info("✅ Namensauflösung erfolgreich abgeschlossen.")
 
-    if resolved:
-        name_map.update(resolved)
-        save_ticker_name_map(name_map)
-        print(f"\n{Fore.GREEN}💾 Cache aktualisiert mit {len(resolved)} neuen Einträgen.")
-
-        CSV_EXPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(CSV_EXPORT_PATH, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Ticker", "Company"])
-            for sym in sorted(resolved):
-                writer.writerow([sym, resolved[sym]])
-        print(f"{Fore.BLUE}📎 Exportiert nach: {CSV_EXPORT_PATH}")
-    else:
-        print(f"\n{Fore.YELLOW}⚠️ Keine neuen Namen auflösbar.")
+    except Exception as e:
+        logger.error(f"❌ Fehler bei der Namensauflösung: {e}", exc_info=True)
+        print(f"{Fore.RED}❌ Fehler bei der Namensauflösung: {e}")
+        raise
 
 print("Resolver läuft!")
 
