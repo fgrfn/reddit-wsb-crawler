@@ -13,6 +13,8 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
+  issues: write
 
 jobs:
   check-version:
@@ -52,12 +54,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
           fetch-depth: 0
 
       - name: Configure Git
         run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
 
       - name: Increment version
@@ -81,8 +83,6 @@ jobs:
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
       - name: Commit and push version bump
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git add version.txt src/__version__.py Dockerfile
           git commit -m "chore: bump version to ${{ steps.increment.outputs.new_version }} [skip ci]"
@@ -137,13 +137,14 @@ jobs:
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
         with:
           tag_name: v${{ steps.get_version.outputs.version }}
           name: Release v${{ steps.get_version.outputs.version }}
           body_path: RELEASE_NOTES.md
           draft: false
           prerelease: false
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   build-docker:
     runs-on: ubuntu-latest
@@ -173,7 +174,7 @@ jobs:
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.PAT_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
