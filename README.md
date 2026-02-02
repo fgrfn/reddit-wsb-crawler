@@ -218,27 +218,100 @@ docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.0.1
 
 ### Docker Compose (empfohlen)
 
-**Einmalig ausführen:**
+Das Repo enthält ein vollständiges `docker-compose.yml` mit allen Konfigurationen.
+
+**1. Einmalig ausführen:**
+```bash
+# Mit lokalem Build
+docker-compose up
+
+# Mit Pre-built Image
+docker-compose -f docker-compose.prod.yml up
+```
+
+**2. Mit Scheduler (regelmäßige Crawls):**
+```bash
+# Führt Crawler im Intervall aus (Standard: alle 60 Minuten)
+docker-compose --profile scheduler up -d
+
+# Logs anschauen
+docker-compose logs -f wsb-crawler-scheduler
+
+# Intervall anpassen (z.B. 15 Minuten)
+CRAWL_INTERVAL=900 docker-compose --profile scheduler up -d
+```
+
+**3. Beispiel `docker-compose.prod.yml`:**
 ```yaml
-# docker-compose.yml
+version: '3.8'
+
 services:
   wsb-crawler:
     image: ghcr.io/fgrfn/reddit-wsb-crawler:latest
-    env_file: config/.env
+    container_name: wsb-crawler
+    restart: unless-stopped
+    
+    environment:
+      - TZ=Europe/Berlin
+    
+    env_file:
+      - config/.env
+    
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - ./config/.env:/app/config/.env:ro
+    
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 ```
 
+### Erforderliche Environment-Variablen
+
+Erstelle `config/.env` mit folgenden Variablen:
+
+**Pflicht-Felder:**
 ```bash
-docker-compose up
+# Reddit API (https://www.reddit.com/prefs/apps)
+REDDIT_CLIENT_ID=your_client_id_here
+REDDIT_CLIENT_SECRET=your_client_secret_here
+REDDIT_USER_AGENT=python:wsb-crawler:v1.0.0 (by /u/yourusername)
+
+# NewsAPI (https://newsapi.org/register)
+NEWSAPI_KEY=your_newsapi_key_here
+
+# Discord Webhook
+DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
 ```
 
-**Mit Scheduler (regelmäßig):**
+**Optional (mit Defaults):**
 ```bash
-# Führt Crawler alle 15 Minuten aus
-docker-compose --profile scheduler up -d
+# Subreddits (komma-separiert)
+SUBREDDITS=wallstreetbets,wallstreetbetsGER
+
+# News-Einstellungen
+NEWSAPI_LANG=en                # Sprache (en, de, fr, etc.)
+NEWSAPI_WINDOW_HOURS=48        # Zeitfenster für News
+
+# Discord Status-Updates
+DISCORD_STATUS_UPDATE=true     # Silent Status (ohne @everyone)
+
+# Alert-Schwellwerte
+ALERT_MIN_ABS=20              # Min. Nennungen für neue Ticker
+ALERT_MIN_DELTA=10            # Min. Anstieg für bekannte Ticker
+ALERT_RATIO=2.0               # Min. Faktor (200% des Vorwerts)
+ALERT_MIN_PRICE_MOVE=5.0      # Min. Kursänderung in %
+ALERT_MAX_PER_RUN=3           # Max. Alerts pro Crawl
+ALERT_COOLDOWN_H=4            # Cooldown pro Ticker in Stunden
+
+# Scheduler (nur für --profile scheduler)
+CRAWL_INTERVAL=3600           # Intervall in Sekunden (60 Min.)
 ```
+
+Vollständige Vorlage: [`config/.env.example`](config/.env.example)
 
 Mehr Details: [DOCKER.md](DOCKER.md)
 
