@@ -12,6 +12,34 @@ services:
     environment:
       # Timezone
       - TZ=Europe/Berlin
+      
+      # Reddit API (REQUIRED)
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:wsb-crawler:v1.0.0 (by /u/youruser)}
+      
+      # Subreddits
+      - SUBREDDITS=${SUBREDDITS:-wallstreetbets,wallstreetbetsGER}
+      
+      # NewsAPI (REQUIRED)
+      - NEWSAPI_KEY=${NEWSAPI_KEY}
+      - NEWSAPI_LANG=${NEWSAPI_LANG:-en}
+      - NEWSAPI_WINDOW_HOURS=${NEWSAPI_WINDOW_HOURS:-48}
+      
+      # Discord (REQUIRED)
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - DISCORD_STATUS_UPDATE=${DISCORD_STATUS_UPDATE:-true}
+      
+      # Alert Thresholds
+      - ALERT_MIN_ABS=${ALERT_MIN_ABS:-20}
+      - ALERT_MIN_DELTA=${ALERT_MIN_DELTA:-10}
+      - ALERT_RATIO=${ALERT_RATIO:-2.0}
+      - ALERT_MIN_PRICE_MOVE=${ALERT_MIN_PRICE_MOVE:-5.0}
+      - ALERT_MAX_PER_RUN=${ALERT_MAX_PER_RUN:-3}
+      - ALERT_COOLDOWN_H=${ALERT_COOLDOWN_H:-4}
+      
+      # Optional: Alpha Vantage API
+      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-}
     
     env_file:
       - config/.env
@@ -62,7 +90,35 @@ services:
     environment:
       - TZ=Europe/Berlin
       # Crawl-Intervall in Sekunden (Standard: 1 Stunde)
-      - CRAWL_INTERVAL=3600
+      - CRAWL_INTERVAL=${CRAWL_INTERVAL:-3600}
+      
+      # Reddit API (REQUIRED)
+      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
+      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
+      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:wsb-crawler:v1.0.0 (by /u/youruser)}
+      
+      # Subreddits
+      - SUBREDDITS=${SUBREDDITS:-wallstreetbets,wallstreetbetsGER}
+      
+      # NewsAPI (REQUIRED)
+      - NEWSAPI_KEY=${NEWSAPI_KEY}
+      - NEWSAPI_LANG=${NEWSAPI_LANG:-en}
+      - NEWSAPI_WINDOW_HOURS=${NEWSAPI_WINDOW_HOURS:-48}
+      
+      # Discord (REQUIRED)
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - DISCORD_STATUS_UPDATE=${DISCORD_STATUS_UPDATE:-true}
+      
+      # Alert Thresholds
+      - ALERT_MIN_ABS=${ALERT_MIN_ABS:-20}
+      - ALERT_MIN_DELTA=${ALERT_MIN_DELTA:-10}
+      - ALERT_RATIO=${ALERT_RATIO:-2.0}
+      - ALERT_MIN_PRICE_MOVE=${ALERT_MIN_PRICE_MOVE:-5.0}
+      - ALERT_MAX_PER_RUN=${ALERT_MAX_PER_RUN:-3}
+      - ALERT_COOLDOWN_H=${ALERT_COOLDOWN_H:-4}
+      
+      # Optional: Alpha Vantage API
+      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-}
     
     env_file:
       - config/.env
