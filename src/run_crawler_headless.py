@@ -44,7 +44,7 @@ except Exception:
 LOG_PATH = BASE_DIR / "logs" / "crawler.log"
 ARCHIVE_DIR = BASE_DIR / "logs" / "archive"
 SYMBOLS_PKL = BASE_DIR / "data" / "input" / "symbols_list.pkl"
-NAME_RESOLVER_SCRIPT = BASE_DIR / "src" / "build_ticker_name_cache.py"
+NAME_RESOLVER_SCRIPT = BASE_DIR / "src" / "resolve_latest_hits.py"
 PICKLE_DIR = BASE_DIR / "data" / "output" / "pickle"
 SUMMARY_DIR = BASE_DIR / "data" / "output" / "summaries"
 TICKER_NAME_PATH = BASE_DIR / "data" / "input" / "ticker_name_map.pkl"
