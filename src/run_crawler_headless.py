@@ -53,13 +53,24 @@ HEARTBEAT_STATE_PATH = BASE_DIR / "data" / "state" / "heartbeat.json"  # <--- He
 
 LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
 ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+
+# Custom handler that forces flush after every log
+class FlushFileHandler(logging.FileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+# Configure logging with unbuffered output for Docker
+file_handler = FlushFileHandler(LOG_PATH, encoding="utf-8", delay=False)
+file_handler.setLevel(logging.INFO)
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setLevel(logging.INFO)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_PATH, encoding="utf-8", delay=False),
-        logging.StreamHandler(sys.stdout)
-    ]
+    handlers=[file_handler, stream_handler],
+    force=True  # Override any existing config
 )
 logger = logging.getLogger(__name__)
 
@@ -214,17 +225,26 @@ def main():
     load_dotenv(ENV_PATH)
 
     # --- Crawl-Logfile leeren ---
-    with open("logs/openai_costs_crawl.log", "w", encoding="utf-8") as f:
-        pass  # Datei leeren
+    crawl_log_path = BASE_DIR / "logs" / "openai_costs_crawl.log"
+    crawl_log_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(crawl_log_path, "w", encoding="utf-8") as f:
+        f.write(f"# OpenAI Costs - Crawl gestartet: {datetime.now()}\n")
+        f.flush()  # Force write to disk
 
     # --- Tages-Logfile leeren, wenn ein neuer Tag begonnen hat ---
-    day_log = "logs/openai_costs_day.log"
-    if os.path.exists(day_log):
-        mtime = os.path.getmtime(day_log)
+    day_log = BASE_DIR / "logs" / "openai_costs_day.log"
+    day_log.parent.mkdir(parents=True, exist_ok=True)
+    if day_log.exists():
+        mtime = day_log.stat().st_mtime
         last_mod = datetime.fromtimestamp(mtime)
         if last_mod.date() < datetime.now().date():
             with open(day_log, "w", encoding="utf-8") as f:
-                pass  # Datei leeren
+                f.write(f"# OpenAI Costs - Tag: {datetime.now().date()}\n")
+                f.flush()  # Force write to disk
+    else:
+        with open(day_log, "w", encoding="utf-8") as f:
+            f.write(f"# OpenAI Costs - Tag: {datetime.now().date()}\n")
+            f.flush()
 
     # --- Vorherige Werte laden ---
     prev_nennungen, prev_kurse = load_stats(STATS_PATH)

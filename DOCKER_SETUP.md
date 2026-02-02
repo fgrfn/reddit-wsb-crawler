@@ -122,6 +122,39 @@ ADMIN_DISCORD_USER_IDS=123456789,987654321
 
 ## Troubleshooting
 
+### Logs bleiben leer
+**Problem:** Log-Dateien werden erstellt, bleiben aber leer (`crawler.log`, `openai_costs_crawl.log`)
+
+**Lösung:**
+1. **Berechtigungen prüfen:**
+   ```bash
+   # Auf Unraid Host
+   ls -la /mnt/user/appdata/reddit-wsb-crawler/logs/
+   # Sollte vom Container-User beschreibbar sein
+   
+   # Falls Probleme: Berechtigungen anpassen
+   chmod -R 777 /mnt/user/appdata/reddit-wsb-crawler/logs/
+   ```
+
+2. **Test-Script ausführen:**
+   ```bash
+   docker exec -it reddit-wsb-crawler python test_logging.py
+   ```
+   
+3. **Container-Logs prüfen:**
+   ```bash
+   docker logs reddit-wsb-crawler
+   # Logs sollten auch in der Console erscheinen
+   ```
+
+4. **Volume-Mapping prüfen:**
+   ```bash
+   docker inspect reddit-wsb-crawler | grep -A 10 Mounts
+   # Sollte /app/logs -> /mnt/user/appdata/reddit-wsb-crawler/logs zeigen
+   ```
+
+**Hinweis:** Die neueste Version hat Auto-Flush für alle Logs aktiviert (`PYTHONUNBUFFERED=1` + Custom FlushFileHandler).
+
 ### Keine Crawl-Ergebnisse
 ```bash
 # Prüfe, ob Reddit API-Keys korrekt sind

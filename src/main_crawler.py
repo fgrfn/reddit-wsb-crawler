@@ -26,12 +26,21 @@ for path in [LOG_PATH.parent, ARCHIVE_DIR]:
 
 # 🔧 Logging-Konfiguration
 logfile = "logs/crawler.log"
+
+# Custom handler that forces flush after every log for Docker compatibility
+class FlushFileHandler(logging.FileHandler):
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+
+file_handler = FlushFileHandler("logs/crawler.log", encoding="utf-8", delay=False)
+file_handler.setLevel(logging.INFO)
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[
-        logging.FileHandler("logs/crawler.log", encoding="utf-8", delay=False)
-    ]
+    handlers=[file_handler],
+    force=True  # Override any existing config
 )
 logger = logging.getLogger(__name__)
 
