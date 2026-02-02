@@ -54,11 +54,10 @@ case $choice in
         ;;
     2)
         echo ""
-        read -p "Crawl-Intervall in Minuten [60]: " interval
-        interval=${interval:-60}
-        interval_seconds=$((interval * 60))
+        read -p "Crawl-Intervall in Minuten [30]: " interval
+        interval=${interval:-30}
         echo "🔄 Starte Scheduler (alle $interval Minuten)..."
-        CRAWL_INTERVAL=$interval_seconds docker-compose --profile scheduler up -d
+        CRAWL_INTERVAL_MINUTES=$interval docker-compose --profile scheduler up -d
         echo ""
         echo "✅ Scheduler läuft im Hintergrund"
         echo "Logs anzeigen: docker-compose logs -f wsb-crawler-scheduler"

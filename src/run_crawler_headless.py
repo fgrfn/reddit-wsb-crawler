@@ -555,4 +555,25 @@ def get_kurse_parallel(ticker_list: list[str]) -> dict:
     return kurse
 
 if __name__ == "__main__":
-    main()
+    import time as time_module
+    
+    # Check if running in loop mode (for Docker scheduler)
+    loop_mode = os.getenv("CRAWLER_LOOP_MODE", "false").lower() in ("true", "1", "yes")
+    interval_minutes = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
+    
+    if loop_mode:
+        logger.info(f"🔄 Scheduler-Modus aktiviert (Intervall: {interval_minutes} Minuten)")
+        while True:
+            try:
+                main()
+                logger.info(f"⏳ Warte {interval_minutes} Minuten bis zum nächsten Crawl...")
+                time_module.sleep(interval_minutes * 60)
+            except KeyboardInterrupt:
+                logger.info("🛑 Scheduler gestoppt")
+                break
+            except Exception as e:
+                logger.error(f"❌ Fehler im Scheduler: {e}", exc_info=True)
+                logger.info(f"⏳ Warte {interval_minutes} Minuten vor erneutem Versuch...")
+                time_module.sleep(interval_minutes * 60)
+    else:
+        main()
