@@ -49,14 +49,57 @@ Crawlt r/wallstreetbets nach Ticker-Erwähnungen, analysiert Trends und sendet D
 ### Option 1: Docker (empfohlen)
 
 ```bash
+# Pre-built Image von GitHub Container Registry
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
+
+# Oder mit spezifischer Version
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.0.1
+```
+
+**Alternativ: Selbst bauen**
+
+```bash
 # 1. Repository klonen
 git clone https://github.com/fgrfn/reddit-wsb-crawler.git
 cd reddit-wsb-crawler
-Erstelle `config/.env` aus der Vorlage:
+
+# 2. Config erstellen
+cp config/.env.example config/.env
+nano config/.env  # API-Keys eintragen
+
+# 3. Mit Docker Compose starten
+docker-compose up -d
+
+# 4. Logs anschauen
+docker-compose logs -f
+```
+
+### Option 2: Python (lokal)
+### Option 2: Python (lokal)
 
 ```bash
+# 1. Repository klonen
+git clone https://github.com/fgrfn/reddit-wsb-crawler.git
+cd reddit-wsb-crawler
+
+# 2. Virtual Environment
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+
+# 3. Dependencies installieren
+pip install -r requirements.txt
+
+# 4. Config erstellen
 cp config/.env.example config/.env
+nano config/.env  # API-Keys eintragen
+
+# 5. Crawler starten
+python src/run_crawler_headless.py
 ```
+
+---
+
+## ⚙️ Konfiguration
 
 #### Erforderliche Credentials:
 
@@ -149,7 +192,59 @@ nano config/.env
 
 ---
 
-## 🔄 Versioning & Releases
+## � Docker
+
+### Pre-built Images
+
+Das Projekt stellt automatisch gebaute Docker Images bereit:
+
+| Tag | Beschreibung | Verwendung |
+|-----|--------------|------------|
+| `latest` | Neueste Version vom main branch | Empfohlen für Production |
+| `v1.0.1` | Spezifische Release-Version | Für Reproduzierbarkeit |
+| `v1.0` | Minor-Version (automatisch) | Latest Patch einer Minor-Version |
+
+```bash
+# Latest Version
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
+docker run --env-file config/.env \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  ghcr.io/fgrfn/reddit-wsb-crawler:latest
+
+# Spezifische Version für Reproduzierbarkeit
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.0.1
+```
+
+### Docker Compose (empfohlen)
+
+**Einmalig ausführen:**
+```yaml
+# docker-compose.yml
+services:
+  wsb-crawler:
+    image: ghcr.io/fgrfn/reddit-wsb-crawler:latest
+    env_file: config/.env
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+```
+
+```bash
+docker-compose up
+```
+
+**Mit Scheduler (regelmäßig):**
+```bash
+# Führt Crawler alle 15 Minuten aus
+docker-compose --profile scheduler up -d
+```
+
+Mehr Details: [DOCKER.md](DOCKER.md)
+
+---
+
+## �🔄 Versioning & Releases
 
 Das Projekt nutzt [Semantic Versioning](https://semver.org/) mit **vollautomatischem Release-Management**.
 
