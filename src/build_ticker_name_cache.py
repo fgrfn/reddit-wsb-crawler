@@ -2,7 +2,8 @@
 
 Durchläuft alle bekannten Ticker-Symbole und erstellt/erweitert einen
 persistenten Cache mit Unternehmensnamen von Yahoo Finance.
-"""import os
+"""
+import os
 import pickle
 import csv
 import logging
