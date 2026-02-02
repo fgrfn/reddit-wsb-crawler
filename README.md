@@ -1,5 +1,7 @@
 <div align="center">
+
 <img src="logo.png" alt="WSB-Crawler Logo" width="400"/>
+
 # WSB-Crawler
 
 [![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
@@ -12,7 +14,7 @@
 
 Crawlt r/wallstreetbets nach Ticker-Erwähnungen, analysiert Trends und sendet Discord-Alerts bei ungewöhnlicher Aktivität.
 
-[Features](#-features) • [Quick Start](#-quick-start) • [Docker](#-docker-empfohlen) • [Konfiguration](#-konfiguration) • [Dokumentation](#-dokumentation)
+[Features](#-features) • [Quick Start](#-quick-start) • [Docker](#-docker) • [Konfiguration](#-konfiguration) • [Dokumentation](#-dokumentation)
 
 </div>
 
