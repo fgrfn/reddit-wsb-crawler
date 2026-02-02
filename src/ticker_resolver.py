@@ -19,6 +19,7 @@ def load_ticker_name_map():
 
 def save_ticker_name_map(name_map):
     """Speichert das Ticker-Namen-Mapping im Cache."""
+    os.makedirs(os.path.dirname(TICKER_CACHE_PATH), exist_ok=True)
     with open(TICKER_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
 

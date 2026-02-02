@@ -469,7 +469,7 @@ def main():
                 status_id = None
                 if HEARTBEAT_STATE_PATH.exists():
                     try:
-                        with open(HEARTBEAT_STATE_PATH, "r") as f:
+                        with open(HEARTBEAT_STATE_PATH, "r", encoding="utf-8") as f:
                             state = json.load(f)
                             status_id = state.get("message_id")
                     except Exception:
@@ -482,7 +482,7 @@ def main():
                     new_id = result_status.get("message_id")
                     if new_id:
                         HEARTBEAT_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-                        with open(HEARTBEAT_STATE_PATH, "w") as f:
+                        with open(HEARTBEAT_STATE_PATH, "w", encoding="utf-8") as f:
                             json.dump({"message_id": new_id, "last_update": timestamp}, f)
                     logger.info(f"Status-Nachricht {'editiert' if status_id else 'erstellt'} (kein Ping).")
             except Exception as e:

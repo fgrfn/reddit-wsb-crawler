@@ -2,7 +2,8 @@
 
 Durchsucht das neueste Crawl-Ergebnis und versucht, unbekannte Ticker-Symbole
 über verschiedene APIs (Yahoo Finance, Alpha Vantage) aufzulösen.
-"""import os
+"""
+import os
 import pickle
 import csv
 import requests
@@ -44,7 +45,7 @@ def resolve_symbol_parallel(symbol: str) -> tuple[str, str | None, str | None]:
             name = info.get("longName") or info.get("shortName")
             if name and name != symbol:
                 return "Yahoo", name
-        except:
+        except Exception:
             pass
         return None
 
@@ -60,7 +61,7 @@ def resolve_symbol_parallel(symbol: str) -> tuple[str, str | None, str | None]:
                 name = data.get("Name")
                 if name:
                     return "Alpha", name
-        except:
+        except Exception:
             pass
         return None
 
@@ -85,6 +86,7 @@ def load_ticker_name_map() -> dict:
 
 def save_ticker_name_map(name_map: dict) -> None:
     """Speichert Ticker-Namen-Mapping als Pickle und CSV."""
+    PKL_CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(PKL_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
     with open(CSV_CACHE_PATH, "w", newline="", encoding="utf-8") as f:
@@ -194,8 +196,7 @@ def resolve_from_latest_pickle():
         print(f"{Fore.RED}❌ Fehler bei der Namensauflösung: {e}")
         raise
 
-print("Resolver läuft!")
-
 if __name__ == "__main__":
+    print("Resolver läuft!")
     logger.info(f"Starte resolve_latest_hits.py (cwd={os.getcwd()})")
     resolve_from_latest_pickle()

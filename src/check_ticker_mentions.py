@@ -42,7 +42,7 @@ def search_ticker(ticker: str) -> tuple[int, list[dict]]:
             post.comments.replace_more(limit=0)
             for comment in post.comments.list():
                 comment_hits.extend(pattern.findall(comment.body))
-        except:
+        except Exception:
             pass
 
         count = len(post_hits) + len(comment_hits)

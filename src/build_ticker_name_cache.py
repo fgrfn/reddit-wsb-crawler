@@ -36,6 +36,7 @@ def load_cache() -> dict:
 
 def save_cache(cache: dict) -> None:
     """Speichert den Cache als Pickle und CSV."""
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
     with open(CACHE_PATH, "wb") as f:
         pickle.dump(cache, f)
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:

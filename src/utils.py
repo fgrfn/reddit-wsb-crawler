@@ -88,4 +88,3 @@ def load_tickerlist():
 
 # Kompatibilitäts-Wrapper: importiere alle Hilfsfunktionen aus ticker_data
 from ticker_data import *  # noqa: F401, F403
-from ticker_data import *

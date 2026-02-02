@@ -31,6 +31,7 @@ def load_ticker_name_map():
 
 def save_ticker_name_map(name_map):
     """Speichert Ticker-zu-Name-Mapping im Cache (pkl + csv)."""
+    os.makedirs(os.path.dirname(TICKER_CACHE_PATH), exist_ok=True)
     with open(TICKER_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
     pd.DataFrame.from_dict(name_map, orient="index", columns=["Company"]).to_csv(TICKER_CSV_PATH)
