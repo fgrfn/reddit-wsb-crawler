@@ -4,11 +4,6 @@ on:
   push:
     branches:
       - main
-    paths-ignore:
-      - 'version.txt'
-      - 'src/__version__.py'
-      - 'docs/**'
-      - '*.md'
   workflow_dispatch:
     inputs:
       bump_type:
