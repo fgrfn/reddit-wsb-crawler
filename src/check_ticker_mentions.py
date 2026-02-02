@@ -1,10 +1,19 @@
+"""Interaktives Tool zum Prüfen von Ticker-Erwähnungen auf Reddit."""
 import praw
 import re
 import os
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
-def search_ticker(ticker):
+def search_ticker(ticker: str) -> tuple[int, list[dict]]:
+    """Sucht nach einem Ticker-Symbol in r/wallstreetbets.
+    
+    Args:
+        ticker: Ticker-Symbol zum Suchen (z.B. "GME")
+    
+    Returns:
+        tuple: (total_hits, results_list) mit total_hits als int und results_list als Liste von Dicts
+    """
     load_dotenv()
 
     reddit = praw.Reddit(

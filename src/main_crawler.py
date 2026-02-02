@@ -9,6 +9,7 @@ import streamlit as st
 from reddit_crawler import reddit_crawler
 from log_utils import archive_log
 from ticker_utils import SYMBOLS_PKL, download_and_clean_tickerlist
+from __version__ import __version__
 
 # 📁 Basisverzeichnis
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,8 +36,9 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def wait_for_file(path: Path, timeout=10):
+    """Wartet darauf, dass eine Datei existiert (max. timeout Sekunden)."""
     logger.info(f"⏳ Warte auf {path.name} (max {timeout}s) ...")
-    if path.exists():  # <-- Diese Zeile ist wichtig!
+    if path.exists():
         return True
     start = time.time()
     while time.time() - start < timeout:
@@ -51,22 +53,17 @@ def ensure_symbols_list(tickers):
         pickle.dump(list(tickers["Symbol"]), f)
     logger.info(f"symbols_list.pkl wurde neu erstellt mit {len(tickers)} Symbolen.")
 
-def stop_crawler():
-    logger.info("🛑 stop_crawler wurde aufgerufen (Stub-Funktion).")
-    # Hier kann die Logik zum Stoppen des Crawlers ergänzt werden.
+
 
 def main():
+    logger.info(f"🚀 WSB-Crawler v{__version__}")
     tickers = download_and_clean_tickerlist()  # Listen immer neu laden und loggen
     ensure_symbols_list(tickers)
     start_time = time.time()
 
+    logger.info("Starte Reddit-Crawler ...")
     try:
-        print("") 
-        print("Starte Reddit-Crawler ...")
-    except UnicodeEncodeError:
-        print("Starte Reddit-Crawler ...")
-    try:
-        reddit_crawler()  # <-- Hier direkt die Crawl-Logik aufrufen!
+        reddit_crawler()
     except Exception:
         logger.exception("❌ Fehler beim Reddit-Crawl")
         return
@@ -93,22 +90,7 @@ def main():
     except Exception:
         logger.exception("⚠️ Fehler bei der Namensauflösung")
 
-        # Button dynamisch anzeigen
-        if st.session_state.get("crawl_running", False):
-            if st.sidebar.button("🛑 Crawl stoppen"):
-                stop_crawler()
-                st.stop()
-        else:
-            if st.sidebar.button("🚀 Crawl jetzt starten"):
-                main()  # Starte den Crawl-Prozess erneut
-                st.stop()
 
-#    # 📦 Log erst jetzt archivieren!
-#    try:
-#        archive_log(LOG_PATH, ARCHIVE_DIR, keep_last=10)
-#        logger.info("📦 Log archiviert")
-#    except Exception as e:
-#        logger.warning(f"⚠️ Fehler beim Log-Rotate: {e}")
 
 if __name__ == "__main__":
     main()

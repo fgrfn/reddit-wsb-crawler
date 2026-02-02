@@ -1,4 +1,8 @@
-import os
+"""Resolver-Script: Löst Ticker-Symbole aus neuesten Pickle-Dateien zu Unternehmensnamen auf.
+
+Durchsucht das neueste Crawl-Ergebnis und versucht, unbekannte Ticker-Symbole
+über verschiedene APIs (Yahoo Finance, Alpha Vantage) aufzulösen.
+"""import os
 import pickle
 import csv
 import requests
@@ -25,8 +29,15 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 IGNORED_KEYS = {"relevant", "run_id", "subreddits", "total_posts"}
 
-# 🌐 Anbieter-Resolver (parallel: Yahoo & Alpha Vantage)
-def resolve_symbol_parallel(symbol):
+def resolve_symbol_parallel(symbol: str) -> tuple[str, str | None, str | None]:
+    """Löst Ticker-Symbol parallel über Yahoo und Alpha Vantage auf.
+    
+    Args:
+        symbol: Ticker-Symbol
+    
+    Returns:
+        tuple: (symbol, company_name, provider) - provider ist "Yahoo", "Alpha" oder None
+    """
     def from_yahoo():
         try:
             info = yf.Ticker(symbol).info
@@ -65,14 +76,15 @@ def resolve_symbol_parallel(symbol):
             done.append(f)
         return symbol, None, None
 
-# 💾 Cache-Handling
-def load_ticker_name_map():
+def load_ticker_name_map() -> dict:
+    """Lädt Ticker-Namen-Mapping aus Pickle-Cache."""
     if PKL_CACHE_PATH.exists():
         with open(PKL_CACHE_PATH, "rb") as f:
             return pickle.load(f)
     return {}
 
-def save_ticker_name_map(name_map):
+def save_ticker_name_map(name_map: dict) -> None:
+    """Speichert Ticker-Namen-Mapping als Pickle und CSV."""
     with open(PKL_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
     with open(CSV_CACHE_PATH, "w", newline="", encoding="utf-8") as f:

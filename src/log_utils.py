@@ -5,7 +5,15 @@ from datetime import datetime
 from pathlib import Path
 import zipfile
 
-def archive_log(log_path: Path, archive_dir: Path, zip_old_logs: bool = False, keep_last: int = None):
+def archive_log(log_path: Path, archive_dir: Path, zip_old_logs: bool = False, keep_last: int = None) -> None:
+    """Archiviert Logfiles mit Zeitstempel und optional Kompression.
+    
+    Args:
+        log_path: Pfad zur zu archivierenden Log-Datei
+        archive_dir: Ziel-Verzeichnis für Archive
+        zip_old_logs: Wenn True, werden alte Logs gezippt um Platz zu sparen
+        keep_last: Anzahl der neuesten Archive die behalten werden (None = alle behalten)
+    """
     if not log_path.exists():
         print("⚠️ Kein Logfile zum Archivieren.")
         return

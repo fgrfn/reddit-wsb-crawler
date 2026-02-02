@@ -13,6 +13,8 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dotenv import load_dotenv
 import logging
+from __version__ import __version__
+
 logger = logging.getLogger(__name__)
 
 # 📁 Pfade
@@ -20,14 +22,15 @@ TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
 TICKER_CSV_PATH = os.path.join("data", "input", "ticker_name_map.csv")
 SYMBOLS_PATH = os.path.join("data", "input", "symbols_list.pkl")
 
-# 🧠 Cache laden/speichern
 def load_ticker_name_map():
+    """Lädt Ticker-zu-Name-Mapping aus Cache."""
     if os.path.exists(TICKER_CACHE_PATH):
         with open(TICKER_CACHE_PATH, "rb") as f:
             return pickle.load(f)
     return {}
 
 def save_ticker_name_map(name_map):
+    """Speichert Ticker-zu-Name-Mapping im Cache (pkl + csv)."""
     with open(TICKER_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
     pd.DataFrame.from_dict(name_map, orient="index", columns=["Company"]).to_csv(TICKER_CSV_PATH)
@@ -57,9 +60,13 @@ def fetch_name_with_retry(symbol, retries=3, delay=2):
         pass
     return symbol, None
 
-# 🕷️ Reddit-Crawler
 def reddit_crawler():
-    logger.info("Reddit Crawl gestartet")
+    """Hauptfunktion: Crawlt Reddit-Subreddits nach Ticker-Erwähnungen.
+    
+    Durchsucht konfigurierte Subreddits nach Ticker-Symbolen,
+    zählt Erwähnungen und speichert Ergebnisse als Pickle.
+    """
+    logger.info(f"Reddit Crawl gestartet (v{__version__})")
     base_dir = os.path.dirname(os.path.abspath(__file__))
     # Load .env: prefer repo-root/config/.env, fallback to src/config/.env
     candidate1 = os.path.join(base_dir, "..", "config", ".env")      # repo-root/config/.env (preferred)
@@ -168,7 +175,17 @@ def reddit_crawler():
     else:
         logger.info("Keine relevanten Ticker gefunden.")
 
-def make_progress_bar(current, total, length=20):
+def make_progress_bar(current: int, total: int, length: int = 20) -> str:
+    """Erstellt einen einfachen Text-Fortschrittsbalken.
+    
+    Args:
+        current: Aktueller Fortschritt
+        total: Gesamtzahl
+        length: Länge des Balkens in Zeichen
+    
+    Returns:
+        str: Formatierter Balken wie "[█████░░░] 5/8"
+    """
     filled = int(length * current // total) if total > 0 else 0
     bar = "█" * filled + "░" * (length - filled)
     return f"[{bar}] {current}/{total}"

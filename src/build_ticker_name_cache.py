@@ -1,4 +1,8 @@
-import os
+"""Cache-Builder: Löst alle Ticker aus symbols_list.pkl zu Unternehmensnamen auf.
+
+Durchläuft alle bekannten Ticker-Symbole und erstellt/erweitert einen
+persistenten Cache mit Unternehmensnamen von Yahoo Finance.
+"""import os
 import pickle
 import csv
 import logging
@@ -22,13 +26,15 @@ SYMBOLS_PATH = Path("data/input/symbols_list.pkl")
 CACHE_PATH = Path("data/input/ticker_name_map.pkl")
 CSV_PATH = Path("data/input/ticker_name_map.csv")
 
-def load_cache():
+def load_cache() -> dict:
+    """Lädt den Ticker-Namen-Cache."""
     if CACHE_PATH.exists():
         with open(CACHE_PATH, "rb") as f:
             return pickle.load(f)
     return {}
 
-def save_cache(cache):
+def save_cache(cache: dict) -> None:
+    """Speichert den Cache als Pickle und CSV."""
     with open(CACHE_PATH, "wb") as f:
         pickle.dump(cache, f)
     with open(CSV_PATH, "w", newline="", encoding="utf-8") as f:
@@ -37,7 +43,12 @@ def save_cache(cache):
         for sym, name in sorted(cache.items()):
             writer.writerow([sym, name])
 
-def resolve_symbol_parallel(symbol):
+def resolve_symbol_parallel(symbol: str) -> tuple[str, str | None, str]:
+    """Löst Symbol parallel über Yahoo Finance und Yahoo API.
+    
+    Returns:
+        tuple: (symbol, company_name, provider)
+    """
     import yfinance as yf
     import requests
     # 1. yfinance

@@ -9,6 +9,7 @@ import concurrent.futures
 from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
+from __version__ import __version__
 
 # Ensure imports of local modules work regardless of CWD
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -62,7 +63,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def archive_log(log_path, archive_dir):
+def archive_log(log_path: Path, archive_dir: Path) -> None:
+    """Archiviert Logfile mit Zeitstempel."""
     import shutil
     from datetime import datetime
     if not log_path.exists():
@@ -72,7 +74,12 @@ def archive_log(log_path, archive_dir):
     shutil.copy(str(log_path), str(archive_file))
     logger.info(f"Logfile archiviert: {archive_file}")
 
-def get_yf_price(symbol):
+def get_yf_price(symbol: str) -> dict:
+    """Holt Kursdaten für ein Symbol von Yahoo Finance.
+    
+    Returns:
+        dict mit Keys: regular, pre, post, previousClose, change, changePercent, currency, timestamp
+    """
     try:
         ticker = yf.Ticker(symbol)
         info = ticker.info
@@ -97,11 +104,17 @@ def get_yf_price(symbol):
         logger.warning(f"Kursabfrage für {symbol} fehlgeschlagen: {e}")
         return {"regular": None, "pre": None, "post": None, "previousClose": None, "change": None, "changePercent": None, "currency": "USD", "timestamp": None}
 
-def save_stats(stats_path, nennungen_dict, kurs_dict):
+def save_stats(stats_path: Path, nennungen_dict: dict, kurs_dict: dict) -> None:
+    """Speichert Ticker-Statistiken (Nennungen und Kurse) als Pickle."""
     with open(stats_path, "wb") as f:
         pickle.dump({"nennungen": nennungen_dict, "kurs": kurs_dict}, f)
 
-def load_stats(stats_path):
+def load_stats(stats_path: Path) -> tuple[dict, dict]:
+    """Lädt gespeicherte Ticker-Statistiken.
+    
+    Returns:
+        tuple: (nennungen_dict, kurs_dict)
+    """
     if not os.path.exists(stats_path):
         return {}, {}
     with open(stats_path, "rb") as f:
@@ -135,114 +148,20 @@ def check_triggers(aktuelle_nennungen, stats_path=STATS_PATH, alert_ratio=2.0, a
                 triggered.append((ticker, prev, curr_i, delta))
     return triggered
 
-def get_today_openai_stats():
+def get_openai_stats(mode="day", crawl_ticker_list=None):
+    """Ermittelt OpenAI API Kosten und Token-Nutzung.
+    
+    Args:
+        mode: "day" für heutige Stats, "crawl" für spezifische Ticker, "total" für Gesamtkosten
+        crawl_ticker_list: Liste von Ticker-Symbolen (nur bei mode="crawl")
+    
+    Returns:
+        tuple: (kosten, input_tokens, output_tokens)
+    """
     from datetime import datetime
     log_path = Path("logs/openai_costs.log")
     if not log_path.exists():
         return 0.0, 0, 0
-    today = datetime.now().strftime("%Y-%m-%d")
-    total_cost = 0.0
-    total_input = 0
-    total_output = 0
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            # Beispielzeile: 2025-07-30T17:23:23.089,COST,0.0020,TOKENS,174,76
-            if line.startswith(today) and ",COST," in line and ",TOKENS," in line:
-                parts = line.strip().split(",")
-                try:
-                    cost = float(parts[2])
-                    input_tokens = int(parts[4])
-                    output_tokens = int(parts[5])
-                    total_cost += cost
-                    total_input += input_tokens
-                    total_output += output_tokens
-                except Exception:
-                    pass
-    return total_cost, total_input, total_output
-
-def post_daily_openai_cost():
-    import pandas as pd
-    from datetime import datetime
-    log_path = Path("logs/openai_costs.log")
-    if not log_path.exists():
-        return
-    today = datetime.now().strftime("%Y-%m-%d")
-    total_cost = 0.0
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if today in line:
-                parts = line.strip().split()
-                for p in parts:
-                    if p.endswith("USD"):
-                        try:
-                            total_cost += float(p.replace("USD", "").replace(":", ""))
-                        except:
-                            pass
-    msg = f"💸 OpenAI Tageskosten ({today}): {total_cost:.4f} USD"
-    send_discord_notification(msg)
-    logging.info(msg)
-
-def get_today_openai_cost():
-    from datetime import datetime
-    log_path = Path("logs/openai_costs.log")
-    if not log_path.exists():
-        return 0.0
-    today = datetime.now().strftime("%Y-%m-%d")
-    total_cost = 0.0
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if ",COST," in line and line.startswith(today):
-                try:
-                    cost = float(line.strip().split(",COST,")[1])
-                    total_cost += cost
-                except Exception:
-                    pass
-    return total_cost
-
-def get_total_openai_cost():
-    log_path = Path("logs/openai_costs.log")
-    if not log_path.exists():
-        return 0.0
-    total_cost = 0.0
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            if ",COST," in line:
-                try:
-                    cost = float(line.strip().split(",COST,")[1])
-                    total_cost += cost
-                except Exception:
-                    pass
-    return total_cost
-
-def get_crawl_openai_cost(crawl_ticker_list):
-    log_path = Path("logs/openai_costs.log")
-    if not log_path.exists():
-        return 0.0
-    crawl_cost = 0.0
-    with open(log_path, "r", encoding="utf-8") as f:
-        for line in f:
-            # Suche nach Ticker in der Zeile
-            for ticker in crawl_ticker_list:
-                if f",{ticker}," in line or f" {ticker}:" in line:
-                    if ",COST," in line:
-                        try:
-                            cost = float(line.strip().split(",COST,")[1])
-                            crawl_cost += cost
-                        except Exception:
-                            pass
-                    elif ":" in line and "USD" in line:
-                        try:
-                            cost_part = line.split(":")[1].split("USD")[0].strip()
-                            crawl_cost += float(cost_part)
-                        except Exception:
-                            pass
-    return crawl_cost
-
-def get_openai_stats(mode="day", crawl_ticker_list=None):
-    from datetime import datetime
-    log_path = Path("logs/openai_costs.log")
-    if not log_path.exists():
-        return 0.0, 0, 0  # Kosten, Input-Tokens, Output-Tokens
     today = datetime.now().strftime("%Y-%m-%d")
     total_cost = 0.0
     total_input = 0
@@ -290,6 +209,7 @@ def get_openai_stats_from_file(log_path):
     return total_cost, total_input, total_output
 
 def main():
+    logger.info(f"🚀 WSB-Crawler v{__version__} gestartet")
     logger.info("🔄 Lade Umgebungsvariablen ...")
     load_dotenv(ENV_PATH)
 
@@ -348,8 +268,8 @@ def main():
     try:
         import pandas as pd
         from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for, load_summary, parse_summary_md
-        next_crawl_time = "unbekannt"  # <-- Standardwert setzen!
-        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")  # <-- direkt am Anfang!
+        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
+        next_crawl_time = get_next_systemd_run()
         pickle_files = list_pickle_files(PICKLE_DIR)
         if not pickle_files:
             logger.warning("Keine Pickle-Datei gefunden, keine Benachrichtigung möglich.")
@@ -410,11 +330,7 @@ def main():
 
         logger.info(f"summary_dict keys: {list(summary_dict.keys())}")
 
-        # OpenAI Kosten für heute abrufen
-        crawl_cost = get_crawl_openai_cost(top5_ticker)
-        openai_cost, openai_count, openai_avg = get_today_openai_stats()
-        openai_cost_total = get_total_openai_cost()
-
+        # OpenAI Kosten für heute abrufen (aus separaten Log-Dateien)
         crawl_cost, crawl_input, crawl_output = get_openai_stats_from_file("logs/openai_costs_crawl.log")
         day_cost, day_input, day_output = get_openai_stats_from_file("logs/openai_costs_day.log")
         total_cost, total_input, total_output = get_openai_stats_from_file("logs/openai_costs_total.log")
@@ -440,9 +356,7 @@ def main():
         aktuelle_kurse = dict(zip(df_ticker["Ticker"], df_ticker["Kurs"]))
         save_stats(STATS_PATH, aktuelle_nennungen, aktuelle_kurse)
 
-        next_crawl_time = get_next_systemd_run()
 
-        timestamp = time.strftime("%d.%m.%Y %H:%M:%S")
         msg = format_discord_message(
             pickle_name=latest_pickle,
             timestamp=timestamp,
@@ -458,8 +372,7 @@ def main():
             openai_cost_total=total_cost,
             openai_tokens_total=(total_input, total_output)
         )
-        # Kosten an die Nachricht anhängen
-        #msg += f"\n{kosten_str}"
+
 
         # Nur bei signifikantem Anstieg Benachrichtigung senden
         ALERT_RATIO = float(os.getenv("ALERT_RATIO", "2.0"))
@@ -542,11 +455,14 @@ def main():
     except Exception as e:
         logger.error(f"Fehler bei der Discord-Benachrichtigung: {e} (next_crawl_time: {next_crawl_time if 'next_crawl_time' in locals() else 'unbekannt'})")
 
-    # Am Ende des Tages (z.B. nach dem letzten Crawl):
-    if datetime.now().strftime("%H:%M") == "00:00":
-        post_daily_openai_cost()
 
-def get_next_systemd_run(timer_name="reddit_crawler.timer"):
+
+def get_next_systemd_run(timer_name: str = "reddit_crawler.timer") -> str:
+    """Ermittelt die nächste geplante Timer-Ausführung via systemctl.
+    
+    Returns:
+        str: Formatierter Zeitstempel oder "unbekannt"
+    """
     try:
         result = subprocess.run(
             ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
@@ -570,7 +486,12 @@ def get_next_systemd_run(timer_name="reddit_crawler.timer"):
         logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
     return "unbekannt"
 
-def get_kurse_parallel(ticker_list):
+def get_kurse_parallel(ticker_list: list[str]) -> dict:
+    """Holt Kursdaten parallel für mehrere Ticker.
+    
+    Returns:
+        dict: {ticker: kurs_data}
+    """
     kurse = {}
     tickers_ohne_kurs = []
     with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:

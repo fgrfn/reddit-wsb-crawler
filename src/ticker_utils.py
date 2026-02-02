@@ -1,3 +1,8 @@
+"""Ticker-Listen-Verwaltung: Download und Bereinigung von Ticker-Daten.
+
+Lädt Tickerlisten von NASDAQ, NYSE und lokalen Quellen (DE/EU),
+bereinigt sie und speichert sie als CSV und Pickle.
+"""
 from pathlib import Path
 import pandas as pd
 import logging
@@ -16,7 +21,15 @@ DE_LOCAL = BASE_DIR / "data/input/de-listed-symbols.xlsx"
 TICKER_CSV = BASE_DIR / "data/input/all_tickers.csv"
 SYMBOLS_PKL = BASE_DIR / "data/input/symbols_list.pkl"
 
-def download_and_clean_tickerlist():
+def download_and_clean_tickerlist() -> pd.DataFrame:
+    """Lädt Tickerlisten von NASDAQ (online), NYSE und DE/EU (lokal).
+    
+    Bereinigt die Daten von ETFs, Fonds, SPACs etc. und speichert
+    das Ergebnis als CSV und Symbol-Liste als Pickle.
+    
+    Returns:
+        pd.DataFrame: Bereinigte Tickerliste mit Spalten Symbol, Security Name, Exchange
+    """
     # NASDAQ laden
     logger.info("⬇️ Lade aktuelle NASDAQ-Tickerliste ...")
     nasdaq = pd.read_csv(NASDAQ_URL)
@@ -102,7 +115,12 @@ def download_and_clean_tickerlist():
 
     return tickers
 
-def load_tickerlist():
+def load_tickerlist() -> pd.DataFrame:
+    """Lädt die Tickerliste aus CSV oder erstellt sie neu.
+    
+    Returns:
+        pd.DataFrame: Tickerliste
+    """
     if not TICKER_CSV.exists():
         return download_and_clean_tickerlist()
     return pd.read_csv(TICKER_CSV)

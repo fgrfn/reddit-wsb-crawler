@@ -10,20 +10,35 @@ from pathlib import Path
 TICKER_CACHE_PATH = os.path.join("data", "input", "ticker_name_map.pkl")
 TICKER_CSV = Path("data/input/all_tickers.csv")
 
-# 📦 Lokaler Cache laden
 def load_ticker_name_map():
+    """Lädt das Ticker-Namen-Mapping aus dem Cache."""
     if os.path.exists(TICKER_CACHE_PATH):
         with open(TICKER_CACHE_PATH, "rb") as f:
             return pickle.load(f)
     return {}
 
-# 💾 Namen in Cache speichern
 def save_ticker_name_map(name_map):
+    """Speichert das Ticker-Namen-Mapping im Cache."""
     with open(TICKER_CACHE_PATH, "wb") as f:
         pickle.dump(name_map, f)
 
-# 🧠 Der Multi-Resolver
-def resolve_ticker_name(symbol, cache=None):
+def resolve_ticker_name(symbol: str, cache: dict = None) -> tuple[str, str | None]:
+    """Löst ein Ticker-Symbol zu seinem Unternehmensnamen auf.
+    
+    Fallback-Strategie:
+    1. Lokale Tickerliste (all_tickers.csv)
+    2. Cache (ticker_name_map.pkl)
+    3. yfinance API
+    4. Yahoo Search API
+    5. Alpha Vantage API (falls ALPHAVANTAGE_API_KEY gesetzt)
+    
+    Args:
+        symbol: Ticker-Symbol (z.B. "AAPL")
+        cache: Optionales Cache-Dict (wird geladen wenn None)
+    
+    Returns:
+        tuple: (symbol, company_name) - company_name ist None bei Fehler
+    """
     if cache is None:
         cache = load_ticker_name_map()
 

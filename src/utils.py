@@ -1,11 +1,13 @@
+"""Utility-Funktionen für Pickle-/Summary-Handling und .env-Verwaltung.
+
+Diese Datei enthält Legacy-Funktionen, die auf ticker_data.py migriert wurden.
+Für Tickerlist-Funktionen nutze ticker_utils.py.
+"""
 import os
 import pickle
 from pathlib import Path
 import pandas as pd
-import requests
 
-NASDAQ_URL = "https://ftp.nasdaqtrader.com/dynamic/SymDir/nasdaqlisted.txt"
-NYSE_URL = "https://ftp.nasdaqtrader.com/dynamic/SymDir/otherlisted.txt"
 TICKER_CSV = Path("data/input/all_tickers.csv")
 
 def update_dotenv_variable(key: str, value: str, dotenv_path):
@@ -74,43 +76,16 @@ def load_ticker_names(ticker_name_path: Path):
     return {}
 
 def download_and_clean_tickerlist():
-    # NASDAQ laden
-    nasdaq = pd.read_csv(NASDAQ_URL, sep="|")
-    # Fix: NASDAQ-Datei hat einen Header in der ersten Zeile, aber auch eine Zeile mit "File Creation Time" am Anfang.
-    # Diese Zeile muss übersprungen werden, sonst fehlen die Spalten!
-    if "Symbol" not in nasdaq.columns or "Security Name" not in nasdaq.columns:
-        nasdaq = pd.read_csv(NASDAQ_URL, sep="|", skiprows=1)
-    nasdaq = nasdaq[["Symbol", "Security Name"]]
-    nasdaq["Exchange"] = "NASDAQ"
-
-    # NYSE laden
-    nyse = pd.read_csv(NYSE_URL, sep="|")
-    # Fix: NYSE-Datei kann ebenfalls eine "File Creation Time"-Zeile am Anfang haben.
-    if "ACT Symbol" not in nyse.columns or "Security Name" not in nyse.columns:
-        nyse = pd.read_csv(NYSE_URL, sep="|", skiprows=1)
-    nyse = nyse[["ACT Symbol", "Security Name"]]
-    nyse = nyse.rename(columns={"ACT Symbol": "Symbol"})
-    nyse["Exchange"] = "NYSE"
-
-    # Kombinieren
-    tickers = pd.concat([nasdaq, nyse], ignore_index=True)
-
-    # Bereinigen: ETFs, Test Issues, Fonds etc. rausfiltern
-    mask = ~tickers["Security Name"].str.contains("ETF|Fund|Trust|Warrant|Test|Notes|Depositary|SPAC", case=False, na=False)
-    tickers = tickers[mask]
-
-    # Doppelte raus
-    tickers = tickers.drop_duplicates(subset="Symbol")
-
-    # Speichern
-    TICKER_CSV.parent.mkdir(parents=True, exist_ok=True)
-    tickers.to_csv(TICKER_CSV, index=False)
-    return tickers
+    """Legacy-Wrapper. Nutze stattdessen ticker_utils.download_and_clean_tickerlist()."""
+    from ticker_utils import download_and_clean_tickerlist as _download
+    return _download()
 
 def load_tickerlist():
+    """Lädt Tickerliste aus CSV oder lädt sie neu herunter."""
     if not TICKER_CSV.exists():
         return download_and_clean_tickerlist()
     return pd.read_csv(TICKER_CSV)
 
-# Kompatibilitäts‑Wrapper: importiere alle Hilfsfunktionen aus ticker_data
+# Kompatibilitäts-Wrapper: importiere alle Hilfsfunktionen aus ticker_data
+from ticker_data import *  # noqa: F401, F403
 from ticker_data import *

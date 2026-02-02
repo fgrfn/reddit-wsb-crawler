@@ -1,3 +1,8 @@
+"""Ticker-Zusammenfassungen: Erstellt lokale Summaries mit Yahoo Finance und NewsAPI.
+
+Lädt Crawl-Ergebnisse, holt Kursdaten und News-Headlines und erstellt
+kompakte Zusammenfassungen für Top-Ticker.
+"""
 import os
 import requests
 import pickle
@@ -6,7 +11,8 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
-def load_env():
+def load_env() -> None:
+    """Lädt .env-Datei robust (Repository-Root/config/.env bevorzugt)."""
     # Robust .env loading: prefer repo-root/config/.env, fallback to src/config/.env or CWD/config/.env
     base = Path(__file__).resolve().parent
     repo_root = base.parent
@@ -25,7 +31,15 @@ def load_env():
         logging.basicConfig(level=logging.INFO)
     return
 
-def load_latest_pickle():
+def load_latest_pickle() -> tuple[dict, str]:
+    """Lädt die neueste Pickle-Datei aus data/output/pickle.
+    
+    Returns:
+        tuple: (pickle_data, filename)
+    
+    Raises:
+        FileNotFoundError: Wenn keine Pickle-Datei gefunden wird
+    """
     p = Path(__file__).resolve().parent.parent / "data" / "output" / "pickle"
     if not p.exists() or not p.is_dir():
         raise FileNotFoundError(f"Kein pickle-Ordner gefunden: {p}")
@@ -38,7 +52,16 @@ def load_latest_pickle():
             logging.warning(f"Fehler beim Laden {file}: {e}")
     raise FileNotFoundError("Keine .pkl-Dateien gefunden.")
 
-def extract_text(result, ticker):
+def extract_text(result: dict, ticker: str) -> str:
+    """Extrahiert Reddit-Kontext für einen Ticker aus Crawl-Ergebnis.
+    
+    Args:
+        result: Pickle-Datenstruktur vom Crawler
+        ticker: Ticker-Symbol
+    
+    Returns:
+        str: Formatierter Text mit Nennungen und Post-Snippets
+    """
     texts = []
     # result expected to have a structure like: { 'subreddits': { sr: { 'symbol_hits': {SYM: count}, 'posts': [...] } } }
     for sr_name, sr_data in result.get("subreddits", {}).items():
