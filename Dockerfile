@@ -4,7 +4,7 @@ FROM python:3.11-slim
 # Metadaten
 LABEL maintainer="WSB-Crawler"
 LABEL description="Reddit WSB Crawler with Discord alerts"
-LABEL version="1.0.2"
+LABEL version="1.0.3"
 
 # Arbeitsverzeichnis erstellen
 WORKDIR /app
