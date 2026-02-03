@@ -85,7 +85,6 @@ docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.3.0
 ```
 
 ### Option 2: Python (lokal)
-### Option 2: Python (lokal)
 
 ```bash
 # 1. Repository klonen
@@ -130,38 +129,6 @@ SUBREDDITS=wallstreetbets,wallstreetbetsGER,mauerstrassenwetten
 # News-Einstellungen
 NEWSAPI_LANG=en           # Sprache für News (en, de, etc.)
 NEWSAPI_WINDOW_HOURS=48   # Zeitfenster für News in Stunden
-
----
-
-## 📂 Projektstruktur
-
-```
-reddit-wsb-crawler/
-├── src/                              # Quellcode
-│   ├── run_crawler_headless.py      # Haupt-Entry-Point (vollautomatisch)
-│   ├── main_crawler.py              # Legacy-Version (einfacher)
-│   ├── reddit_crawler.py            # Reddit-Crawling-Logik
-│   ├── ticker_resolver.py           # Ticker → Unternehmensnamen
-│   ├── summarize_ticker.py          # Zusammenfassungen erstellen
-│   ├── discord_utils.py             # Discord-Benachrichtigungen
-│   ├── ticker_utils.py              # Tickerlist-Verwaltung
-│   ├── __version__.py               # Version-Info
-│   └── scripts/
-│       └── test_discord_message.py  # Discord-Test-Tool
-├── data/                             # Persistente Daten
-│   ├── input/                       # Ticker-Listen & Caches
-│   ├── output/                      # Crawl-Ergebnisse & Summaries
-│   └── state/                       # Alert-States
-├── logs/                             # Log-Dateien
-├── config/                           # Konfiguration
-│   ├── .env                         # Deine Credentials (nicht in Git!)
-│   └── .env.example                 # Vorlage
-├── Dockerfile                        # Docker-Image
-├── docker-compose.yml               # Docker Orchestration
-└── requirements.txt                 # Python-Dependencies
-```
-
-## 💡 Verwendung
 
 ---
 
@@ -234,12 +201,10 @@ Ein Alert wird ausgelöst, wenn:
 - Optional: Kursveränderung ≥ 5% (`ALERT_MIN_PRICE_MOVE`)
 
 Pro Crawl werden max. 3 Alerts gesendet (`ALERT_MAX_PER_RUN`) mit 4h Cooldown pro Ticker (`ALERT_COOLDOWN_H`)
-cp config/.env.example config/.env
-nano config/.env
 
 ---
 
-## � Docker
+## 🐳 Docker
 
 ### Pre-built Images
 
@@ -364,113 +329,6 @@ Mehr Details: [DOCKER.md](DOCKER.md)
 
 ---
 
-## �🔄 Versioning & Releases
-
-Das Projekt nutzt [Semantic Versioning](https://semver.org/) mit **vollautomatischem Release-Management**.
-
-### Automatischer Workflow
-
-Bei jedem Push auf `main`:
-
-```mermaid
-graph LR
-    A[Code Push] --> B{Version geändert?}
-    B -->|Nein| C[Auto-Increment Patch]
-    B -->|Ja| D[Release erstellen]
-    C --> D
-    D --> E[Docker bauen]
-    E --> F[Publish zu GHCR]
-```
-
-1. **Version-Check**: Prüft ob `version.txt` manuell geändert wurde
-2. **Auto-Increment**: Erhöht Patch-Version (1.0.0 → 1.0.1) falls nicht
-3. **Release**: Erstellt GitHub Release mit automatischem Changelog
-4. **Docker**: Baut und pusht Image zu `ghcr.io/fgrfn/reddit-wsb-crawler`
-
-### Version manuell erhöhen
-
-Für Features oder Breaking Changes:
-
-```bash
-# Feature-Release (1.0.0 → 1.1.0)
-echo "1.1.0" > version.txt
-sed -i 's/__version__ = ".*"/__version__ = "1.1.0"/' src/__version__.py
-sed -i 's/version=".*"/version="1.1.0"/' Dockerfile
-git commit -am "feat: neue Feature-Beschreibung"
-git push
-
-# Breaking Change (1.1.0 → 2.0.0)
-echo "2.0.0" > version.txt
-sed -i 's/__version__ = ".*"/__version__ = "2.0.0"/' src/__version__.py
-sed -i 's/version=".*"/version="2.0.0"/' Dockerfile
-git commit -am "feat!: breaking change Beschreibung"
-git push
-```
-
-**Aktuelle Version:** 1.0.0 | [Alle Releases →](https://github.com/fgrfn/reddit-wsb-crawler/releases)
-
----
-
-## 📖 Dokumentation
-
-| Dokument | Beschreibung |
-|----------|--------------|
-| [DOCKER.md](DOCKER.md) | Umfassende Docker-Anleitung mit Best Practices |
-| [CHANGELOG.md](CHANGELOG.md) | Vollständige Versions-Historie |
-| [SETUP_COMPLETE.md](SETUP_COMPLETE.md) | Detaillierte Setup-Übersicht |
-| [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) | Code-Refactoring Details |
-
----
-
-## 🛠️ Development
-
-### Lokales Setup
-
-```bash
-# Repository klonen
-git clone https://github.com/fgrfn/reddit-wsb-crawler.git
-cd reddit-wsb-crawler
-
-# Virtual Environment
-python -m venv venv
-source venv/bin/activate
-
-# Dependencies installieren
-pip install -r requirements.txt
-
-# Pre-commit hooks (optional)
-pip install pre-commit
-pre-commit install
-```
-
-### Mit Docker entwickeln
-
-```bash
-# Development Container starten
-docker-compose -f docker-compose.dev.yml up -d
-
-# In Container einloggen
-docker exec -it wsb-crawler-dev bash
-
-# Im Container arbeiten
-python src/run_crawler_headless.py
-```
-
-### Tests
-
-```bash
-# Einzelne Komponenten testen
-python src/scripts/test_discord_message.py
-
-# Ticker-Auflösung testen
-python src/build_ticker_name_cache.py
-
-# Interaktive Suche
-python src/check_ticker_mentions.py
-```
-
----
-
 ## 📊 Monitoring & Logs
 
 ### Logs ansehen
@@ -491,139 +349,9 @@ tail -f logs/crawler.log
 - `logs/openai_costs.log` - API-Kosten (falls verwendet)
 - `logs/archive/` - Archivierte Logs
 
-### Debugging
-
-```bash
-# Fehlerhafte Pickle-Dateien prüfen
-ls -la data/output/pickle/
-
-# Cache leeren
-rm data/input/ticker_name_map.pkl
-
-# Ticker-Listen neu laden
-python -c "from src.ticker_utils import download_and_clean_tickerlist; download_and_clean_tickerlist()"
-```
-
 ---
 
-## 📝 License
-
-MIT License - siehe [LICENSE](LICENSE)
-
----
-
-<div align="center">
-
-**Entwickelt mit ❤️ für die WSB-Community**
-
-⭐ Wenn dir dieses Projekt gefällt, gib uns einen Star!
-
-[⬆ Nach oben](#-wsb-crawler)
-
-</div>
-
-```bash
-# Alle 30 Minuten
-CRAWL_INTERVAL=1800 docker-compose --profile scheduler up -d
-
-# Alle 2 Stunden
-CRAWL_INTERVAL=7200 docker-compose --profile scheduler up -d
-```
-
-### Development Mode
-
-```bash
-# Live-Reload für Code-Änderungen
-docker-compose -f docker-compose.dev.yml up -d
-docker exec -it wsb-crawler-dev bash
-
-# Im Container
-python src/run_crawler_headless.py
-```
-
-📚 **Mehr Details:** Siehe [DOCKER.md](DOCKER.md)
-
----
-
-## ⚙️ Konfiguration
-
-### Basis-Setup
-Lege `config/.env` im Repo‑Root an (empfohlen). Minimales Beispiel:
-```ini
-# Reddit
-REDDIT_CLIENT_ID=...
-REDDIT_CLIENT_SECRET=...
-REDDIT_USER_AGENT=python:wsb-crawler:v1.0 (by /u/you)
-SUBREDDITS=wallstreetbets,wallstreetbetsGER
-
-# NewsAPI (erforderlich für Headlines)
-NEWSAPI_KEY=dein_newsapi_key
-NEWSAPI_LANG=en
-NEWSAPI_WINDOW_HOURS=48
-
-# Discord
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-
-# Alert thresholds (Beispiele)
-ALERT_MIN_ABS=20
-ALERT_MIN_DELTA=10
-ALERT_RATIO=2.0
-ALERT_MIN_PRICE_MOVE=5.0
-ALERT_MAX_PER_RUN=3
-ALERT_COOLDOWN_H=4
-```
-Hinweis: `config/.env` (Repo‑Root) wird bevorzugt; es gibt Fallbacks (`src/config/.env`, `./config/.env`).
-
----
-
-## 🔄 Versioning & Releases
-
-Das Projekt nutzt [Semantic Versioning](https://semver.org/) mit **vollautomatischem Release-Management**.
-
-### Automatischer Workflow
-
-Bei jedem Push auf `main`:
-
-```mermaid
-graph LR
-    A[Code Push] --> B{Version geändert?}
-    B -->|Nein| C[Auto-Increment Patch]
-    B -->|Ja| D[Release erstellen]
-    C --> D
-    D --> E[Docker bauen]
-    E --> F[Publish zu GHCR]
-```
-
-1. **Version-Check**: Prüft ob `version.txt` manuell geändert wurde
-2. **Auto-Increment**: Erhöht Patch-Version (1.0.0 → 1.0.1) falls nicht
-3. **Release**: Erstellt GitHub Release mit automatischem Changelog
-4. **Docker**: Baut und pusht Image zu `ghcr.io/fgrfn/reddit-wsb-crawler`
-
-### Version manuell erhöhen
-
-Für Features oder Breaking Changes:
-
-```bash
-# Feature-Release (1.0.0 → 1.1.0)
-echo "1.1.0" > version.txt
-sed -i 's/__version__ = ".*"/__version__ = "1.1.0"/' src/__version__.py
-sed -i 's/version=".*"/version="1.1.0"/' Dockerfile
-git commit -am "feat: neue Feature-Beschreibung"
-git push
-
-# Breaking Change (1.1.0 → 2.0.0)
-echo "2.0.0" > version.txt
-sed -i 's/__version__ = ".*"/__version__ = "2.0.0"/' src/__version__.py
-sed -i 's/version=".*"/version="2.0.0"/' Dockerfile
-git commit -am "feat!: breaking change Beschreibung"
-git push
-```
-
-**Aktuelle Version:** 1.0.0 | [Alle Releases →](https://github.com/fgrfn/reddit-wsb-crawler/releases)
-
----
-
-## 📖 Weitere Dokumentation
+## � Dokumentation
 
 | Dokument | Beschreibung |
 |----------|--------------|
@@ -631,8 +359,6 @@ git push
 | [DOCKER_ENV.md](DOCKER_ENV.md) | Environment-Variablen ohne .env Datei |
 | [DISCORD_EMBEDS.md](DISCORD_EMBEDS.md) | Discord Rich Embeds Dokumentation |
 | [CHANGELOG.md](CHANGELOG.md) | Vollständige Versions-Historie |
-| [SETUP_COMPLETE.md](SETUP_COMPLETE.md) | Detaillierte Setup-Übersicht |
-| [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) | Code-Refactoring Details |
 
 ---
 
