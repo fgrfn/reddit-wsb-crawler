@@ -137,7 +137,7 @@ def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_c
             "fields": [
                 {
                     "name": "🕐 Letzter Crawl",
-                    "value": f"{timestamp}\n{time_ago if time_ago else ''}",
+                    "value": timestamp,
                     "inline": True
                 },
                 {
