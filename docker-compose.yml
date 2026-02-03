@@ -7,14 +7,14 @@ services:
       dockerfile: Dockerfile
     container_name: wsb-crawler
     image: wsb-crawler:latest
-    restart: unless-stopped
+    restart: "no"  # Kein Auto-Restart - für einmalige Crawls
     
     environment:
       # Timezone
       - TZ=Europe/Berlin
       
-      # Enable loop mode for continuous crawling
-      - CRAWLER_LOOP_MODE=true
+      # Loop mode disabled for single run
+      - CRAWLER_LOOP_MODE=false
       - CRAWL_INTERVAL_MINUTES=${CRAWL_INTERVAL_MINUTES:-30}
       
       # Reddit API (REQUIRED)
