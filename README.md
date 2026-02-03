@@ -351,17 +351,6 @@ tail -f logs/crawler.log
 
 ---
 
-## � Dokumentation
-
-| Dokument | Beschreibung |
-|----------|--------------|
-| [DOCKER.md](DOCKER.md) | Umfassende Docker-Anleitung mit Best Practices |
-| [DOCKER_ENV.md](DOCKER_ENV.md) | Environment-Variablen ohne .env Datei |
-| [DISCORD_EMBEDS.md](DISCORD_EMBEDS.md) | Discord Rich Embeds Dokumentation |
-| [CHANGELOG.md](CHANGELOG.md) | Vollständige Versions-Historie |
-
----
-
 ## 📝 License
 
 MIT License - siehe [LICENSE](LICENSE)
@@ -377,5 +366,6 @@ MIT License - siehe [LICENSE](LICENSE)
 [⬆ Nach oben](#-wsb-crawler)
 
 </div>
+
 
 
