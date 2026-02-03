@@ -132,64 +132,6 @@ NEWSAPI_WINDOW_HOURS=48   # Zeitfenster für News in Stunden
 
 ---
 
-## 📱 Discord-Nachrichten
-
-Der Crawler sendet zwei Arten von Nachrichten:
-
-### 1. 🔔 Alert-Nachricht (bei ungewöhnlicher Aktivität)
-
-Wird als **neue Nachricht** gepostet und pingt alle:
-
-```
-⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt
-💾 260203-012557_crawler-ergebnis.pkl
-⏰ 03.02.2026 01:28:28
-
-🥇 AMD - Advanced Micro Devices Inc 🚨
-🔢 Nennungen: 28 (Δ +18)
-💵 89.45 USD (+2.34 USD, +2.69%) 📈 [03.02.2026 01:28] 
-    | 🌅 Pre-Market: 89.12 USD | Status: REGULAR 
-    | Trends: 1h ▲ +1.2% · 24h ▲ +2.8% · 7d ▲ +5.3% 
-    | https://finance.yahoo.com/quote/AMD
-🧠 AMD zeigt starke Performance nach positiven Q4-Zahlen...
-📰 AMD Reports Record Revenue: Q4 Earnings Beat Expectations (Reuters) | https://...
-📰 AI Chip Demand Drives AMD Stock Surge (Bloomberg) | https://...
----
-🥈 PLTR - Palantir Technologies Inc
-🔢 Nennungen: 22 (Δ +15)
-💵 35.67 USD (-0.89 USD, -2.44%) 📉 [03.02.2026 01:28]
-    | 🌙 After-Market: 35.45 USD | Status: POST 
-    | Trends: 1h ▼ -0.5% · 24h ▼ -2.1% · 7d ▲ +8.7%
-    | https://finance.yahoo.com/quote/PLTR
-🧠 Palantir secured new government contracts worth $450M...
----
-```
-
-### 2. 🟢 Status-Nachricht (Heartbeat)
-
-Wird **kontinuierlich editiert** (kein Ping, kein Spam!):
-
-```
-💚 **WSB-Crawler Status**
-🕐 Letzter Crawl: 03.02.2026 01:28:28 (vor 2 Minuten)
-📊 Posts überprüft: 200
-🔔 Alerts ausgelöst: 2
-
-⏭️ Nächster Crawl: 03.02.2026 01:58:28
-
-**Top 5 Erwähnungen:**
-1. AMD: 28
-2. PLTR: 22
-3. LINK: 15
-4. NVDA: 12
-5. TSLA: 9
-
-🆔 Run-ID: `260203-012557`
-```
-
-> 💡 **Tipp:** Die Status-Nachricht wird alle 30 Minuten aktualisiert (editiert), 
-> sodass du **nur eine Nachricht** im Channel hast, die sich automatisch aktualisiert!
-
 ### Alert-Bedingungen
 
 Ein Alert wird ausgelöst, wenn:
@@ -366,6 +308,7 @@ MIT License - siehe [LICENSE](LICENSE)
 [⬆ Nach oben](#-wsb-crawler)
 
 </div>
+
 
 
 
