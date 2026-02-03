@@ -447,7 +447,11 @@ def main():
                 openai_tokens_total=(total_input, total_output)
             )
             # Nur die Top-1 Nachricht senden (Legende weggelassen)
-            send_discord_notification(msg_top1)
+            # msg_top1 ist jetzt ein Embed-Dict wenn use_embed=True
+            if isinstance(msg_top1, dict):
+                send_discord_notification("", embed=msg_top1)
+            else:
+                send_discord_notification(msg_top1)
             logger.info("Discord-Benachrichtigung gesendet!")
         else:
             logger.info("Keine signifikanten Nennungsanstiege — Discord-Benachrichtigung übersprungen.")
@@ -477,7 +481,11 @@ def main():
                     except Exception:
                         pass
                 
-                result_status = send_or_edit_discord_message(status_msg, message_id=status_id)
+                # status_msg ist jetzt ein Embed-Dict wenn use_embed=True
+                if isinstance(status_msg, dict):
+                    result_status = send_or_edit_discord_message("", message_id=status_id, embed=status_msg)
+                else:
+                    result_status = send_or_edit_discord_message(status_msg, message_id=status_id)
                 
                 if result_status and result_status.get("success"):
                     # Speichere neue Message-ID

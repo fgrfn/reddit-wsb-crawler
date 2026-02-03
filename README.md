@@ -33,9 +33,10 @@ Crawlt r/wallstreetbets nach Ticker-Erwähnungen, analysiert Trends und sendet D
 - **Historischer Vergleich**: Erkennt signifikante Anstiege
 
 ### 🔔 **Smart Alerts**
-- Discord-Benachrichtigungen bei ungewöhnlicher Aktivität
+- **Discord Rich Embeds** mit Farbcodierung und strukturierten Feldern
+- Benachrichtigungen bei ungewöhnlicher Aktivität
 - Konfigurierbare Schwellwerte (Nennungen, Kursänderungen)
-- Kompaktes Format mit allen relevanten Infos
+- Kompaktes Format mit klickbaren Links
 - Silent Status-Updates (Heartbeat ohne Ping)
 
 ### 🐳 **Production-Ready**
@@ -628,6 +629,7 @@ git push
 |----------|--------------|
 | [DOCKER.md](DOCKER.md) | Umfassende Docker-Anleitung mit Best Practices |
 | [DOCKER_ENV.md](DOCKER_ENV.md) | Environment-Variablen ohne .env Datei |
+| [DISCORD_EMBEDS.md](DISCORD_EMBEDS.md) | Discord Rich Embeds Dokumentation |
 | [CHANGELOG.md](CHANGELOG.md) | Vollständige Versions-Historie |
 | [SETUP_COMPLETE.md](SETUP_COMPLETE.md) | Detaillierte Setup-Übersicht |
 | [REFACTORING_SUMMARY.md](REFACTORING_SUMMARY.md) | Code-Refactoring Details |

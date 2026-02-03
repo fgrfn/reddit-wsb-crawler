@@ -2,18 +2,29 @@ import os
 import requests
 import logging
 import time
+from datetime import datetime
 from pathlib import Path
 from utils import list_pickle_files, load_pickle, load_ticker_names, find_summary_for
 import pandas as pd
 
-def send_discord_notification(message, webhook_url=None):
+def send_discord_notification(message, webhook_url=None, embed=None):
+    """Sendet eine Discord-Nachricht als Text oder Rich Embed.
+    
+    Args:
+        message: Nachrichtentext (wird ignoriert wenn embed gesetzt ist)
+        webhook_url: Discord Webhook URL
+        embed: Optional - Dict mit Discord Embed (siehe create_embed_*)
+    """
     if webhook_url is None:
         webhook_url = os.getenv("DISCORD_WEBHOOK_URL", "")
     if not webhook_url:
         logging.warning("Kein Discord-Webhook-URL gesetzt.")
         return False
     try:
-        data = {"content": message}
+        if embed:
+            data = {"embeds": [embed]}
+        else:
+            data = {"content": message}
         response = requests.post(webhook_url, json=data, timeout=10)
         response.raise_for_status()
         return True
@@ -21,13 +32,14 @@ def send_discord_notification(message, webhook_url=None):
         logging.error(f"❌ Discord-Benachrichtigung fehlgeschlagen: {e}")
         return False
 
-def send_or_edit_discord_message(message, webhook_url=None, message_id=None):
+def send_or_edit_discord_message(message, webhook_url=None, message_id=None, embed=None):
     """Sendet eine neue Nachricht oder editiert eine bestehende.
     
     Args:
-        message: Nachrichtentext
+        message: Nachrichtentext (wird ignoriert wenn embed gesetzt ist)
         webhook_url: Discord Webhook URL (optional, nutzt ENV wenn None)
         message_id: ID der zu editierenden Nachricht (optional)
+        embed: Optional - Dict mit Discord Embed
     
     Returns:
         dict mit {"success": bool, "message_id": str} oder None bei Fehler
@@ -39,7 +51,10 @@ def send_or_edit_discord_message(message, webhook_url=None, message_id=None):
         return None
     
     try:
-        data = {"content": message}
+        if embed:
+            data = {"embeds": [embed]}
+        else:
+            data = {"content": message}
         
         if message_id:
             # Editiere bestehende Nachricht
@@ -64,7 +79,7 @@ def send_or_edit_discord_message(message, webhook_url=None, message_id=None):
         logging.error(f"❌ Discord-Nachricht fehlgeschlagen: {e}")
         return None
 
-def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_crawl_time="unbekannt", triggered_count=0):
+def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_crawl_time="unbekannt", triggered_count=0, use_embed=True):
     """Erstellt eine kompakte Heartbeat/Status-Nachricht.
     
     Args:
@@ -74,6 +89,10 @@ def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_c
         top_tickers: Liste von (ticker, count) Tupeln
         next_crawl_time: Nächster geplanter Crawl
         triggered_count: Anzahl ausgelöster Alerts
+        use_embed: Wenn True, gibt embed-Dict zurück, sonst Text
+    
+    Returns:
+        str oder dict: Text-Nachricht oder Discord Embed
     """
     import time
     from datetime import datetime
@@ -87,46 +106,103 @@ def format_heartbeat_message(timestamp, run_id, total_posts, top_tickers, next_c
         if diff_seconds < 60:
             time_ago = "vor wenigen Sekunden"
             status_emoji = "🟢"
+            color = 0x00ff00  # Grün
         elif diff_seconds < 3600:
             mins = int(diff_seconds / 60)
             time_ago = f"vor {mins} Minute{'n' if mins != 1 else ''}"
             status_emoji = "🟢" if mins < 30 else "🟡"
+            color = 0x00ff00 if mins < 30 else 0xffff00  # Grün/Gelb
         elif diff_seconds < 86400:
             hours = int(diff_seconds / 3600)
             time_ago = f"vor {hours} Stunde{'n' if hours != 1 else ''}"
             status_emoji = "🟡" if hours < 6 else "🔴"
+            color = 0xffff00 if hours < 6 else 0xff0000  # Gelb/Rot
         else:
             days = int(diff_seconds / 86400)
             time_ago = f"vor {days} Tag{'en' if days != 1 else ''}"
             status_emoji = "🔴"
+            color = 0xff0000  # Rot
     except Exception:
         time_ago = ""
         status_emoji = "💚"
+        color = 0x00ff00
     
-    lines = []
-    lines.append(f"{status_emoji} **WSB-Crawler Status**")
-    lines.append(f"🕐 Letzter Crawl: {timestamp}{(' (' + time_ago + ')') if time_ago else ''}")
-    lines.append(f"📊 Posts überprüft: {total_posts}")
-    lines.append(f"🔔 Alerts ausgelöst: {triggered_count}")
-    
-    if next_crawl_time and next_crawl_time != "unbekannt":
-        lines.append(f"⏭️ Nächster Crawl: {next_crawl_time}")
-    
-    if top_tickers:
-        lines.append("\n**Top 5 Erwähnungen:**")
-        for i, (ticker, count) in enumerate(top_tickers[:5], 1):
-            lines.append(f"{i}. {ticker}: {count}")
-    
-    lines.append(f"\n🆔 Run-ID: `{run_id}`")
-    
-    return "\n".join(lines)
+    if use_embed:
+        # Discord Rich Embed
+        embed = {
+            "title": f"{status_emoji} WSB-Crawler Status",
+            "color": color,
+            "fields": [
+                {
+                    "name": "🕐 Letzter Crawl",
+                    "value": f"{timestamp}\n{time_ago if time_ago else ''}",
+                    "inline": True
+                },
+                {
+                    "name": "📊 Posts überprüft",
+                    "value": str(total_posts),
+                    "inline": True
+                },
+                {
+                    "name": "🔔 Alerts ausgelöst",
+                    "value": str(triggered_count),
+                    "inline": True
+                }
+            ],
+            "footer": {
+                "text": f"Run-ID: {run_id}"
+            },
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        if next_crawl_time and next_crawl_time != "unbekannt":
+            embed["fields"].append({
+                "name": "⏭️ Nächster Crawl",
+                "value": next_crawl_time,
+                "inline": False
+            })
+        
+        if top_tickers:
+            top_text = "\n".join([f"`{i}.` **{ticker}**: {count}" for i, (ticker, count) in enumerate(top_tickers[:5], 1)])
+            embed["fields"].append({
+                "name": "🏆 Top 5 Erwähnungen",
+                "value": top_text,
+                "inline": False
+            })
+        
+        return embed
+    else:
+        # Fallback: Text-Format (bisherige Version)
+        lines = []
+        lines.append(f"{status_emoji} **WSB-Crawler Status**")
+        lines.append(f"🕐 Letzter Crawl: {timestamp}{(' (' + time_ago + ')') if time_ago else ''}")
+        lines.append(f"📊 Posts überprüft: {total_posts}")
+        lines.append(f"🔔 Alerts ausgelöst: {triggered_count}")
+        
+        if next_crawl_time and next_crawl_time != "unbekannt":
+            lines.append(f"⏭️ Nächster Crawl: {next_crawl_time}")
+        
+        if top_tickers:
+            lines.append("\n**Top 5 Erwähnungen:**")
+            for i, (ticker, count) in enumerate(top_tickers[:5], 1):
+                lines.append(f"{i}. {ticker}: {count}")
+        
+        lines.append(f"\n🆔 Run-ID: `{run_id}`")
+        
+        return "\n".join(lines)
 
 def format_discord_message(
     pickle_name, timestamp, df_ticker, prev_nennungen, name_map, summary_dict,
-    next_crawl_time=None, **kwargs
+    next_crawl_time=None, use_embed=True, **kwargs
 ):
-    """Kompakte Alarm-Ansicht für Discord: zeigt Top-Ticker mit Kurs, Trends und Pre/Post-Market.
-    Möglichst kurz, damit Alerts sofort ins Auge fallen."""
+    """Alert-Ansicht für Discord: zeigt Top-Ticker mit Kurs, Trends und Pre/Post-Market.
+    
+    Args:
+        use_embed: Wenn True, gibt Discord Embed zurück (schöner), sonst Text
+    
+    Returns:
+        dict (embed) oder str (text message)
+    """
     platz_emojis = ["🥇", "🥈", "🥉"]
     when = timestamp or "unbekannt"
     # Schwelle für Hervorhebung (env oder default)
@@ -135,69 +211,168 @@ def format_discord_message(
     except Exception:
         alert_delta = 10.0
 
-    lines = []
-    # Minimal-Header (nicht zwingend, aber Zeit kurz anzeigen)
-    lines.append("⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt")
-    # include pickle name (like before) for traceability
-    if pickle_name:
-        lines.append(f"💾 {pickle_name}")
-    lines.append(f"⏰ {when}")
-    lines.append("")  # Leerzeile
-
     # Top-N (max 3)
     top_n = min(3, len(df_ticker)) if hasattr(df_ticker, '__len__') else 3
-    for i, (_, row) in enumerate(df_ticker.head(top_n).iterrows(), 1):
-        ticker = row["Ticker"]
-        nennungen = row["Nennungen"]
-        prev = prev_nennungen.get(ticker, 0)
-        diff = nennungen - prev
-        rank_emoji = platz_emojis[i-1] if i <= 3 else ""
-        # Highlight, wenn Delta groß
-        highlight = " 🚨" if diff >= alert_delta else ""
-        # compact header line
-        unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
-        lines.append(f"{rank_emoji} {ticker} - {unternehmen}{highlight}")
-        lines.append(f"🔢 Nennungen: {nennungen} (Δ {diff:+d})")
-        # Kursblock
-        kurs = row.get("Kurs") or {}
-        kurs_str = format_price_block_with_börse(kurs, ticker)
-        lines.append(f"💵 {kurs_str}")
-        # kurze Summary + News (falls vorhanden)
-        entry = summary_dict.get(str(ticker).strip().upper())
-        if entry:
-            # entry kann entweder ein String (legacy) oder ein Dict sein
-            if isinstance(entry, dict):
-                summ = entry.get("summary", "") or ""
-                news = entry.get("news", []) or []
-            else:
-                summ = str(entry)
-                news = []
+    
+    if use_embed:
+        # Discord Rich Embed Version
+        embed = {
+            "title": "⚠️ WSB-ALARM — Ungewöhnliche Aktivität",
+            "description": f"📅 {when}",
+            "color": 0xff6b00,  # Orange für Alerts
+            "fields": [],
+            "footer": {"text": f"💾 {pickle_name}" if pickle_name else "WSB Crawler"},
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        
+        for i, (_, row) in enumerate(df_ticker.head(top_n).iterrows(), 1):
+            ticker = row["Ticker"]
+            nennungen = row["Nennungen"]
+            prev = prev_nennungen.get(ticker, 0)
+            diff = nennungen - prev
+            rank_emoji = platz_emojis[i-1] if i <= 3 else f"{i}."
+            highlight = " 🚨" if diff >= alert_delta else ""
+            
+            unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
+            
+            # Ticker-Header als Feld-Titel
+            field_name = f"{rank_emoji} {ticker}{highlight}"
+            if unternehmen:
+                field_name += f" — {unternehmen}"
+            
+            # Kurs-Informationen
+            kurs = row.get("Kurs") or {}
+            kurs_info = []
+            
+            regular = kurs.get("regular")
+            change = kurs.get("change")
+            changePercent = kurs.get("changePercent")
+            currency = kurs.get("currency", "USD")
+            
+            if regular is not None:
+                emoji = "📈" if change and change > 0 else "📉" if change and change < 0 else "⏸️"
+                kurs_info.append(f"{emoji} **{regular:.2f} {currency}** ({change:+.2f}, {changePercent:+.2f}%)")
+            
+            # Pre/Post-Market
+            pre = kurs.get("pre")
+            post = kurs.get("post")
+            if pre:
+                kurs_info.append(f"🌅 Pre: {pre:.2f} {currency}")
+            if post:
+                kurs_info.append(f"🌙 After: {post:.2f} {currency}")
+            
+            # Trends
+            trend_parts = []
+            for period, key in [("1h", "change_1h"), ("24h", "change_24h"), ("7d", "change_7d")]:
+                val = kurs.get(key)
+                if val is not None:
+                    arrow = "▲" if val > 0 else "▼" if val < 0 else "→"
+                    trend_parts.append(f"{period}: {arrow}{val:+.2f}%")
+            
+            if trend_parts:
+                kurs_info.append("📊 " + " · ".join(trend_parts))
+            
+            # Nennungen
+            field_value = f"🔢 **{nennungen}** Nennungen (Δ **{diff:+d}**)\n"
+            field_value += "\n".join(kurs_info)
+            
+            # Summary (optional)
+            entry = summary_dict.get(str(ticker).strip().upper())
+            if entry:
+                if isinstance(entry, dict):
+                    summ = entry.get("summary", "") or ""
+                    news = entry.get("news", []) or []
+                else:
+                    summ = str(entry)
+                    news = []
+                
+                if summ:
+                    s = summ.strip().replace("\n", " ")
+                    if len(s) > 150:
+                        s = s[:147].rstrip() + "…"
+                    field_value += f"\n💡 {s}"
+                
+                # Erste News-Headline (optional)
+                if news and len(news) > 0:
+                    first_news = news[0]
+                    title = first_news.get("title") or first_news.get("headline") or ""
+                    if title:
+                        if len(title) > 100:
+                            title = title[:97].rstrip() + "…"
+                        field_value += f"\n📰 {title}"
+            
+            # Yahoo Finance Link
+            symbol = kurs.get("symbol") or ticker
+            field_value += f"\n[📊 Yahoo Finance](https://finance.yahoo.com/quote/{symbol})"
+            
+            embed["fields"].append({
+                "name": field_name,
+                "value": field_value,
+                "inline": False
+            })
+        
+        return embed
+    
+    else:
+        # Fallback: Text-Format (bisherige Version)
+        lines = []
+        lines.append("⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt")
+        if pickle_name:
+            lines.append(f"💾 {pickle_name}")
+        lines.append(f"⏰ {when}")
+        lines.append("")
 
-            # Summary (kurz)
-            if summ:
-                s = summ.strip().replace("\n", " ")
-                if len(s) > 200:
-                    s = s[:197].rstrip() + "…"
-                lines.append(f"🧠 {s}")
+        for i, (_, row) in enumerate(df_ticker.head(top_n).iterrows(), 1):
+            ticker = row["Ticker"]
+            nennungen = row["Nennungen"]
+            prev = prev_nennungen.get(ticker, 0)
+            diff = nennungen - prev
+            rank_emoji = platz_emojis[i-1] if i <= 3 else ""
+            highlight = " 🚨" if diff >= alert_delta else ""
+            unternehmen = row.get('Unternehmen', '') or name_map.get(ticker, '')
+            lines.append(f"{rank_emoji} {ticker} - {unternehmen}{highlight}")
+            lines.append(f"🔢 Nennungen: {nennungen} (Δ {diff:+d})")
+            kurs = row.get("Kurs") or {}
+            kurs_str = format_price_block_with_börse(kurs, ticker)
+            lines.append(f"💵 {kurs_str}")
+            entry = summary_dict.get(str(ticker).strip().upper())
+            if entry:
+                if isinstance(entry, dict):
+                    summ = entry.get("summary", "") or ""
+                    news = entry.get("news", []) or []
+                else:
+                    summ = str(entry)
+                    news = []
 
-            # News-Headlines (max 3) — kurz, mit Quelle/URL
-            if news:
-                max_head = 3
-                for art in news[:max_head]:
-                    title = art.get("title") or art.get("headline") or ""
-                    src = art.get("source") or art.get("source_name") or ""
-                    url = art.get("url") or art.get("link") or ""
-                    # kurze einzeilige Darstellung
-                    short = title
-                    if len(short) > 140:
-                        short = short[:137].rstrip() + "…"
-                    if src:
-                        short = f"{short} ({src})"
-                    if url:
-                        short = f"{short} | {url}"
-                    lines.append(f"📰 {short}")
-        # Trennlinie zwischen Ticker
-        lines.append("---")
+                if summ:
+                    s = summ.strip().replace("\n", " ")
+                    if len(s) > 200:
+                        s = s[:197].rstrip() + "…"
+                    lines.append(f"🧠 {s}")
+
+                if news:
+                    max_head = 3
+                    for art in news[:max_head]:
+                        title = art.get("title") or art.get("headline") or ""
+                        src = art.get("source") or art.get("source_name") or ""
+                        url = art.get("url") or art.get("link") or ""
+                        short = title
+                        if len(short) > 140:
+                            short = short[:137].rstrip() + "…"
+                        if src:
+                            short = f"{short} ({src})"
+                        if url:
+                            short = f"{short} | {url}"
+                        lines.append(f"📰 {short}")
+            lines.append("---")
+
+        if lines and lines[-1] == "---":
+            lines.pop()
+
+        msg = "\n".join(lines)
+        if len(msg) > 1900:
+            msg = msg[:1900].rstrip() + "\n… [gekürzt]"
+        return msg
 
     # Entferne letzte Trennlinie
     if lines and lines[-1] == "---":
