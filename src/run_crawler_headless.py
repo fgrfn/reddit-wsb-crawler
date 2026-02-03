@@ -512,27 +512,34 @@ def get_next_systemd_run(timer_name: str = "reddit_crawler.timer") -> str:
         except Exception:
             return "unbekannt"
     
-    try:
-        result = subprocess.run(
-            ["systemctl", "list-timers", timer_name, "--no-legend", "--all"],
-            capture_output=True, text=True
-        )
-        line = result.stdout.strip().splitlines()
-        if line:
-            # Die erste Spalte ist der nächste geplante Start (NEXT)
-            parts = line[0].split()
-            # parts[0] = NEXT (Datum+Uhrzeit)
-            if len(parts) >= 1:
-                # Format: YYYY-MM-DD HH:MM:SS
-                dt_str = parts[0] + " " + parts[1] if len(parts) > 1 else parts[0]
-                try:
-                    # systemd gibt oft "YYYY-MM-DD HH:MM:SS" zurück
-                    dt = datetime.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
-                    return dt.strftime("%d.%m.%Y %H:%M:%S")
-                except Exception:
-                    pass
-    except Exception as e:
-        logger.warning(f"Fehler beim Auslesen des systemd-Timers: {e}")
+    # Bei nativer Installation: Versuche verschiedene Timer-Namen
+    timer_names = [timer_name, "wsb-crawler.timer", "reddit-crawler.timer"]
+    
+    for name in timer_names:
+        try:
+            result = subprocess.run(
+                ["systemctl", "list-timers", name, "--no-legend", "--all"],
+                capture_output=True, text=True, timeout=2
+            )
+            lines = result.stdout.strip().splitlines()
+            if lines and result.returncode == 0:
+                # Die erste Spalte ist der nächste geplante Start (NEXT)
+                parts = lines[0].split()
+                if len(parts) >= 2:
+                    # Format: YYYY-MM-DD HH:MM:SS oder "Mon 2024-12-16 10:00:00"
+                    # Versuche verschiedene Formate
+                    date_str = " ".join(parts[0:3]) if not parts[0].startswith("20") else " ".join(parts[0:2])
+                    for fmt in ["%Y-%m-%d %H:%M:%S", "%a %Y-%m-%d %H:%M:%S"]:
+                        try:
+                            dt = datetime.strptime(date_str, fmt)
+                            return dt.strftime("%d.%m.%Y %H:%M:%S")
+                        except ValueError:
+                            continue
+        except Exception:
+            continue
+    
+    # Fallback: Wenn kein Timer gefunden wurde
+    logger.debug("Kein systemd-Timer gefunden")
     return "unbekannt"
 
 def get_kurse_parallel(ticker_list: list[str]) -> dict:
