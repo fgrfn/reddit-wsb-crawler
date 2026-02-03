@@ -22,7 +22,8 @@ def send_discord_notification(message, webhook_url=None, embed=None):
         return False
     try:
         if embed:
-            data = {"embeds": [embed]}
+            # Bei Embed: content muss leer sein, sonst wird beides angezeigt
+            data = {"embeds": [embed], "content": None}
         else:
             data = {"content": message}
         response = requests.post(webhook_url, json=data, timeout=10)
@@ -52,7 +53,8 @@ def send_or_edit_discord_message(message, webhook_url=None, message_id=None, emb
     
     try:
         if embed:
-            data = {"embeds": [embed]}
+            # Bei Embed: content muss leer oder null sein, sonst wird beides angezeigt
+            data = {"embeds": [embed], "content": None}
         else:
             data = {"content": message}
         
