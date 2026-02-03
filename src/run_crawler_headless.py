@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 from __version__ import __version__
+from rate_limiter import rate_limit_yahoo
 
 # Ensure imports of local modules work regardless of CWD
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -85,8 +86,9 @@ def archive_log(log_path: Path, archive_dir: Path) -> None:
     shutil.copy(str(log_path), str(archive_file))
     logger.info(f"Logfile archiviert: {archive_file}")
 
+@rate_limit_yahoo
 def get_yf_price(symbol: str) -> dict:
-    """Holt Kursdaten für ein Symbol von Yahoo Finance.
+    """Holt Kursdaten für ein Symbol von Yahoo Finance (mit Rate-Limiting).
     
     Returns:
         dict mit Keys: regular, pre, post, previousClose, change, changePercent, currency, timestamp

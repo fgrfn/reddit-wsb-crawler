@@ -102,43 +102,39 @@ def resolve_from_latest_pickle():
         # Neueste Pickle-Datei suchen
         pickle_files = sorted(PICKLE_DIR.glob("*.pkl"), reverse=True)
         if not pickle_files:
-            print("❌ Keine Pickle-Datei gefunden.")
             logger.error("❌ Keine Pickle-Datei gefunden.")
             return
         latest_pickle = pickle_files[0]
-        print(f"\n📜 Lese Treffer aus: {latest_pickle}")
+        logger.info(f"📜 Lese Treffer aus: {latest_pickle.name}")
 
         with open(latest_pickle, "rb") as f:
             try:
                 counter = pickle.load(f)
             except Exception as e:
-                print(f"{Fore.RED}❌ Fehler beim Lesen: {e}")
                 logger.error(f"❌ Fehler beim Lesen der Pickle-Datei: {e}")
                 raise
 
         if not counter:
-            print(f"{Fore.YELLOW}⚪️ Keine Ticker in der Pickle-Datei.")
             logger.warning("⚪️ Keine Ticker in der Pickle-Datei.")
             return
 
-        print(f"{Fore.LIGHTBLACK_EX}📊 Gesamt-Nennungen: {sum(v for v in counter.values() if isinstance(v, int))}")
-        print(f"{Fore.LIGHTBLACK_EX}🔍 Einzigartige Ticker: {len(counter)}")
+        total_mentions = sum(v for v in counter.values() if isinstance(v, int))
+        logger.info(f"📊 Gesamt-Nennungen: {total_mentions}, 🔍 Einzigartige Ticker: {len(counter)}")
 
         name_map = load_ticker_name_map()
-        print(f"{Fore.LIGHTBLACK_EX}📦 Ticker im Cache: {len(name_map)}")
+        logger.info(f"📦 Ticker im Cache: {len(name_map)}")
 
         uncached = sorted(s for s in counter if s not in name_map and s not in IGNORED_KEYS)
-        print(f"{Fore.YELLOW}🆕 Neue Ticker zur Auflösung: {len(uncached)}\n")
+        if uncached:
+            logger.info(f"🆕 Neue Ticker zur Auflösung: {len(uncached)} → {', '.join(uncached)}")
 
         # Zeige an, welche Ticker aus dem Cache kommen
-        if name_map:
-            for sym in sorted(counter):
-                if sym in name_map:
-                    print(f"{Fore.LIGHTGREEN_EX}🗃️ {sym:<6}{Style.RESET_ALL} → {name_map[sym]} (aus Cache)")
+        cached_tickers = [sym for sym in counter if sym in name_map and sym not in IGNORED_KEYS]
+        if cached_tickers:
+            logger.info(f"🗃️  Aus Cache: {', '.join(sorted(cached_tickers))}")
 
         if not uncached:
-            print(f"{Fore.GREEN}✅ Alle Ticker bereits bekannt – nichts zu tun.")
-            logger.info("✅ Alle Ticker bereits bekannt.")
+            logger.info("✅ Alle Ticker bereits bekannt – nichts zu tun.")
             return
 
         # Versuche lokale Ticker-Liste
@@ -150,33 +146,39 @@ def resolve_from_latest_pickle():
         for sym in uncached:
             name = symbol_to_name.get(sym)
             if name:
-                print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} (lokale Liste)")
-                logger.info(f"✅ {sym} → {name} (lokale Liste)")
                 resolved[sym] = name
             else:
-                print(f"{Fore.YELLOW}⚠️ {sym:<6} nicht in lokaler Liste, versuche Fallback (API)...")
-                logger.warning(f"⚠️ {sym} nicht in lokaler Liste, versuche Fallback (API)...")
                 fallback_needed.append(sym)
+        
+        if resolved:
+            logger.info(f"✅ Aus lokaler Liste aufgelöst: {', '.join(resolved.keys())}")
+        if fallback_needed:
+            logger.info(f"⚠️  API-Fallback benötigt für: {', '.join(fallback_needed)}")
 
         # Fallback: API (parallel)
         if fallback_needed:
+            api_resolved = {}
+            api_failed = []
             with ThreadPoolExecutor(max_workers=10) as pool:
                 futures = {pool.submit(resolve_symbol_parallel, s): s for s in fallback_needed}
                 for future in as_completed(futures):
                     sym, name, src = future.result()
                     if name:
-                        print(f"{Fore.GREEN}✅ {Fore.CYAN}{sym:<6}{Style.RESET_ALL} → {name} ({src} Fallback)")
-                        logger.info(f"✅ {sym} → {name} ({src} Fallback)")
+                        api_resolved[sym] = (name, src)
                         resolved[sym] = name
                     else:
-                        print(f"{Fore.LIGHTBLACK_EX}🕳️ {sym:<6} konnte nicht aufgelöst werden")
-                        logger.error(f"❌ {sym} konnte nicht aufgelöst werden")
+                        api_failed.append(sym)
+            
+            if api_resolved:
+                for sym, (name, src) in api_resolved.items():
+                    logger.info(f"✅ {sym} → {name} ({src} API)")
+            if api_failed:
+                logger.warning(f"❌ Nicht aufgelöst: {', '.join(api_failed)}")
 
         if resolved:
             name_map.update(resolved)
             save_ticker_name_map(name_map)
-            print(f"\n{Fore.GREEN}💾 Cache aktualisiert mit {len(resolved)} neuen Einträgen.")
-            logger.info(f"💾 Cache aktualisiert mit {len(resolved)} neuen Einträgen.")
+            logger.info(f"💾 Cache aktualisiert: +{len(resolved)} neue Einträge (Gesamt: {len(name_map)})")
 
             CSV_EXPORT_PATH.parent.mkdir(parents=True, exist_ok=True)
             with open(CSV_EXPORT_PATH, "w", newline="", encoding="utf-8") as f:
@@ -184,19 +186,16 @@ def resolve_from_latest_pickle():
                 writer.writerow(["Ticker", "Company"])
                 for sym in sorted(resolved):
                     writer.writerow([sym, resolved[sym]])
-            print(f"{Fore.BLUE}📎 Exportiert nach: {CSV_EXPORT_PATH}")
+            logger.info(f"📎 Export: {CSV_EXPORT_PATH.name}")
         else:
-            print(f"\n{Fore.YELLOW}⚠️ Keine neuen Namen auflösbar.")
-            logger.warning("⚠️ Keine neuen Namen auflösbar.")
+            logger.info("⚠️  Keine neuen Namen aufgelöst.")
 
-        logger.info("✅ Namensauflösung erfolgreich abgeschlossen.")
+        logger.info("✅ Namensauflösung abgeschlossen.")
 
     except Exception as e:
         logger.error(f"❌ Fehler bei der Namensauflösung: {e}", exc_info=True)
-        print(f"{Fore.RED}❌ Fehler bei der Namensauflösung: {e}")
         raise
 
 if __name__ == "__main__":
-    print("Resolver läuft!")
-    logger.info(f"Starte resolve_latest_hits.py (cwd={os.getcwd()})")
+    logger.info(f"🔍 Starte Ticker-Namensauflösung (cwd={os.getcwd()})")
     resolve_from_latest_pickle()

@@ -46,17 +46,7 @@ Crawlt r/wallstreetbets nach Ticker-Erwähnungen, analysiert Trends und sendet D
 
 ## 🚀 Quick Start
 
-### Option 1: Docker (empfohlen)
-
-```bash
-# Pre-built Image von GitHub Container Registry
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
-
-# Oder mit spezifischer Version
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.0.1
-```
-
-**Alternativ: Selbst bauen**
+### Option 1: Docker (empfohlen) 🐳
 
 ```bash
 # 1. Repository klonen
@@ -65,13 +55,32 @@ cd reddit-wsb-crawler
 
 # 2. Config erstellen
 cp config/.env.example config/.env
-nano config/.env  # API-Keys eintragen
+nano config/.env  # API-Keys eintragen (siehe unten)
 
-# 3. Mit Docker Compose starten
-docker-compose up -d
+# 3. Interaktives Start-Script verwenden
+./start.sh
+# → Wähle Option 2 (Scheduler starten)
+# → Gib Intervall ein (Standard: 30 Minuten)
+
+# Oder manuell starten:
+# Einmaliger Crawl
+docker-compose up
+
+# Scheduler mit 30-Min-Intervall (empfohlen)
+CRAWL_INTERVAL_MINUTES=30 docker-compose --profile scheduler up -d
 
 # 4. Logs anschauen
-docker-compose logs -f
+docker-compose logs -f wsb-crawler-scheduler
+```
+
+**Oder Pre-built Image nutzen:**
+
+```bash
+# Latest Version von GitHub Container Registry
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
+
+# Mit spezifischer Version für Reproduzierbarkeit
+docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.3.0
 ```
 
 ### Option 2: Python (lokal)
@@ -155,26 +164,63 @@ reddit-wsb-crawler/
 
 ---
 
-## 📱 Discord-Alarm-Format
+## 📱 Discord-Nachrichten
 
-Die Alerts sind kompakt und informativ gestaltet:
+Der Crawler sendet zwei Arten von Nachrichten:
+
+### 1. 🔔 Alert-Nachricht (bei ungewöhnlicher Aktivität)
+
+Wird als **neue Nachricht** gepostet und pingt alle:
 
 ```
 ⚠️ WSB-ALARM — Ungewöhnliche Aktivität entdeckt
-💾 260202-143022_crawler-ergebnis.pkl
-⏰ 02.02.2026 14:30:22
+💾 260203-012557_crawler-ergebnis.pkl
+⏰ 03.02.2026 01:28:28
 
-🥇 GME - GameStop Corp. 🚨
-🔢 Nennungen: 127 (Δ +85)
-💵 42.50 USD (+2.30 USD, +5.73%) 📈 [02.02.2026 14:28]
-    | 🌅 Pre-Market: 41.80 USD | 🌙 After-Market: 42.90 USD
-    | Trends: 1h ▲ +1.2% · 24h ▲ +5.7% · 7d ▼ -2.3%
-    | https://finance.yahoo.com/quote/GME
-🧠 Kurs: 42.50 USD (Δ +2.30, +5.73%). Aktuelle Headlines: ...
-📰 GameStop rallies on new NFT marketplace (Reuters) | https://...
-📰 Analysts upgrade GME price target (Bloomberg) | https://...
+🥇 AMD - Advanced Micro Devices Inc 🚨
+🔢 Nennungen: 28 (Δ +18)
+💵 89.45 USD (+2.34 USD, +2.69%) 📈 [03.02.2026 01:28] 
+    | 🌅 Pre-Market: 89.12 USD | Status: REGULAR 
+    | Trends: 1h ▲ +1.2% · 24h ▲ +2.8% · 7d ▲ +5.3% 
+    | https://finance.yahoo.com/quote/AMD
+🧠 AMD zeigt starke Performance nach positiven Q4-Zahlen...
+📰 AMD Reports Record Revenue: Q4 Earnings Beat Expectations (Reuters) | https://...
+📰 AI Chip Demand Drives AMD Stock Surge (Bloomberg) | https://...
+---
+🥈 PLTR - Palantir Technologies Inc
+🔢 Nennungen: 22 (Δ +15)
+💵 35.67 USD (-0.89 USD, -2.44%) 📉 [03.02.2026 01:28]
+    | 🌙 After-Market: 35.45 USD | Status: POST 
+    | Trends: 1h ▼ -0.5% · 24h ▼ -2.1% · 7d ▲ +8.7%
+    | https://finance.yahoo.com/quote/PLTR
+🧠 Palantir secured new government contracts worth $450M...
 ---
 ```
+
+### 2. 🟢 Status-Nachricht (Heartbeat)
+
+Wird **kontinuierlich editiert** (kein Ping, kein Spam!):
+
+```
+💚 **WSB-Crawler Status**
+🕐 Letzter Crawl: 03.02.2026 01:28:28 (vor 2 Minuten)
+📊 Posts überprüft: 200
+🔔 Alerts ausgelöst: 2
+
+⏭️ Nächster Crawl: 03.02.2026 01:58:28
+
+**Top 5 Erwähnungen:**
+1. AMD: 28
+2. PLTR: 22
+3. LINK: 15
+4. NVDA: 12
+5. TSLA: 9
+
+🆔 Run-ID: `260203-012557`
+```
+
+> 💡 **Tipp:** Die Status-Nachricht wird alle 30 Minuten aktualisiert (editiert), 
+> sodass du **nur eine Nachricht** im Channel hast, die sich automatisch aktualisiert!
 
 ### Alert-Bedingungen
 

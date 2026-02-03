@@ -42,7 +42,7 @@ ENV PYTHONPATH=/app
 
 # Healthcheck
 HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
-    CMD python -c "import sys; sys.exit(0)"
+    CMD python src/health_check.py
 
 # Standard-Command: Headless-Crawler ausführen
 CMD ["python", "src/run_crawler_headless.py"]

@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 from datetime import datetime
 from pathlib import Path
 import logging
+from rate_limiter import rate_limit_yahoo, rate_limit_newsapi
 
 def load_env() -> None:
     """Lädt .env-Datei robust (Repository-Root/config/.env bevorzugt)."""
@@ -286,6 +287,7 @@ def get_yf_price(symbol):
             "timestamp": None,
         }
 
+@rate_limit_newsapi
 def get_yf_news(symbol):
     import requests
     import logging
