@@ -1,6 +1,6 @@
 """Version information for WSB-Crawler."""
 
-__version__ = "1.5.7"
+__version__ = "1.5.8"
 __version_info__ = tuple(int(i) for i in __version__.split("."))
 
 # Version history
