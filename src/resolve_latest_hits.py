@@ -4,6 +4,7 @@ Durchsucht das neueste Crawl-Ergebnis und versucht, unbekannte Ticker-Symbole
 über verschiedene APIs (Yahoo Finance, Alpha Vantage) aufzulösen.
 """
 import os
+import sys
 import pickle
 import csv
 import requests
@@ -24,9 +25,13 @@ PKL_CACHE_PATH = Path("data/input/ticker_name_map.pkl")
 CSV_CACHE_PATH = Path("data/input/ticker_name_map.csv")
 PICKLE_DIR = Path("data/output/pickle")
 
-# Logger einrichten
+# Logger einrichten - stdout statt stderr für saubere Logs
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    stream=sys.stdout  # Wichtig: stdout statt stderr
+)
 
 IGNORED_KEYS = {"relevant", "run_id", "subreddits", "total_posts"}
 

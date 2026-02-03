@@ -29,7 +29,11 @@ def load_env() -> None:
     load_dotenv(dotenv_path=str(dotenv_path))
     # Ensure at least a basic logging config so warnings/info are visible when run standalone.
     if not logging.getLogger().handlers:
-        logging.basicConfig(level=logging.INFO)
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+            stream=sys.stdout
+        )
     return
 
 def load_latest_pickle() -> tuple[dict, str]:

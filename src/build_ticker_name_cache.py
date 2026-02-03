@@ -18,8 +18,12 @@ import sys
 init(autoreset=True)
 load_dotenv()
 
-# 🔧 Logging
-logging.basicConfig(level=logging.INFO)
+# 🔧 Logging - stdout für saubere Subprozess-Logs
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    stream=sys.stdout
+)
 logger = logging.getLogger(__name__)
 
 # 📁 Pfade
