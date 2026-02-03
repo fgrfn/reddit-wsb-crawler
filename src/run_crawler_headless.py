@@ -497,15 +497,20 @@ def main():
 
 
 def get_next_systemd_run(timer_name: str = "reddit_crawler.timer") -> str:
-    """Ermittelt die nächste geplante Timer-Ausführung via systemctl.
+    """Ermittelt die nächste geplante Timer-Ausführung via systemctl oder berechnet sie für Docker.
     
     Returns:
         str: Formatierter Zeitstempel oder "unbekannt"
     """
-    # In Docker-Containern ist systemctl nicht verfügbar
+    # In Docker-Containern: Berechne nächste Ausführung basierend auf Intervall
     import shutil
     if not shutil.which("systemctl"):
-        return "unbekannt (Docker)"
+        try:
+            interval_minutes = int(os.getenv("CRAWL_INTERVAL_MINUTES", "30"))
+            next_time = datetime.now() + timedelta(minutes=interval_minutes)
+            return next_time.strftime("%d.%m.%Y %H:%M:%S")
+        except Exception:
+            return "unbekannt"
     
     try:
         result = subprocess.run(
