@@ -68,6 +68,16 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Lauf-Banner */}
+      {crawlActive && (
+        <div className="flex items-center gap-3 rounded-lg bg-brand/10 border border-brand/30 px-4 py-3 text-sm text-brand">
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
+          </span>
+          Crawl läuft — Dashboard aktualisiert sich automatisch…
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Dashboard</h1>
         <div className="flex gap-2 items-center">
