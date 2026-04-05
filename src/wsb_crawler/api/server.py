@@ -35,13 +35,11 @@ app.include_router(config.router,    prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(status.router,    prefix="/api")
 
-# Statisches React-Build servieren (nur wenn vorhanden)
-if STATIC_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
-
+# Statisches HTML-Dashboard servieren (Single-File, kein Assets-Ordner nötig)
+if (STATIC_DIR / "index.html").exists():
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str) -> FileResponse:
-        """Alle nicht-API-Routen → React index.html (SPA-Routing)."""
+        """Alle nicht-API-Routen → index.html (SPA-Routing via Hash)."""
         return FileResponse(STATIC_DIR / "index.html")
 
 
