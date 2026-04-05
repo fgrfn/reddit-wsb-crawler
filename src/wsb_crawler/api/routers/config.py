@@ -75,6 +75,11 @@ async def update_config(payload: ConfigPayload) -> dict:
     if not data:
         raise HTTPException(status_code=400, detail="Keine Werte zum Speichern")
 
+    # Maskierte Platzhalter-Werte niemals überschreiben
+    data = {k: v for k, v in data.items() if str(v) != "••••••••"}
+    if not data:
+        return {"ok": True, "updated": []}
+
     for key, value in data.items():
         await db.set_setting(key, str(value))
 
