@@ -1,67 +1,47 @@
-# Project-specific
-/config/.env
-/debug
-/logs
-
-# Data directories
-data/
-!data/input/.gitkeep
-!data/output/.gitkeep
-!data/state/.gitkeep
-
 # Python
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
+*.pyo
+*.pyd
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+dist/
+build/
+.eggs/
 
-# Virtual environments
+# Virtual Environments
 venv/
+.venv/
 env/
-ENV/
-.venv
 
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# Daten & Logs (nicht in Git)
+data/
+logs/
 
-# Testing
+# Config (enthält API-Keys!)
+config/.env
+
+# Tests & Coverage
 .pytest_cache/
 .coverage
+coverage.xml
 htmlcov/
-.tox/
 
-# Jupyter
-.ipynb_checkpoints
+# mypy
+.mypy_cache/
 
-# Logs
-*.log
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
 
 # Docker
-*.dockerignore.bak
+.docker/
 
-# Temporary files
+# macOS
+.DS_Store
+
+# Temporäre Dateien
 *.tmp
 *.bak
-.cache/

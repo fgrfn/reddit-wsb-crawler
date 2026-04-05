@@ -1,0 +1,154 @@
+"""
+Async Reddit-Crawling via asyncpraw.
+
+asyncpraw ist der offizielle async-Port von praw. Alle Netzwerk-Calls
+sind awaitable, was paralleles Crawlen mehrerer Subreddits ermöglicht.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+import asyncpraw
+from loguru import logger
+
+from wsb_crawler.config import get_settings
+from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
+from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
+
+
+def _make_reddit_client() -> asyncpraw.Reddit:
+    cfg = get_settings().reddit
+    return asyncpraw.Reddit(
+        client_id=cfg.client_id,
+        client_secret=cfg.client_secret,
+        user_agent=cfg.user_agent,
+    )
+
+
+async def _fetch_posts(
+    reddit: asyncpraw.Reddit,
+    subreddit_name: str,
+    limit: int,
+    comments_limit: int,
+) -> tuple[list[RedditPost], list[RedditPost]]:
+    """
+    Holt Posts + Kommentare eines Subreddits.
+    Gibt (posts, comments) zurück.
+    """
+    posts: list[RedditPost] = []
+    comments: list[RedditPost] = []
+
+    subreddit = await reddit.subreddit(subreddit_name)
+
+    async for submission in subreddit.hot(limit=limit):
+        post = RedditPost(
+            id=submission.id,
+            subreddit=subreddit_name,
+            title=submission.title,
+            text=submission.selftext or "",
+            author=str(submission.author) if submission.author else "[deleted]",
+            score=submission.score,
+            upvote_ratio=submission.upvote_ratio,
+            created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
+            url=f"https://reddit.com{submission.permalink}",
+            is_comment=False,
+        )
+        posts.append(post)
+
+        # Top-Kommentare holen (nicht alle – zu viele API-Calls)
+        if comments_limit > 0:
+            submission.comment_sort = "top"
+            await submission.load()
+            submission.comments.replace_more(limit=0)  # MoreComments überspringen
+
+            for comment in list(submission.comments)[:comments_limit]:
+                if not hasattr(comment, "body"):
+                    continue
+                comments.append(
+                    RedditPost(
+                        id=comment.id,
+                        subreddit=subreddit_name,
+                        title="",
+                        text=comment.body,
+                        author=str(comment.author) if comment.author else "[deleted]",
+                        score=comment.score,
+                        upvote_ratio=0.0,
+                        created_utc=datetime.fromtimestamp(
+                            comment.created_utc, tz=timezone.utc
+                        ),
+                        url=f"https://reddit.com{submission.permalink}{comment.id}/",
+                        is_comment=True,
+                        parent_id=submission.id,
+                    )
+                )
+
+    logger.debug(
+        f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen"
+    )
+    return posts, comments
+
+
+async def crawl_all_subreddits(run_id: str) -> CrawlResult:
+    """
+    Crawlt alle konfigurierten Subreddits parallel.
+
+    Gibt ein vollständiges CrawlResult zurück mit aggregierten
+    Mention-Counts und allen Einzel-Mentions.
+    """
+    cfg = get_settings().crawler
+    started_at = datetime.utcnow()
+
+    all_posts: list[RedditPost] = []
+    all_comments: list[RedditPost] = []
+
+    async with _make_reddit_client() as reddit:
+        # Alle Subreddits gleichzeitig crawlen (asyncio.gather)
+        tasks = [
+            _fetch_posts(
+                reddit,
+                sub,
+                limit=cfg.posts_limit,
+                comments_limit=cfg.comments_limit,
+            )
+            for sub in cfg.subreddits
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"Fehler beim Crawlen von r/{cfg.subreddits[i]}: {result}")
+            continue
+        posts, comments = result
+        all_posts.extend(posts)
+        all_comments.extend(comments)
+
+    logger.info(
+        f"Crawl abgeschlossen: {len(all_posts)} Posts, "
+        f"{len(all_comments)} Kommentare aus {len(cfg.subreddits)} Subreddits"
+    )
+
+    # Ticker aus allen Posts + Kommentaren extrahieren
+    all_items = all_posts + all_comments
+    all_mentions: list[TickerMention] = []
+    for item in all_items:
+        all_mentions.extend(extract_tickers(item))
+
+    mention_counts = aggregate_mentions(all_mentions)
+
+    logger.info(f"Ticker erkannt: {len(mention_counts)} einzigartige Ticker")
+    if mention_counts:
+        top5 = list(mention_counts.items())[:5]
+        logger.debug(f"Top 5: {top5}")
+
+    return CrawlResult(
+        run_id=run_id,
+        started_at=started_at,
+        subreddits=cfg.subreddits,
+        posts_scanned=len(all_posts),
+        comments_scanned=len(all_comments),
+        mention_counts=mention_counts,
+        mentions=all_mentions,
+    )
