@@ -25,7 +25,6 @@ def _setup_ws_log_sink() -> None:
     """Loguru-Sink der Log-Messages in den WebSocket-Buffer schreibt."""
 
     async def _broadcast(message: str) -> None:
-        _log_buffer.append(message)
         disconnected = []
         for ws in _ws_clients:
             try:
@@ -36,10 +35,16 @@ def _setup_ws_log_sink() -> None:
             _ws_clients.remove(ws)
 
     def _sink(message: "logger.Message") -> None:  # type: ignore[name-defined]
+        line = str(message).rstrip("\n")
+        if not line:
+            return
+
+        # Immer im Ring-Buffer halten, damit neue Clients sofort Verlauf sehen.
+        _log_buffer.append(line)
+
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                loop.create_task(_broadcast(message))
+            loop = asyncio.get_running_loop()
+            loop.create_task(_broadcast(line))
         except RuntimeError:
             pass
 

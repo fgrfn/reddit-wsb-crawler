@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import uuid
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import AsyncGenerator
 
@@ -358,9 +358,10 @@ class Database:
         last_at = None
         duration = None
         if last_run:
-            last_at = datetime.fromisoformat(last_run["started_at"])
+            # DateTime aus DB ist naive (ohne Timezone) → als UTC markieren
+            last_at = datetime.fromisoformat(last_run["started_at"]).replace(tzinfo=timezone.utc)
             if last_run["finished_at"]:
-                finished = datetime.fromisoformat(last_run["finished_at"])
+                finished = datetime.fromisoformat(last_run["finished_at"]).replace(tzinfo=timezone.utc)
                 duration = (finished - last_at).total_seconds()
 
         return RunStatus(

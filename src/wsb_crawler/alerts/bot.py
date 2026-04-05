@@ -13,6 +13,7 @@ Wird nur gestartet wenn DISCORD_BOT_TOKEN gesetzt ist.
 from __future__ import annotations
 
 import asyncio
+from datetime import timedelta
 
 import discord
 from discord import app_commands
@@ -20,6 +21,7 @@ from loguru import logger
 
 from wsb_crawler.alerts.discord import send_top_tickers
 from wsb_crawler.analysis.trends import get_ticker_chart_data, get_top_tickers
+from wsb_crawler.config import get_settings
 from wsb_crawler.storage.database import Database
 
 # Wird beim Start gesetzt (dependency injection statt global)
@@ -153,11 +155,19 @@ def _register_commands(bot: WSBBot) -> None:
         try:
             db = _get_db()
             status = await db.get_run_status()
+            cfg = await get_settings(db)
 
             last_run = (
                 f"<t:{int(status.last_run_at.timestamp())}:R>"
                 if status.last_run_at else "—"
             )
+            next_run = "—"
+            if status.last_run_at:
+                next_run_at = status.last_run_at + timedelta(
+                    minutes=cfg.crawler.crawl_interval_minutes
+                )
+                next_run = f"<t:{int(next_run_at.timestamp())}:R>"
+
             duration = (
                 f"{status.last_run_duration_seconds:.0f}s"
                 if status.last_run_duration_seconds else "—"
@@ -165,6 +175,7 @@ def _register_commands(bot: WSBBot) -> None:
 
             embed = discord.Embed(title="💓 Crawler Status", color=0x2B2D31)
             embed.add_field(name="Letzter Lauf", value=last_run, inline=True)
+            embed.add_field(name="Nächster Lauf", value=next_run, inline=True)
             embed.add_field(name="Dauer", value=duration, inline=True)
             embed.add_field(name="Alerts gesamt", value=str(status.total_alerts_sent), inline=True)
             embed.add_field(name="Ticker getrackt", value=str(status.tracked_tickers), inline=True)

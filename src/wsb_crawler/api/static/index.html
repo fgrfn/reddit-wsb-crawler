@@ -721,7 +721,14 @@
 
     function connectLogsWebSocket() {
       if (state.ws) state.ws.close();
-      state.ws = new WebSocket(`ws://${location.host}/api/ws/logs`);
+      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+      state.ws = new WebSocket(`${wsProto}://${location.host}/api/ws/logs`);
+      state.ws.onopen = () => {
+        const container = document.getElementById('logs-container');
+        if (container && state.logs.length === 0) {
+          container.innerHTML = '<span class="text-zinc-600">Verbunden. Warte auf Log-Einträge…</span>';
+        }
+      };
       state.ws.onmessage = (e) => {
         state.logs = [...state.logs.slice(-500), e.data];
         const container = document.getElementById('logs-container');
@@ -736,6 +743,12 @@
             return `<div class="${levelColor(line)}">${line}</div>`;
           }).join('');
           container.scrollTop = container.scrollHeight;
+        }
+      };
+      state.ws.onerror = () => {
+        const container = document.getElementById('logs-container');
+        if (container && state.logs.length === 0) {
+          container.innerHTML = '<span class="text-red-400">WebSocket-Verbindung fehlgeschlagen.</span>';
         }
       };
     }
