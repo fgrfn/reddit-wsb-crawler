@@ -22,7 +22,7 @@ dependencies = [
     "pydantic==2.9.2",
 
     # Finance
-    "yfinance==0.2.50",
+    "yfinance==1.2.0",
 
     # Database (async SQLite)
     "aiosqlite>=0.17.0",
