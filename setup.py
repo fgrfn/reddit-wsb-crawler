@@ -89,13 +89,50 @@ def check_node() -> bool:
     return False
 
 
+def _has_pip_in_venv() -> bool:
+    if not _venv_python().exists():
+        return False
+    result = subprocess.run(
+        [str(_venv_python()), "-m", "pip", "--version"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def _bootstrap_pip() -> None:
+    """Bootstap pip via ensurepip or get-pip.py fallback."""
+    venv_py = str(_venv_python())
+    # Try ensurepip first
+    result = subprocess.run([venv_py, "-m", "ensurepip", "--upgrade"], capture_output=True)
+    if result.returncode == 0:
+        ok("pip via ensurepip bootstrapped")
+        return
+    # Fallback: download get-pip.py
+    warn("ensurepip nicht verfügbar — lade get-pip.py herunter")
+    import urllib.request
+    get_pip = REPO_DIR / "get-pip.py"
+    urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", get_pip)
+    try:
+        run([venv_py, str(get_pip)])
+        ok("pip via get-pip.py installiert")
+    finally:
+        get_pip.unlink(missing_ok=True)
+
+
 def setup_venv() -> None:
     heading("2. Virtual Environment einrichten")
     if _venv_python().exists():
-        ok(f"Venv vorhanden: {VENV_DIR}")
+        if _has_pip_in_venv():
+            ok(f"Venv vorhanden: {VENV_DIR}")
+            return
+        warn("Venv vorhanden aber pip fehlt — bootstrapping pip")
+        _bootstrap_pip()
         return
     info(f"python3 -m venv {VENV_DIR}")
     run([PYTHON, "-m", "venv", str(VENV_DIR)])
+    if not _has_pip_in_venv():
+        warn("pip nicht im Venv — bootstrapping pip")
+        _bootstrap_pip()
     ok(f"Venv erstellt: {VENV_DIR}")
 
 
