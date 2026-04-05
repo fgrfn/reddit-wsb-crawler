@@ -298,15 +298,18 @@ class Database:
         async with self.conn.execute(
             """SELECT
                    ticker,
-                   SUM(mentions)                          AS total,
-                   AVG(daily_sum)                         AS avg_daily,
-                   MAX(daily_sum)                         AS peak,
-                   MAX(CASE WHEN daily_sum = (
-                       SELECT MAX(m2.mentions) FROM ticker_mentions m2
-                       WHERE m2.ticker = ticker_mentions.ticker
-                   ) THEN recorded_at END)               AS peak_day
+                   SUM(daily_sum)  AS total,
+                   AVG(daily_sum)  AS avg_daily,
+                   MAX(daily_sum)  AS peak,
+                   (SELECT DATE(tm2.recorded_at)
+                    FROM ticker_mentions tm2
+                    WHERE tm2.ticker = daily.ticker
+                      AND tm2.recorded_at >= ?
+                    GROUP BY DATE(tm2.recorded_at)
+                    ORDER BY SUM(tm2.mentions) DESC
+                    LIMIT 1)        AS peak_day
                FROM (
-                   SELECT ticker, recorded_at,
+                   SELECT ticker, DATE(recorded_at) AS recorded_at,
                           SUM(mentions) AS daily_sum
                    FROM ticker_mentions
                    WHERE recorded_at >= ?
@@ -315,7 +318,7 @@ class Database:
                GROUP BY ticker
                ORDER BY total DESC
                LIMIT ?""",
-            (since, limit),
+            (since, since, limit),
         ) as cur:
             rows = await cur.fetchall()
 
