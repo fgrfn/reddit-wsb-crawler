@@ -2,7 +2,7 @@
 #  WSB-Crawler v2 — Docker Compose
 #
 #  Starten:  docker compose up -d
-#  Dashboard: http://localhost:8080
+#  Dashboard: http://localhost
 # ═══════════════════════════════════════════════════════
 
 x-common: &common
@@ -14,6 +14,7 @@ x-common: &common
   image: wsb-crawler:2.0.0
   environment:
     - TZ=Europe/Berlin
+    - WSB_PORT=${WSB_PORT:-80}  # Port ändern via: WSB_PORT=8080 docker compose up
   volumes:
     - ./data:/app/data
     - ./logs:/app/logs
@@ -38,10 +39,10 @@ services:
     container_name: wsb-crawler
     restart: unless-stopped
     ports:
-      - "8080:8080"
+      - "${WSB_PORT:-80}:${WSB_PORT:-80}"  # Host:Container Port
     healthcheck:
       test: ["CMD", "python", "-c",
-             "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/status')"]
+             "import urllib.request, os; urllib.request.urlopen(f'http://localhost:{os.getenv(\"WSB_PORT\", \"80\")}/api/status')"]
       interval: 5m
       timeout: 10s
       start_period: 30s

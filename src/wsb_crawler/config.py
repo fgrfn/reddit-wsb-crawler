@@ -87,7 +87,7 @@ async def get_settings(db: "Database") -> Settings:
         if not val:
             raise RuntimeError(
                 f"Pflichtfeld '{key}' nicht konfiguriert. "
-                "Bitte Setup-Wizard unter http://localhost:8080 ausführen."
+                "Bitte Setup-Wizard unter http://localhost ausführen."
             )
         return val
 

@@ -24,7 +24,10 @@ from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.enrichment.news import set_database as news_set_db
 from wsb_crawler.storage.database import Database
 
-DASHBOARD_URL = "http://localhost:8080"
+import os
+
+PORT = int(os.getenv("WSB_PORT", "80"))
+DASHBOARD_URL = f"http://localhost:{PORT}"
 
 
 def _setup_logging(log_level: str = "INFO") -> None:
@@ -102,7 +105,7 @@ async def main_async() -> None:
         webbrowser.open(url)
 
         tasks: list[asyncio.Task] = [
-            asyncio.create_task(run_server(db)),
+            asyncio.create_task(run_server(db, port=PORT)),
             asyncio.create_task(scheduler_loop(db)),
         ]
 

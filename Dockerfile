@@ -38,7 +38,7 @@ RUN useradd -m -u 1000 -s /bin/bash crawler && \
     chown -R crawler:crawler /app
 
 # Nur die fertig gebauten Packages vom Builder kopieren
-# (enthält wsb_crawler-Package inkl. React-Build in api/static/)
+# (enthält wsb_crawler-Package inkl. HTML-Dashboard in api/static/)
 COPY --from=builder /install /usr/local
 
 # Als Non-Root User ausführen

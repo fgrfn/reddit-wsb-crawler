@@ -11,7 +11,7 @@ WSB-Crawler v2 ist ein lokal betriebenes Frühwarnsystem, das Subreddits (primä
 **Stack:**
 - Python 3.11+, async/await durchgehend
 - aiosqlite (SQLite) für alle persistenten Daten inkl. Konfiguration
-- FastAPI + uvicorn als interner API-Server (Port 8080)
+- FastAPI + uvicorn als interner API-Server (Port 80, via ENV änderbar)
 - Vanilla HTML/CSS/JS + Tailwind CSS (CDN) als Web-Dashboard — kein Build-Step
 - loguru für Logging, asyncpraw für Reddit, discord.py für Bot/Webhooks
 
@@ -51,7 +51,7 @@ main()
         ├── Database(DB_PATH) öffnen / initialisieren
         ├── webbrowser.open() → /setup wenn unkonfiguriert, sonst /
         └── asyncio.gather()
-              ├── run_server(db)       ← FastAPI auf :8080
+              ├── run_server(db)       ← FastAPI auf :80 (oder WSB_PORT)
               ├── scheduler_loop(db)   ← Crawl-Scheduler
               └── discord_bot (optional, nur wenn bot_token gesetzt)
 ```
@@ -156,12 +156,14 @@ Das Dashboard ist direkt im Repo committed und funktioniert ohne Build-Vorgang.
 
 ## Docker
 
-`docker-compose.yml` hat nur noch einen Service (`wsb-crawler`), der Port 8080 exponiert. Kein `env_file`, kein Scheduler-Profile — der Scheduler läuft intern als asyncio-Task.
+`docker-compose.yml` hat nur noch einen Service (`wsb-crawler`), der Port 80 exponiert. Kein `env_file`, kein Scheduler-Profile — der Scheduler läuft intern als asyncio-Task.
 
 ```bash
 docker compose up -d
-# Dashboard: http://localhost:8080
+# Dashboard: http://localhost
 ```
+
+**Port ändern:** Setze `WSB_PORT=8080` als Environment-Variable oder in `.env`-Datei.
 
 ---
 
@@ -180,4 +182,4 @@ docker compose up -d
 - **Fehlerbehandlung:** Auf Top-Level (Scheduler, API-Handlers) abfangen und loggen. In tiefen Funktionen Exceptions durchreichen lassen.
 - **Typen:** Pydantic-Modelle für API-Request/Response-Bodies. Dataclasses für interne Konfiguration.
 - **Secrets in API-Responses:** Nie im Klartext. `config.py` Router maskiert alle `*_secret`, `*_token`, `*_key` Felder mit `••••••••`.
-- **Port:** Immer 8080. Kein konfigurierbarer Port (Tool ist lokal, single-user).
+- **Port:** Default 80, über `WSB_PORT` Environment-Variable änderbar. Port < 1024 benötigt root auf Linux/macOS.

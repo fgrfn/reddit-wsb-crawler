@@ -370,7 +370,10 @@ def print_summary(autostart_ok: bool) -> None:
         print(f"    wsb-crawler")
     print()
     print(f"  {BOLD}Dashboard:{RESET}")
-    print(f"    http://localhost:8080")
+    print(f"    http://localhost")
+    print()
+    print(f"  {YELLOW}Hinweis: Port 80 erfordert unter Linux/macOS root-Rechte.{RESET}")
+    print(f"  {YELLOW}Alternativ: WSB_PORT=8080 wsb-crawler{RESET}")
     print()
     if not autostart_ok:
         print(f"  {BOLD}Autostart (manuell):{RESET}")

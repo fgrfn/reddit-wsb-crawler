@@ -26,7 +26,7 @@ app = FastAPI(title="WSB-Crawler Dashboard", version="2.0.0", docs_url="/api/doc
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:8080"],
+    allow_origins=["http://localhost:5173", "http://localhost:80", "http://localhost:8080"],  # Dev + Prod
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -52,7 +52,7 @@ def set_database(db: Database) -> None:
     status.db = db
 
 
-async def run_server(db: Database, host: str = "0.0.0.0", port: int = 8080) -> None:
+async def run_server(db: Database, host: str = "0.0.0.0", port: int = 80) -> None:
     """Startet den uvicorn Server als asyncio-Task."""
     set_database(db)
     config_uvicorn = uvicorn.Config(

@@ -21,9 +21,9 @@ Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf u
 | Config | `.env`-Datei | Web-Dashboard (SQLite-backed) |
 | Logging | colorama + pyfiglet + halo | loguru + Live-Log im Browser |
 | Discord | nur Webhooks | Webhooks + Slash-Commands (/top, /chart, /status) |
-| Dashboard | keins | FastAPI + Vanilla HTML/CSS/JS (localhost:8080) |
+| Dashboard | keins | FastAPI + Vanilla HTML/CSS/JS (localhost:80) |
 | Setup | manuelle `.env` Bearbeitung | Setup-Wizard im Browser |
-| Docker | 2 Services, Profile-Flag | 1 Service, Port 8080 |
+| Docker | 2 Services, Profile-Flag | 1 Service, Port 80 |
 | Tests | test_logging.py | pytest + pytest-asyncio, >70% Coverage |
 | Dependencies | ungepinnt | vollständig gepinnt in pyproject.toml |
 
@@ -75,18 +75,22 @@ git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
 cd reddit-wsb-crawler
 
 docker compose up -d
-# Dashboard: http://localhost:8080
+# Dashboard: http://localhost
 ```
+
+> **Hinweis:** Port 80 erfordert unter Linux/macOS ggf. sudo. Alternativ Port ändern: `WSB_PORT=8080 docker compose up`
 
 ---
 
 ## Konfiguration
 
-Alle Einstellungen werden über das Web-Dashboard unter **http://localhost:8080** gesetzt — keine `.env`-Datei nötig.
+Alle Einstellungen werden über das Web-Dashboard unter **http://localhost** gesetzt — keine `.env`-Datei nötig.
+
+> **Port ändern:** Setze die Umgebungsvariable `WSB_PORT=8080` vor dem Start, falls Port 80 nicht verfügbar ist.
 
 ### Erster Start — Setup-Wizard
 
-Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der Setup-Wizard unter `http://localhost:8080/setup`.
+Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der Setup-Wizard unter `http://localhost/setup`.
 
 **Schritt 1 — Reddit API**
 
@@ -131,13 +135,13 @@ Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der S
 bash update.sh
 ```
 
-Das Script zieht die neuesten Commits, aktualisiert Python-Abhängigkeiten im Venv und startet den Service neu. Das Frontend wird automatisch über GitHub Actions gebaut — kein Node.js auf dem Server nötig.
+Das Script zieht die neuesten Commits, aktualisiert Python-Abhängigkeiten im Venv und startet den Service neu.
 
 ---
 
 
 
-Das Dashboard ist unter **http://localhost:8080** erreichbar (nur lokal, keine Authentifizierung nötig).
+Das Dashboard ist unter **http://localhost** erreichbar (nur lokal, keine Authentifizierung nötig).
 
 | Seite | Inhalt |
 |---|---|
@@ -145,6 +149,29 @@ Das Dashboard ist unter **http://localhost:8080** erreichbar (nur lokal, keine A
 | Alerts | Alert-Historie mit Ticker-Filter |
 | Konfiguration | Alle Einstellungen bearbeiten und speichern |
 | Logs | Live-Logstream via WebSocket |
+
+---
+
+## Port-Konfiguration
+
+**Standard:** Port 80 (http://localhost)
+
+**Port ändern:**
+
+```bash
+# Lokal / Setup-Script
+WSB_PORT=8080 wsb-crawler
+WSB_PORT=8080 python setup.py
+
+# Docker
+WSB_PORT=8080 docker compose up -d
+
+# Persistent (Docker)
+echo "WSB_PORT=8080" > .env
+docker compose up -d
+```
+
+> **Hinweis:** Port < 1024 erfordert unter Linux/macOS root-Rechte (`sudo`).
 
 ---
 
@@ -174,10 +201,6 @@ ruff format src/ tests/
 
 # Typ-Check
 mypy src/
-
-# Frontend (Dev-Server mit Hot-Reload, proxied nach :8080)
-cd web
-npm run dev
 ```
 
 ### Branch-Strategie
@@ -197,17 +220,14 @@ reddit-wsb-crawler/
 ├── setup.py                    # Installations- & Autostart-Script
 ├── pyproject.toml
 ├── docker-compose.yml
-├── web/                        # React/Vite Frontend
-│   ├── src/
-│   │   ├── pages/              # Dashboard, Alerts, Config, Logs, Setup
-│   │   └── components/         # Layout
-│   └── vite.config.ts          # Build → src/wsb_crawler/api/static/
 └── src/wsb_crawler/
     ├── config.py               # Dataclasses + async get_settings(db)
     ├── models.py               # Typisierte Datenstrukturen
     ├── main.py                 # Entry Point: API-Server + Scheduler
     ├── api/
     │   ├── server.py           # FastAPI-App, statische Dateien
+    │   ├── static/
+    │   │   └── index.html      # Single-File Vanilla HTML/CSS/JS Dashboard
     │   └── routers/
     │       ├── config.py       # GET/PUT /api/config
     │       ├── dashboard.py    # /api/tickers, /api/alerts, /api/runs
