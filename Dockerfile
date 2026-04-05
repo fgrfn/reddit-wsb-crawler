@@ -7,7 +7,7 @@
 # ═══════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ────────────────────────────────────
-FROM python:3.11-slim AS builder
+FROM python:3.13-slim AS builder
 
 WORKDIR /build
 
@@ -16,13 +16,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Dependencies in separates Prefix installieren (nicht ins System)
+# Package + Dependencies in separates Prefix installieren (nicht ins System)
 COPY pyproject.toml .
+COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install hatchling
 RUN pip install --no-cache-dir --prefix=/install .
 
 # ── Stage 2: Runtime ────────────────────────────────────
-FROM python:3.11-slim AS runtime
+FROM python:3.13-slim AS runtime
 
 ARG VERSION=2.0.0
 LABEL maintainer="WSB-Crawler"
@@ -37,18 +38,14 @@ RUN useradd -m -u 1000 -s /bin/bash crawler && \
     chown -R crawler:crawler /app
 
 # Nur die fertig gebauten Packages vom Builder kopieren
+# (enthält wsb_crawler-Package inkl. React-Build in api/static/)
 COPY --from=builder /install /usr/local
-
-# Application-Code
-COPY --chown=crawler:crawler src/ ./src/
-COPY --chown=crawler:crawler config/ ./config/
 
 # Als Non-Root User ausführen
 USER crawler
 
 # Umgebungsvariablen
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/app
 ENV LOG_LEVEL=INFO
 
 # Healthcheck: prüft ob die DB existiert und der Prozess läuft

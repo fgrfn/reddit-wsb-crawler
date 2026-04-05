@@ -52,7 +52,7 @@ def set_database(db: Database) -> None:
     status.db = db
 
 
-async def run_server(db: Database, host: str = "127.0.0.1", port: int = 8080) -> None:
+async def run_server(db: Database, host: str = "0.0.0.0", port: int = 8080) -> None:
     """Startet den uvicorn Server als asyncio-Task."""
     set_database(db)
     config_uvicorn = uvicorn.Config(
@@ -64,4 +64,9 @@ async def run_server(db: Database, host: str = "127.0.0.1", port: int = 8080) ->
     )
     server = uvicorn.Server(config_uvicorn)
     logger.info(f"Dashboard läuft auf http://{host}:{port}")
-    await server.serve()
+    try:
+        await server.serve()
+    except SystemExit as exc:
+        raise RuntimeError(
+            f"uvicorn konnte nicht starten — Port {port} bereits belegt?"
+        ) from exc

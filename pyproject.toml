@@ -19,7 +19,6 @@ dependencies = [
 
     # Config & Validation
     "pydantic==2.9.2",
-    "pydantic-settings==2.6.1",
 
     # Finance
     "yfinance==0.2.50",
