@@ -77,7 +77,42 @@ def check_python_version() -> None:
     ok(f"Python {v.major}.{v.minor}.{v.micro}")
 
 
-
+def ensure_system_dependencies() -> None:
+    """Installiert notwendige System-Pakete (Linux mit apt)."""
+    heading("2. System-Abhängigkeiten prüfen")
+    
+    # Prüfe ob auf Linux mit apt und root
+    if SYSTEM != "Linux" or not shutil.which("apt-get"):
+        ok("Übersprungen (kein apt-basiertes System)")
+        return
+    
+    if os.geteuid() != 0:
+        ok("Übersprungen (keine root-Rechte)")
+        return
+    
+    packages_to_install = []
+    
+    # Python venv-Modul
+    result = subprocess.run([PYTHON, "-m", "venv", "--help"], capture_output=True)
+    if result.returncode != 0:
+        v = sys.version_info
+        venv_package = f"python{v.major}.{v.minor}-venv"
+        packages_to_install.append(venv_package)
+    
+    if packages_to_install:
+        info(f"Installiere: {', '.join(packages_to_install)}")
+        try:
+            run(["apt-get", "update", "-qq"])
+            run(["apt-get", "install", "-y"] + packages_to_install)
+            ok(f"System-Pakete installiert: {', '.join(packages_to_install)}")
+        except subprocess.CalledProcessError as e:
+            error(f"Installation fehlgeschlagen: {e}")
+            warn("Bitte manuell installieren mit:")
+            for pkg in packages_to_install:
+                info(f"  apt install {pkg}")
+            sys.exit(1)
+    else:
+        ok("Alle System-Abhängigkeiten vorhanden")
 
 
 def _has_pip_in_venv() -> bool:
@@ -88,37 +123,6 @@ def _has_pip_in_venv() -> bool:
         capture_output=True,
     )
     return result.returncode == 0
-
-
-def _ensure_venv_module() -> bool:
-    """Prüft ob venv-Modul verfügbar ist und installiert es bei Bedarf (Linux)."""
-    # Teste ob venv verfügbar ist
-    result = subprocess.run([PYTHON, "-m", "venv", "--help"], capture_output=True)
-    if result.returncode == 0:
-        return True
-    
-    # Nur auf Linux mit apt und root-Rechten automatisch installieren
-    if SYSTEM != "Linux" or not shutil.which("apt-get"):
-        return False
-    
-    if os.geteuid() != 0:
-        error("python3-venv nicht verfügbar — Installation erfordert root-Rechte")
-        info("Manuell installieren: sudo apt install python3-venv")
-        return False
-    
-    # python3.X-venv Paket ermitteln
-    v = sys.version_info
-    venv_package = f"python{v.major}.{v.minor}-venv"
-    
-    warn(f"{venv_package} nicht gefunden — wird automatisch installiert.")
-    try:
-        run(["apt-get", "update", "-qq"])
-        run(["apt-get", "install", "-y", venv_package])
-        ok(f"{venv_package} installiert")
-        return True
-    except subprocess.CalledProcessError as e:
-        error(f"Installation von {venv_package} fehlgeschlagen: {e}")
-        return False
 
 
 def _bootstrap_pip() -> None:
@@ -142,7 +146,7 @@ def _bootstrap_pip() -> None:
 
 
 def setup_venv() -> None:
-    heading("2. Virtual Environment einrichten")
+    heading("3. Virtual Environment einrichten")
     if _venv_python().exists():
         if _has_pip_in_venv():
             ok(f"Venv vorhanden: {VENV_DIR}")
@@ -150,11 +154,6 @@ def setup_venv() -> None:
         warn("Venv vorhanden aber pip fehlt — bootstrapping pip")
         _bootstrap_pip()
         return
-    
-    # Stelle sicher, dass venv-Modul verfügbar ist
-    if not _ensure_venv_module():
-        error("venv-Modul nicht verfügbar — Setup kann nicht fortgesetzt werden")
-        sys.exit(1)
     
     info(f"python3 -m venv {VENV_DIR}")
     run([PYTHON, "-m", "venv", str(VENV_DIR)])
@@ -165,7 +164,7 @@ def setup_venv() -> None:
 
 
 def install_python_deps() -> None:
-    heading("3. Python-Abhängigkeiten installieren")
+    heading("4. Python-Abhängigkeiten installieren")
     pip = str(_venv_python())
     info("pip install --upgrade pip")
     run([pip, "-m", "pip", "install", "--upgrade", "pip"], cwd=REPO_DIR)
@@ -175,7 +174,7 @@ def install_python_deps() -> None:
 
 
 def check_frontend() -> None:
-    heading("4. Frontend prüfen")
+    heading("5. Frontend prüfen")
     static_dir = REPO_DIR / "src" / "wsb_crawler" / "api" / "static"
     index_html = static_dir / "index.html"
 
@@ -187,14 +186,14 @@ def check_frontend() -> None:
 
 
 def create_data_dirs() -> None:
-    heading("5. Verzeichnisse anlegen")
+    heading("6. Verzeichnisse anlegen")
     for d in ["data", "logs"]:
         (REPO_DIR / d).mkdir(exist_ok=True)
         ok(f"{d}/")
 
 
 def setup_autostart() -> bool:
-    heading("6. Autostart einrichten")
+    heading("7. Autostart einrichten")
     print(f"  Soll WSB-Crawler beim {_start_event()} automatisch starten? [j/N] ", end="")
     answer = input().strip().lower()
     if answer not in ("j", "y", "ja", "yes"):
@@ -393,6 +392,7 @@ def main() -> None:
     print(f"\n{BOLD}WSB-Crawler — Setup{RESET}\n")
 
     check_python_version()
+    ensure_system_dependencies()
     setup_venv()
     install_python_deps()
     check_frontend()
