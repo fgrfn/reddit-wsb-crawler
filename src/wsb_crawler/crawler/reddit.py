@@ -30,12 +30,14 @@ def set_database(db: "Database") -> None:
 
 
 def _make_reddit_client(cfg) -> asyncpraw.Reddit:
-    # HTTP-Header müssen latin-1-kompatibel sein (aiohttp-Anforderung)
-    safe_agent = cfg.user_agent.encode("ascii", "ignore").decode("ascii")
+    # Alle Credentials müssen ASCII-kompatibel sein (aiohttp-Header-Anforderung)
+    def to_ascii(s: str) -> str:
+        return s.encode("ascii", "ignore").decode("ascii")
+
     return asyncpraw.Reddit(
-        client_id=cfg.client_id,
-        client_secret=cfg.client_secret,
-        user_agent=safe_agent,
+        client_id=to_ascii(cfg.client_id),
+        client_secret=to_ascii(cfg.client_secret),
+        user_agent=to_ascii(cfg.user_agent),
     )
 
 
