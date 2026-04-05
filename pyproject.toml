@@ -25,7 +25,7 @@ dependencies = [
     "yfinance==0.2.50",
 
     # Database (async SQLite)
-    "aiosqlite==0.20.0",
+    "aiosqlite>=0.17.0",
 
     # Discord Bot (Slash-Commands)
     "discord.py==2.4.0",
