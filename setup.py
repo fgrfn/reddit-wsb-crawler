@@ -22,6 +22,20 @@ REPO_DIR = Path(__file__).resolve().parent
 PYTHON = sys.executable
 SYSTEM = platform.system()  # "Windows", "Linux", "Darwin"
 
+VENV_DIR = REPO_DIR / "venv"
+
+
+def _venv_python() -> Path:
+    if SYSTEM == "Windows":
+        return VENV_DIR / "Scripts" / "python.exe"
+    return VENV_DIR / "bin" / "python"
+
+
+def _venv_wsb_crawler() -> Path:
+    if SYSTEM == "Windows":
+        return VENV_DIR / "Scripts" / "wsb-crawler.exe"
+    return VENV_DIR / "bin" / "wsb-crawler"
+
 RED    = "\033[91m"
 GREEN  = "\033[92m"
 YELLOW = "\033[93m"
@@ -64,7 +78,7 @@ def check_python_version() -> None:
 
 
 def check_node() -> bool:
-    heading("2. Node.js prüfen (für Frontend-Build)")
+    heading("3. Node.js prüfen (für Frontend-Build)")
     if shutil.which("node") and shutil.which("npm"):
         result = subprocess.run(["node", "--version"], capture_output=True, text=True)
         ok(f"Node.js {result.stdout.strip()}")
@@ -75,15 +89,28 @@ def check_node() -> bool:
     return False
 
 
+def setup_venv() -> None:
+    heading("2. Virtual Environment einrichten")
+    if _venv_python().exists():
+        ok(f"Venv vorhanden: {VENV_DIR}")
+        return
+    info(f"python3 -m venv {VENV_DIR}")
+    run([PYTHON, "-m", "venv", str(VENV_DIR)])
+    ok(f"Venv erstellt: {VENV_DIR}")
+
+
 def install_python_deps() -> None:
-    heading("3. Python-Abhängigkeiten installieren")
+    heading("4. Python-Abhängigkeiten installieren")
+    pip = str(_venv_python())
+    info("pip install --upgrade pip")
+    run([pip, "-m", "pip", "install", "--upgrade", "pip"], cwd=REPO_DIR)
     info("pip install -e .")
-    run([PYTHON, "-m", "pip", "install", "-e", str(REPO_DIR)], cwd=REPO_DIR)
+    run([pip, "-m", "pip", "install", "-e", str(REPO_DIR)], cwd=REPO_DIR)
     ok("Python-Pakete installiert")
 
 
 def build_frontend(has_node: bool) -> None:
-    heading("4. Frontend bauen")
+    heading("5. Frontend bauen")
     web_dir = REPO_DIR / "web"
     if not has_node:
         warn("Übersprungen (Node.js nicht verfügbar)")
@@ -100,14 +127,14 @@ def build_frontend(has_node: bool) -> None:
 
 
 def create_data_dirs() -> None:
-    heading("5. Verzeichnisse anlegen")
+    heading("6. Verzeichnisse anlegen")
     for d in ["data", "logs"]:
         (REPO_DIR / d).mkdir(exist_ok=True)
         ok(f"{d}/")
 
 
 def setup_autostart() -> bool:
-    heading("6. Autostart einrichten")
+    heading("7. Autostart einrichten")
     print(f"  Soll WSB-Crawler beim {_start_event()} automatisch starten? [j/N] ", end="")
     answer = input().strip().lower()
     if answer not in ("j", "y", "ja", "yes"):
@@ -136,7 +163,7 @@ def _start_event() -> str:
 def _autostart_windows() -> bool:
     """Windows Task Scheduler — startet bei Anmeldung, minimiert."""
     task_name = "WSB-Crawler"
-    wsb_crawler_exe = shutil.which("wsb-crawler")
+    wsb_crawler_exe = str(_venv_wsb_crawler()) if _venv_wsb_crawler().exists() else shutil.which("wsb-crawler")
     if not wsb_crawler_exe:
         # Fallback: direkt via Python
         wsb_crawler_exe = str(REPO_DIR / "venv" / "Scripts" / "wsb-crawler.exe")
@@ -184,7 +211,7 @@ def _autostart_linux() -> bool:
     service_dir.mkdir(parents=True, exist_ok=True)
     service_file = service_dir / "wsb-crawler.service"
 
-    wsb_crawler_bin = shutil.which("wsb-crawler") or f"{PYTHON} -m wsb_crawler.main"
+    wsb_crawler_bin = str(_venv_wsb_crawler()) if _venv_wsb_crawler().exists() else (shutil.which("wsb-crawler") or f"{PYTHON} -m wsb_crawler.main")
 
     service = f"""[Unit]
 Description=WSB-Crawler Dashboard
@@ -262,7 +289,10 @@ def print_summary(autostart_ok: bool) -> None:
     heading("✓ Setup abgeschlossen!")
     print()
     print(f"  {BOLD}Crawler starten:{RESET}")
-    print(f"    wsb-crawler")
+    if _venv_wsb_crawler().exists():
+        print(f"    {_venv_wsb_crawler()}")
+    else:
+        print(f"    wsb-crawler")
     print()
     print(f"  {BOLD}Dashboard:{RESET}")
     print(f"    http://localhost:8080")
@@ -285,6 +315,7 @@ def main() -> None:
     print(f"\n{BOLD}WSB-Crawler — Setup{RESET}\n")
 
     check_python_version()
+    setup_venv()
     has_node = check_node()
     install_python_deps()
     build_frontend(has_node)
@@ -295,9 +326,10 @@ def main() -> None:
     print("Jetzt starten? [J/n] ", end="")
     if input().strip().lower() not in ("n", "nein", "no"):
         info("wsb-crawler startet…")
+        launcher = _venv_python() if _venv_python().exists() else Path(sys.executable)
         os.execv(
-            sys.executable,
-            [sys.executable, "-m", "wsb_crawler.main"],
+            str(launcher),
+            [str(launcher), "-m", "wsb_crawler.main"],
         )
 
 
