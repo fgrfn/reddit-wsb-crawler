@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 import asyncpraw
+import asyncprawcore
 from loguru import logger
 
 from wsb_crawler.config import get_settings
@@ -138,7 +139,16 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
 
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(f"Fehler beim Crawlen von r/{crawler_cfg.subreddits[i]}: {result}")
+            sub = crawler_cfg.subreddits[i]
+            if isinstance(result, asyncprawcore.exceptions.Forbidden):
+                logger.error(
+                    "Reddit 403 bei r/{}: {}. Bitte Reddit-API-Config prüfen "
+                    "(client_id, client_secret, user_agent) und sicherstellen, dass die App als 'script' erstellt wurde.",
+                    sub,
+                    result,
+                )
+            else:
+                logger.error(f"Fehler beim Crawlen von r/{sub}: {result}")
             continue
         posts, comments = result
         all_posts.extend(posts)
