@@ -100,7 +100,6 @@ async def _fetch_posts(
                         )
                     )
     except Exception:
-        await listing.aclose()
         raise
 
     logger.debug(
