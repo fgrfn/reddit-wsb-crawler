@@ -12,7 +12,7 @@ WSB-Crawler v2 ist ein lokal betriebenes Frühwarnsystem, das Subreddits (primä
 - Python 3.11+, async/await durchgehend
 - aiosqlite (SQLite) für alle persistenten Daten inkl. Konfiguration
 - FastAPI + uvicorn als interner API-Server (Port 8080)
-- React 18 + Vite + TypeScript + Tailwind CSS als Web-Dashboard
+- Vanilla HTML/CSS/JS + Tailwind CSS (CDN) als Web-Dashboard — kein Build-Step
 - loguru für Logging, asyncpraw für Reddit, discord.py für Bot/Webhooks
 
 ---
@@ -23,20 +23,11 @@ WSB-Crawler v2 ist ein lokal betriebenes Frühwarnsystem, das Subreddits (primä
 # Python-Abhängigkeiten installieren (editable, inkl. dev)
 pip install -e ".[dev]"
 
-# Frontend bauen (Output → src/wsb_crawler/api/static/)
-cd web && npm install && npm run build && cd ..
-
 # Anwendung starten (Browser öffnet sich automatisch)
 wsb-crawler
 
 # Alternativ: Komplett-Setup inkl. Autostart-Option
 python setup.py
-```
-
-**Dev-Frontend (Hot-Reload, proxied nach :8080):**
-```bash
-cd web && npm run dev
-# React-Dev-Server auf :5173, API-Calls werden zu :8080 weitergeleitet
 ```
 
 **Tests:**
@@ -149,20 +140,17 @@ FastAPI-App mit drei Routern, alle unter `/api/`:
 
 ---
 
-## Frontend (`web/`)
+## Frontend
 
-| Datei/Ordner | Beschreibung |
-|---|---|
-| `vite.config.ts` | Dev-Proxy zu `:8080`, Build-Output nach `../src/wsb_crawler/api/static` |
-| `src/App.tsx` | SPA-Root: ruft `/api/config/status` → Redirect zu `/setup` wenn `configured: false` |
-| `src/components/Layout.tsx` | Dunkle Sidebar-Navigation |
-| `src/pages/Setup.tsx` | 3-stufiger Setup-Wizard (Reddit → Discord → Subreddits) |
-| `src/pages/Dashboard.tsx` | Status-Kacheln, recharts Balkendiagramm, Ticker-Tabelle |
-| `src/pages/Alerts.tsx` | Alert-Historie mit Ticker-Filter |
-| `src/pages/Config.tsx` | Alle Einstellungen bearbeitbar, Speichern via `PUT /api/config` |
-| `src/pages/Logs.tsx` | Live-Logstream via WebSocket (`/ws/logs`) |
+**Single-File HTML Dashboard** in `src/wsb_crawler/api/static/index.html`:
+- Vanilla HTML/CSS/JS — kein Build-Step, kein Node.js erforderlich
+- Tailwind CSS per CDN
+- Hash-basiertes Routing (SPA-ähnlich)
+- 5 Seiten: Setup (3-Schritt-Wizard), Dashboard, Alerts, Config, Logs
+- Live-Logs via WebSocket (`/api/ws/logs`)
+- Auto-Refresh während Crawl läuft
 
-Technologien: React 18, TypeScript, Tailwind CSS, recharts, react-router-dom v6, lucide-react.
+Das Dashboard ist direkt im Repo committed und funktioniert ohne Build-Vorgang.
 
 ---
 
@@ -175,8 +163,6 @@ docker compose up -d
 # Dashboard: http://localhost:8080
 ```
 
-Das Frontend-Build muss vor dem Docker-Build erzeugt werden (`cd web && npm run build`), oder der `Dockerfile` muss einen Node-Stage enthalten.
-
 ---
 
 ## Bekannte Einschränkungen / TODO
@@ -184,8 +170,6 @@ Das Frontend-Build muss vor dem Docker-Build erzeugt werden (`cd web && npm run 
 1. **`datetime.utcnow()` Deprecation:** In `models.py` verwenden `PriceData.fetched_at` und `Alert.triggered_at` noch `datetime.utcnow` als `default_factory`. Ab Python 3.12 erzeugt das DeprecationWarnings. Fix: `lambda: datetime.now(tz=timezone.utc)` — erfordert aber Überprüfung aller datetime-Vergleiche (naiv vs. aware) in DB-Code.
 
 2. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
-
-3. **Frontend-Build nicht im Dockerfile:** `npm run build` muss vor `docker build` ausgeführt werden (oder im CI via GitHub Actions Workflow), damit `src/wsb_crawler/api/static/` aktuell ist.
 
 ---
 

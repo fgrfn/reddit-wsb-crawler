@@ -77,44 +77,7 @@ def check_python_version() -> None:
     ok(f"Python {v.major}.{v.minor}.{v.micro}")
 
 
-def _install_node_linux() -> bool:
-    """Installiert Node.js 20 LTS via NodeSource-Script (Debian/Ubuntu)."""
-    if shutil.which("curl") is None and shutil.which("wget") is None:
-        warn("curl/wget nicht gefunden — Node.js kann nicht automatisch installiert werden.")
-        return False
-    info("Node.js 20 LTS via NodeSource installieren…")
-    try:
-        # NodeSource setup script herunterladen und ausführen
-        if shutil.which("curl"):
-            run(["bash", "-c", "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"])
-        else:
-            run(["bash", "-c", "wget -qO- https://deb.nodesource.com/setup_20.x | bash -"])
-        run(["apt-get", "install", "-y", "nodejs"])
-        return True
-    except subprocess.CalledProcessError as e:
-        error(f"Node.js Installation fehlgeschlagen: {e}")
-        return False
 
-
-def check_node() -> bool:
-    heading("3. Node.js prüfen (für Frontend-Build)")
-    if shutil.which("node") and shutil.which("npm"):
-        result = subprocess.run(["node", "--version"], capture_output=True, text=True)
-        ok(f"Node.js {result.stdout.strip()}")
-        return True
-
-    # Auf Linux automatisch installieren (apt-basierte Systeme)
-    if SYSTEM == "Linux" and os.geteuid() == 0 and shutil.which("apt-get"):
-        warn("Node.js nicht gefunden — wird automatisch installiert.")
-        if _install_node_linux():
-            result = subprocess.run(["node", "--version"], capture_output=True, text=True)
-            ok(f"Node.js {result.stdout.strip()} installiert")
-            return True
-
-    warn("Node.js nicht gefunden — Frontend-Build wird übersprungen.")
-    warn("Dashboard funktioniert trotzdem (nur ohne React-Build).")
-    info("Node.js installieren unter: https://nodejs.org")
-    return False
 
 
 def _has_pip_in_venv() -> bool:
@@ -125,6 +88,37 @@ def _has_pip_in_venv() -> bool:
         capture_output=True,
     )
     return result.returncode == 0
+
+
+def _ensure_venv_module() -> bool:
+    """Prüft ob venv-Modul verfügbar ist und installiert es bei Bedarf (Linux)."""
+    # Teste ob venv verfügbar ist
+    result = subprocess.run([PYTHON, "-m", "venv", "--help"], capture_output=True)
+    if result.returncode == 0:
+        return True
+    
+    # Nur auf Linux mit apt und root-Rechten automatisch installieren
+    if SYSTEM != "Linux" or not shutil.which("apt-get"):
+        return False
+    
+    if os.geteuid() != 0:
+        error("python3-venv nicht verfügbar — Installation erfordert root-Rechte")
+        info("Manuell installieren: sudo apt install python3-venv")
+        return False
+    
+    # python3.X-venv Paket ermitteln
+    v = sys.version_info
+    venv_package = f"python{v.major}.{v.minor}-venv"
+    
+    warn(f"{venv_package} nicht gefunden — wird automatisch installiert.")
+    try:
+        run(["apt-get", "update", "-qq"])
+        run(["apt-get", "install", "-y", venv_package])
+        ok(f"{venv_package} installiert")
+        return True
+    except subprocess.CalledProcessError as e:
+        error(f"Installation von {venv_package} fehlgeschlagen: {e}")
+        return False
 
 
 def _bootstrap_pip() -> None:
@@ -156,6 +150,12 @@ def setup_venv() -> None:
         warn("Venv vorhanden aber pip fehlt — bootstrapping pip")
         _bootstrap_pip()
         return
+    
+    # Stelle sicher, dass venv-Modul verfügbar ist
+    if not _ensure_venv_module():
+        error("venv-Modul nicht verfügbar — Setup kann nicht fortgesetzt werden")
+        sys.exit(1)
+    
     info(f"python3 -m venv {VENV_DIR}")
     run([PYTHON, "-m", "venv", str(VENV_DIR)])
     if not _has_pip_in_venv():
@@ -165,7 +165,7 @@ def setup_venv() -> None:
 
 
 def install_python_deps() -> None:
-    heading("4. Python-Abhängigkeiten installieren")
+    heading("3. Python-Abhängigkeiten installieren")
     pip = str(_venv_python())
     info("pip install --upgrade pip")
     run([pip, "-m", "pip", "install", "--upgrade", "pip"], cwd=REPO_DIR)
@@ -174,43 +174,27 @@ def install_python_deps() -> None:
     ok("Python-Pakete installiert")
 
 
-def build_frontend(has_node: bool) -> None:
-    heading("5. Frontend bauen")
-    web_dir = REPO_DIR / "web"
+def check_frontend() -> None:
+    heading("4. Frontend prüfen")
     static_dir = REPO_DIR / "src" / "wsb_crawler" / "api" / "static"
     index_html = static_dir / "index.html"
 
-    # Bereits gebautes Frontend vorhanden (z. B. im Repo committed)
     if index_html.exists():
-        ok(f"Vorhandenes Build gefunden ({static_dir.relative_to(REPO_DIR)}) — übersprungen")
-        return
-
-    if not has_node:
-        warn("Node.js nicht gefunden und kein vorhandenes Build — Dashboard nicht verfügbar!")
-        warn("Lokal bauen und committen:  cd web && npm install && npm run build")
-        warn("Danach: git add src/wsb_crawler/api/static/ && git commit && git push")
-        return
-
-    if not web_dir.exists():
-        warn("web/ Verzeichnis nicht gefunden — übersprungen")
-        return
-
-    info("npm install")
-    run(["npm", "install"], cwd=web_dir)
-    info("npm run build")
-    run(["npm", "run", "build"], cwd=web_dir)
-    ok("Frontend gebaut → src/wsb_crawler/api/static/")
+        ok(f"Dashboard vorhanden ({static_dir.relative_to(REPO_DIR)}/index.html)")
+    else:
+        error("Dashboard nicht gefunden — src/wsb_crawler/api/static/index.html fehlt!")
+        sys.exit(1)
 
 
 def create_data_dirs() -> None:
-    heading("6. Verzeichnisse anlegen")
+    heading("5. Verzeichnisse anlegen")
     for d in ["data", "logs"]:
         (REPO_DIR / d).mkdir(exist_ok=True)
         ok(f"{d}/")
 
 
 def setup_autostart() -> bool:
-    heading("7. Autostart einrichten")
+    heading("6. Autostart einrichten")
     print(f"  Soll WSB-Crawler beim {_start_event()} automatisch starten? [j/N] ", end="")
     answer = input().strip().lower()
     if answer not in ("j", "y", "ja", "yes"):
@@ -407,9 +391,8 @@ def main() -> None:
 
     check_python_version()
     setup_venv()
-    has_node = check_node()
     install_python_deps()
-    build_frontend(has_node)
+    check_frontend()
     create_data_dirs()
     autostart_ok = setup_autostart()
     print_summary(autostart_ok)

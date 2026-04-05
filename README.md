@@ -21,7 +21,7 @@ Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf u
 | Config | `.env`-Datei | Web-Dashboard (SQLite-backed) |
 | Logging | colorama + pyfiglet + halo | loguru + Live-Log im Browser |
 | Discord | nur Webhooks | Webhooks + Slash-Commands (/top, /chart, /status) |
-| Dashboard | keins | FastAPI + React/Vite (localhost:8080) |
+| Dashboard | keins | FastAPI + Vanilla HTML/CSS/JS (localhost:8080) |
 | Setup | manuelle `.env` Bearbeitung | Setup-Wizard im Browser |
 | Docker | 2 Services, Profile-Flag | 1 Service, Port 8080 |
 | Tests | test_logging.py | pytest + pytest-asyncio, >70% Coverage |
@@ -34,13 +34,12 @@ Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf u
 ### Voraussetzungen
 
 - Python 3.11+
-- Node.js 18+ (nur zum Bauen des Frontends nötig)
 - Reddit-App: [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
 - Discord Webhook-URL
 
 ### Setup-Script (empfohlen)
 
-Das Setup-Script installiert alle Abhängigkeiten, baut das Frontend und richtet optional einen Autostart-Service ein:
+Das Setup-Script installiert alle Abhängigkeiten und richtet optional einen Autostart-Service ein:
 
 ```bash
 git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
@@ -63,13 +62,7 @@ python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 
-# 3. Frontend bauen
-cd web
-npm install
-npm run build
-cd ..
-
-# 4. Starten
+# 3. Starten
 wsb-crawler
 ```
 

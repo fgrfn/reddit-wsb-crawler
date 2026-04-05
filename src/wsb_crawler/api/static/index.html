@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WSB-Crawler v2</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              DEFAULT: '#FF4500',
+              dark: '#cc3700',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    
+    * {
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    
+    .card {
+      background-color: rgb(24 24 27);
+      border: 1px solid rgb(39 39 42);
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+    }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-weight: 500;
+      transition: colors 150ms;
+    }
+    
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background-color: #FF4500;
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      background-color: #cc3700;
+    }
+    
+    .btn-ghost {
+      color: rgb(212 212 216);
+    }
+    
+    .btn-ghost:hover:not(:disabled) {
+      background-color: rgb(39 39 42);
+    }
+    
+    .input {
+      width: 100%;
+      background-color: rgb(39 39 42);
+      border: 1px solid rgb(63 63 70);
+      border-radius: 0.5rem;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    
+    .input:focus {
+      ring: 2px solid #FF4500;
+      border-color: transparent;
+    }
+    
+    .input::placeholder {
+      color: rgb(113 113 122);
+    }
+    
+    .label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: rgb(161 161 170);
+      margin-bottom: 0.25rem;
+    }
+    
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.5rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 500;
+    }
+    
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
+      font-size: 0.875rem;
+      transition: all 150ms;
+      color: rgb(161 161 170);
+      text-decoration: none;
+    }
+    
+    .nav-link:hover {
+      background-color: rgb(39 39 42);
+      color: rgb(244 244 245);
+    }
+    
+    .nav-link.active {
+      background-color: rgba(255, 69, 0, 0.1);
+      color: #FF4500;
+      font-weight: 500;
+    }
+    
+    /* Animationen */
+    @keyframes ping {
+      75%, 100% {
+        transform: scale(2);
+        opacity: 0;
+      }
+    }
+    
+    .animate-ping {
+      animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite;
+    }
+    
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #18181b;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #52525b;
+    }
+  </style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 antialiased">
+  <div id="app"></div>
+
+  <script>
+    // ==================== STATE & ROUTER ====================
+    const state = {
+      currentPage: 'loading',
+      configured: null,
+      setupStep: 0,
+      setupValues: {},
+      days: 7,
+      alertFilter: '',
+      logs: [],
+      ws: null,
+    };
+
+    function navigate(page) {
+      state.currentPage = page;
+      window.location.hash = page === 'dashboard' ? '' : page;
+      render();
+    }
+
+    function initRouter() {
+      const hash = window.location.hash.slice(1);
+      if (hash) {
+        state.currentPage = hash;
+      } else {
+        state.currentPage = 'dashboard';
+      }
+      
+      window.addEventListener('hashchange', () => {
+        const h = window.location.hash.slice(1);
+        state.currentPage = h || 'dashboard';
+        render();
+      });
+    }
+
+    // ==================== API HELPERS ====================
+    async function api(path, options = {}) {
+      const res = await fetch(`/api${path}`, options);
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      return res.json();
+    }
+
+    // ==================== ICONS (SVG) ====================
+    const icons = {
+      dashboard: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>',
+      bell: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+      settings: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6M5.64 5.64l4.24 4.25m4.24 4.24l4.24 4.24M1 12h6m6 0h6M5.64 18.36l4.24-4.24m4.24-4.24l4.24-4.24"/></svg>',
+      logs: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8m8 4H8m8 4H8"/></svg>',
+      play: '<svg width="12" height="12" fill="currentColor"><polygon points="3,1 3,11 11,6"/></svg>',
+      trendUp: '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>',
+      trendDown: '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>',
+      minus: '<svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/></svg>',
+      chevronLeft: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>',
+      chevronRight: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>',
+      check: '<svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+      save: '<svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
+    };
+
+    // ==================== LAYOUT ====================
+    function renderLayout(content) {
+      const nav = [
+        { page: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
+        { page: 'alerts', label: 'Alerts', icon: 'bell' },
+        { page: 'config', label: 'Konfiguration', icon: 'settings' },
+        { page: 'logs', label: 'Logs', icon: 'logs' },
+      ];
+
+      return `
+        <div class="flex h-screen overflow-hidden">
+          <!-- Sidebar -->
+          <aside class="w-56 flex-shrink-0 bg-zinc-900 border-r border-zinc-800 flex flex-col">
+            <div class="px-5 py-5 border-b border-zinc-800">
+              <span class="text-brand font-bold text-lg tracking-tight">WSB-Crawler</span>
+              <span class="ml-2 text-zinc-500 text-xs">v2</span>
+            </div>
+            <nav class="flex-1 p-3 space-y-1">
+              ${nav.map(({ page, label, icon }) => `
+                <a href="#${page === 'dashboard' ? '' : page}" 
+                   class="nav-link ${state.currentPage === page ? 'active' : ''}"
+                   onclick="navigate('${page}'); return false;">
+                  ${icons[icon]}
+                  ${label}
+                </a>
+              `).join('')}
+            </nav>
+          </aside>
+
+          <!-- Main content -->
+          <main class="flex-1 overflow-y-auto p-6">
+            ${content}
+          </main>
+        </div>
+      `;
+    }
+
+    // ==================== SETUP PAGE ====================
+    const SETUP_STEPS = [
+      {
+        title: 'Reddit API',
+        description: 'Erstelle eine App unter reddit.com/prefs/apps → "script".',
+        fields: [
+          { key: 'reddit_client_id', label: 'Client ID', placeholder: 'abc123xyz', required: true },
+          { key: 'reddit_client_secret', label: 'Client Secret', type: 'password', placeholder: '••••••••', required: true },
+          { key: 'reddit_user_agent', label: 'User Agent', placeholder: 'python:wsb-crawler:v2 (by /u/deinuser)' },
+        ]
+      },
+      {
+        title: 'Discord Webhook',
+        description: 'Discord → Servereinstellungen → Integrationen → Webhooks → Neuer Webhook.',
+        fields: [
+          { key: 'discord_webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/...', required: true },
+        ]
+      },
+      {
+        title: 'Subreddits',
+        description: 'Welche Subreddits sollen gecrawlt werden?',
+        fields: [
+          { key: 'subreddits', label: 'Subreddits (komma-separiert)', placeholder: 'wallstreetbets,wallstreetbetsGER', help: 'Standard: wallstreetbets und wallstreetbetsGER' },
+          { key: 'crawl_interval_minutes', label: 'Crawl-Intervall (Minuten)', placeholder: '30', help: 'Empfehlung: 30 Minuten' },
+        ]
+      }
+    ];
+
+    function renderSetup() {
+      const current = SETUP_STEPS[state.setupStep];
+      const isLast = state.setupStep === SETUP_STEPS.length - 1;
+
+      return `
+        <div class="min-h-screen flex items-center justify-center p-6">
+          <div class="w-full max-w-md space-y-6">
+            <div class="text-center">
+              <div class="text-brand font-bold text-2xl mb-1">WSB-Crawler</div>
+              <div class="text-zinc-500 text-sm">Ersteinrichtung</div>
+            </div>
+
+            <div class="flex gap-2">
+              ${SETUP_STEPS.map((_, i) => `
+                <div class="h-1 flex-1 rounded-full transition-colors ${i <= state.setupStep ? 'bg-brand' : 'bg-zinc-800'}"></div>
+              `).join('')}
+            </div>
+
+            <div class="card space-y-5">
+              <div>
+                <h2 class="font-bold text-lg">${current.title}</h2>
+                <p class="text-zinc-500 text-sm mt-1">${current.description}</p>
+              </div>
+
+              ${current.fields.map(f => `
+                <div>
+                  <label class="label">
+                    ${f.label}
+                    ${f.required ? '<span class="text-brand ml-1">*</span>' : ''}
+                  </label>
+                  <input 
+                    class="input" 
+                    type="${f.type || 'text'}"
+                    placeholder="${f.placeholder}"
+                    value="${state.setupValues[f.key] || ''}"
+                    oninput="state.setupValues['${f.key}'] = this.value"
+                  />
+                  ${f.help ? `<p class="text-xs text-zinc-600 mt-1">${f.help}</p>` : ''}
+                </div>
+              `).join('')}
+
+              <div id="setup-error"></div>
+
+              <div class="flex justify-between pt-2">
+                <button 
+                  class="btn-ghost" 
+                  onclick="setupPrev()"
+                  ${state.setupStep === 0 ? 'disabled' : ''}
+                >
+                  ${icons.chevronLeft}
+                  Zurück
+                </button>
+                <button class="btn-primary" onclick="setupNext()">
+                  ${isLast ? icons.check + ' Fertig & Starten' : icons.chevronRight + ' Weiter'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function setupPrev() {
+      if (state.setupStep > 0) {
+        state.setupStep--;
+        render();
+      }
+    }
+
+    async function setupNext() {
+      const isLast = state.setupStep === SETUP_STEPS.length - 1;
+      const errorDiv = document.getElementById('setup-error');
+      
+      if (isLast) {
+        try {
+          await api('/config', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(state.setupValues)
+          });
+          state.configured = true;
+          navigate('dashboard');
+        } catch (e) {
+          errorDiv.innerHTML = `<p class="text-red-400 text-sm bg-red-400/10 px-3 py-2 rounded-lg">${e.message}</p>`;
+        }
+      } else {
+        state.setupStep++;
+        render();
+      }
+    }
+
+    // ==================== DASHBOARD PAGE ====================
+    async function renderDashboard() {
+      const [tickers, status] = await Promise.all([
+        api(`/tickers?days=${state.days}`),
+        api('/status')
+      ]);
+
+      const crawlActive = status.crawl_running;
+
+      return `
+        <div class="space-y-6">
+          ${crawlActive ? `
+            <div class="rounded-lg bg-brand/10 border border-brand/30 px-4 py-3 text-sm text-brand space-y-1">
+              <div class="flex items-center gap-3">
+                <span class="relative flex h-2.5 w-2.5 shrink-0">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand"></span>
+                </span>
+                <span class="font-medium">Crawl läuft…</span>
+              </div>
+            </div>
+          ` : ''}
+
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold">Dashboard</h1>
+            <div class="flex gap-2 items-center">
+              ${[7, 14, 30].map(d => `
+                <button 
+                  onclick="setDays(${d})"
+                  class="px-3 py-1 rounded-lg text-sm transition-colors ${state.days === d ? 'bg-brand text-white' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'}"
+                >
+                  ${d}d
+                </button>
+              `).join('')}
+              <button 
+                onclick="startCrawl()"
+                ${crawlActive ? 'disabled' : ''}
+                class="flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-medium transition-colors bg-brand text-white hover:bg-brand/80 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ${icons.play}
+                ${crawlActive ? 'Läuft…' : 'Lauf starten'}
+              </button>
+            </div>
+          </div>
+
+          <!-- Status Cards -->
+          <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+            ${[
+              { label: 'Crawl-Runs', value: status.total_runs },
+              { label: 'Alerts gesamt', value: status.total_alerts },
+              { label: 'Ticker getrackt', value: status.tracked_tickers },
+              { label: 'Letzter Lauf', value: status.last_run_at ? new Date(status.last_run_at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' }) : '—' },
+            ].map(({ label, value }) => `
+              <div class="card">
+                <div class="text-zinc-500 text-xs mb-1">${label}</div>
+                <div class="text-2xl font-bold">${value}</div>
+              </div>
+            `).join('')}
+          </div>
+
+          <!-- Chart -->
+          <div class="card">
+            <h2 class="text-sm font-semibold text-zinc-400 mb-4">Top-Ticker (letzte ${state.days} Tage)</h2>
+            ${tickers.length === 0 ? `
+              <p class="text-zinc-600 text-sm text-center py-8">Noch keine Daten. Starte den ersten Crawl-Lauf.</p>
+            ` : `
+              <div class="space-y-2">
+                ${tickers.slice(0, 15).map(t => {
+                  const maxMentions = Math.max(...tickers.map(x => x.total_mentions));
+                  const width = (t.total_mentions / maxMentions) * 100;
+                  const color = t.trend === 'up' ? 'bg-green-500' : t.trend === 'down' ? 'bg-red-500' : 'bg-brand';
+                  return `
+                    <div class="flex items-center gap-3">
+                      <div class="w-12 font-mono text-sm font-bold text-white">$${t.ticker}</div>
+                      <div class="flex-1 bg-zinc-800 rounded-full h-6 relative">
+                        <div class="${color} h-full rounded-full transition-all" style="width: ${width}%"></div>
+                        <span class="absolute inset-0 flex items-center justify-end pr-3 text-xs font-medium text-white">${t.total_mentions}</span>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            `}
+          </div>
+
+          <!-- Ticker Table -->
+          <div class="card overflow-hidden p-0">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-zinc-800">
+                  ${['Ticker', 'Nennungen', 'Ø/Tag', 'Peak', 'Trend'].map(h => `
+                    <th class="text-left text-zinc-500 font-medium px-4 py-3 text-xs uppercase tracking-wide">${h}</th>
+                  `).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${tickers.map(t => `
+                  <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                    <td class="px-4 py-3 font-mono font-bold text-white">$${t.ticker}</td>
+                    <td class="px-4 py-3 tabular-nums">${t.total_mentions}</td>
+                    <td class="px-4 py-3 tabular-nums text-zinc-400">${t.avg_daily}</td>
+                    <td class="px-4 py-3 tabular-nums text-zinc-400">${t.peak_mentions}</td>
+                    <td class="px-4 py-3">
+                      ${t.trend === 'up' ? icons.trendUp : t.trend === 'down' ? icons.trendDown : icons.minus}
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    function setDays(d) {
+      state.days = d;
+      render();
+    }
+
+    async function startCrawl() {
+      try {
+        await api('/crawl', { method: 'POST' });
+        render();
+        setTimeout(render, 3000); // Refresh after 3s
+      } catch (e) {
+        alert('Fehler beim Starten: ' + e.message);
+      }
+    }
+
+    // ==================== ALERTS PAGE ====================
+    async function renderAlerts() {
+      const url = state.alertFilter 
+        ? `/alerts?ticker=${state.alertFilter.toUpperCase()}` 
+        : '/alerts?limit=100';
+      const alerts = await api(url);
+
+      const reasonMap = {
+        new_ticker: { label: 'Neu', color: 'bg-blue-500/20 text-blue-400' },
+        spike: { label: 'Spike', color: 'bg-brand/20 text-brand' },
+        price_move: { label: 'Kurs+Aktivität', color: 'bg-amber-500/20 text-amber-400' },
+      };
+
+      return `
+        <div class="space-y-5">
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold">Alert-History</h1>
+            <input 
+              class="input w-40" 
+              placeholder="Ticker filtern…"
+              value="${state.alertFilter}"
+              oninput="state.alertFilter = this.value; render();"
+            />
+          </div>
+
+          <div class="card overflow-hidden p-0">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="border-b border-zinc-800">
+                  ${['Zeit', 'Ticker', 'Typ', 'Nennungen', 'Faktor', 'Kurs', 'Änderung'].map(h => `
+                    <th class="text-left text-zinc-500 font-medium px-4 py-3 text-xs uppercase tracking-wide">${h}</th>
+                  `).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${alerts.length === 0 ? `
+                  <tr><td colspan="7" class="text-center text-zinc-600 py-10">Noch keine Alerts</td></tr>
+                ` : alerts.map(a => {
+                  const r = reasonMap[a.reason] || { label: a.reason, color: 'bg-zinc-700 text-zinc-300' };
+                  return `
+                    <tr class="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                      <td class="px-4 py-3 text-zinc-500 whitespace-nowrap">
+                        ${new Date(a.sent_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                      <td class="px-4 py-3 font-mono font-bold">$${a.ticker}</td>
+                      <td class="px-4 py-3">
+                        <span class="badge ${r.color}">${r.label}</span>
+                      </td>
+                      <td class="px-4 py-3 tabular-nums">${a.mentions}</td>
+                      <td class="px-4 py-3 tabular-nums">${a.ratio.toFixed(1)}x</td>
+                      <td class="px-4 py-3 tabular-nums">${a.price ? `$${a.price.toFixed(2)}` : '—'}</td>
+                      <td class="px-4 py-3 tabular-nums">
+                        ${a.price_change !== null ? `
+                          <span class="${a.price_change >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${a.price_change >= 0 ? '+' : ''}${a.price_change.toFixed(2)}%
+                          </span>
+                        ` : '—'}
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    }
+
+    // ==================== CONFIG PAGE ====================
+    const CONFIG_SECTIONS = [
+      {
+        title: 'Reddit API',
+        fields: [
+          { key: 'reddit_client_id', label: 'Client ID', placeholder: 'abc123' },
+          { key: 'reddit_client_secret', label: 'Client Secret', type: 'password', placeholder: '••••••••' },
+          { key: 'reddit_user_agent', label: 'User Agent', placeholder: 'python:wsb-crawler:v2 (by /u/deinuser)' },
+        ]
+      },
+      {
+        title: 'Discord',
+        fields: [
+          { key: 'discord_webhook_url', label: 'Webhook URL', placeholder: 'https://discord.com/api/webhooks/...', help: 'Discord → Servereinstellungen → Integrationen → Webhooks' },
+          { key: 'discord_bot_token', label: 'Bot Token (optional)', type: 'password', placeholder: 'Nur für /top, /chart Slash-Commands' },
+        ]
+      },
+      {
+        title: 'NewsAPI',
+        fields: [
+          { key: 'newsapi_key', label: 'API Key', type: 'password', placeholder: 'Kostenlos auf newsapi.org', help: 'Optional — ohne Key keine News-Headlines in Alerts' },
+          { key: 'newsapi_window_hours', label: 'News-Fenster (Stunden)', placeholder: '48' },
+        ]
+      },
+      {
+        title: 'Subreddits & Crawler',
+        fields: [
+          { key: 'subreddits', label: 'Subreddits', placeholder: 'wallstreetbets,wallstreetbetsGER', help: 'Komma-separiert' },
+          { key: 'crawl_interval_minutes', label: 'Intervall (Minuten)', placeholder: '30' },
+          { key: 'posts_limit', label: 'Posts pro Subreddit', placeholder: '500' },
+          { key: 'comments_limit', label: 'Kommentare pro Post', placeholder: '100' },
+        ]
+      },
+      {
+        title: 'Alert-Schwellwerte',
+        fields: [
+          { key: 'alert_min_abs', label: 'Min. Nennungen (neuer Ticker)', placeholder: '20' },
+          { key: 'alert_min_delta', label: 'Min. Anstieg absolut', placeholder: '10' },
+          { key: 'alert_ratio', label: 'Min. Faktor (z.B. 2.0 = 200%)', placeholder: '2.0' },
+          { key: 'alert_min_price_move', label: 'Min. Kursänderung %', placeholder: '5.0' },
+          { key: 'alert_max_per_run', label: 'Max. Alerts pro Lauf', placeholder: '3' },
+          { key: 'alert_cooldown_h', label: 'Cooldown (Stunden)', placeholder: '4' },
+        ]
+      }
+    ];
+
+    let configValues = {};
+    let configSecrets = new Set();
+    let configSaved = false;
+
+    async function renderConfig() {
+      if (Object.keys(configValues).length === 0) {
+        const data = await api('/config');
+        const secretKeys = new Set(
+          CONFIG_SECTIONS.flatMap(s => s.fields.filter(f => f.type === 'password').map(f => f.key))
+        );
+        configValues = {};
+        configSecrets = new Set();
+        for (const [k, v] of Object.entries(data)) {
+          if (secretKeys.has(k)) {
+            configValues[k] = '';
+            if (v && v !== '') configSecrets.add(k);
+          } else {
+            configValues[k] = v || '';
+          }
+        }
+      }
+
+      return `
+        <div class="space-y-6 max-w-2xl">
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold">Konfiguration</h1>
+            <button class="btn-primary" onclick="saveConfig()">
+              ${configSaved ? icons.check + ' Gespeichert' : icons.save + ' Speichern'}
+            </button>
+          </div>
+
+          ${CONFIG_SECTIONS.map(({ title, fields }) => `
+            <div class="card space-y-4">
+              <h2 class="font-semibold text-sm text-zinc-300 border-b border-zinc-800 pb-3">${title}</h2>
+              ${fields.map(f => `
+                <div>
+                  <label class="label">${f.label}</label>
+                  <input 
+                    class="input" 
+                    type="${f.type || 'text'}"
+                    placeholder="${f.type === 'password' && configSecrets.has(f.key) ? '● gesetzt — leer lassen zum Beibehalten' : f.placeholder}"
+                    value="${configValues[f.key] || ''}"
+                    oninput="configValues['${f.key}'] = this.value; configSaved = false;"
+                  />
+                  ${f.help ? `<p class="text-xs text-zinc-600 mt-1">${f.help}</p>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    async function saveConfig() {
+      try {
+        const payload = Object.fromEntries(
+          Object.entries(configValues).filter(([, v]) => v !== '')
+        );
+        await api('/config', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        configSaved = true;
+        render();
+        setTimeout(() => {
+          configSaved = false;
+          render();
+        }, 2500);
+      } catch (e) {
+        alert('Fehler beim Speichern: ' + e.message);
+      }
+    }
+
+    // ==================== LOGS PAGE ====================
+    function renderLogs() {
+      const levelColor = (line) => {
+        if (line.includes('ERROR') || line.includes('CRITICAL')) return 'text-red-400';
+        if (line.includes('WARNING')) return 'text-amber-400';
+        if (line.includes('SUCCESS')) return 'text-green-400';
+        return 'text-zinc-300';
+      };
+
+      return `
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold">Live-Logs</h1>
+            <button class="btn-ghost text-xs" onclick="state.logs = []; render();">Leeren</button>
+          </div>
+          <div class="card bg-zinc-950 font-mono text-xs h-[calc(100vh-9rem)] overflow-y-auto p-4 space-y-0.5" id="logs-container">
+            ${state.logs.length === 0 ? `
+              <span class="text-zinc-600">Warte auf Log-Einträge…</span>
+            ` : state.logs.map((line, i) => `
+              <div class="${levelColor(line)}">${line}</div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
+    function connectLogsWebSocket() {
+      if (state.ws) state.ws.close();
+      state.ws = new WebSocket(`ws://${location.host}/api/ws/logs`);
+      state.ws.onmessage = (e) => {
+        state.logs = [...state.logs.slice(-500), e.data];
+        const container = document.getElementById('logs-container');
+        if (container) {
+          container.innerHTML = state.logs.map(line => {
+            const levelColor = (l) => {
+              if (l.includes('ERROR') || l.includes('CRITICAL')) return 'text-red-400';
+              if (l.includes('WARNING')) return 'text-amber-400';
+              if (l.includes('SUCCESS')) return 'text-green-400';
+              return 'text-zinc-300';
+            };
+            return `<div class="${levelColor(line)}">${line}</div>`;
+          }).join('');
+          container.scrollTop = container.scrollHeight;
+        }
+      };
+    }
+
+    function disconnectLogsWebSocket() {
+      if (state.ws) {
+        state.ws.close();
+        state.ws = null;
+      }
+    }
+
+    // ==================== MAIN RENDER ====================
+    async function render() {
+      const app = document.getElementById('app');
+      
+      try {
+        if (state.currentPage === 'loading') {
+          app.innerHTML = `
+            <div class="flex h-screen items-center justify-center">
+              <div class="text-zinc-500 text-sm">Lädt...</div>
+            </div>
+          `;
+          return;
+        }
+
+        if (state.currentPage === 'setup' || !state.configured) {
+          app.innerHTML = renderSetup();
+          return;
+        }
+
+        // Disconnect WebSocket if leaving logs page
+        if (state.currentPage !== 'logs') {
+          disconnectLogsWebSocket();
+        }
+
+        let content = '';
+        if (state.currentPage === 'dashboard') {
+          content = await renderDashboard();
+        } else if (state.currentPage === 'alerts') {
+          content = await renderAlerts();
+        } else if (state.currentPage === 'config') {
+          content = await renderConfig();
+        } else if (state.currentPage === 'logs') {
+          content = renderLogs();
+          setTimeout(connectLogsWebSocket, 100);
+        }
+
+        app.innerHTML = renderLayout(content);
+      } catch (e) {
+        app.innerHTML = `
+          <div class="flex h-screen items-center justify-center">
+            <div class="text-red-400 text-sm">Fehler: ${e.message}</div>
+          </div>
+        `;
+      }
+    }
+
+    // ==================== INIT ====================
+    async function init() {
+      try {
+        const status = await api('/config/status');
+        state.configured = status.configured;
+        if (!status.configured) {
+          navigate('setup');
+        }
+      } catch {
+        state.configured = false;
+        navigate('setup');
+      }
+
+      initRouter();
+      render();
+    }
+
+    init();
+  </script>
+</body>
+</html>
