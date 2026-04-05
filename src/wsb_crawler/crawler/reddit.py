@@ -56,47 +56,52 @@ async def _fetch_posts(
 
     subreddit = await reddit.subreddit(subreddit_name)
 
-    async for submission in subreddit.hot(limit=limit):
-        post = RedditPost(
-            id=submission.id,
-            subreddit=subreddit_name,
-            title=submission.title,
-            text=submission.selftext or "",
-            author=str(submission.author) if submission.author else "[deleted]",
-            score=submission.score,
-            upvote_ratio=submission.upvote_ratio,
-            created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
-            url=f"https://reddit.com{submission.permalink}",
-            is_comment=False,
-        )
-        posts.append(post)
+    listing = subreddit.hot(limit=limit)
+    try:
+        async for submission in listing:
+            post = RedditPost(
+                id=submission.id,
+                subreddit=subreddit_name,
+                title=submission.title,
+                text=submission.selftext or "",
+                author=str(submission.author) if submission.author else "[deleted]",
+                score=submission.score,
+                upvote_ratio=submission.upvote_ratio,
+                created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
+                url=f"https://reddit.com{submission.permalink}",
+                is_comment=False,
+            )
+            posts.append(post)
 
-        # Top-Kommentare holen (nicht alle – zu viele API-Calls)
-        if comments_limit > 0:
-            submission.comment_sort = "top"
-            await submission.load()
-            submission.comments.replace_more(limit=0)  # MoreComments überspringen
+            # Top-Kommentare holen (nicht alle – zu viele API-Calls)
+            if comments_limit > 0:
+                submission.comment_sort = "top"
+                await submission.load()
+                submission.comments.replace_more(limit=0)  # MoreComments überspringen
 
-            for comment in list(submission.comments)[:comments_limit]:
-                if not hasattr(comment, "body"):
-                    continue
-                comments.append(
-                    RedditPost(
-                        id=comment.id,
-                        subreddit=subreddit_name,
-                        title="",
-                        text=comment.body,
-                        author=str(comment.author) if comment.author else "[deleted]",
-                        score=comment.score,
-                        upvote_ratio=0.0,
-                        created_utc=datetime.fromtimestamp(
-                            comment.created_utc, tz=timezone.utc
-                        ),
-                        url=f"https://reddit.com{submission.permalink}{comment.id}/",
-                        is_comment=True,
-                        parent_id=submission.id,
+                for comment in list(submission.comments)[:comments_limit]:
+                    if not hasattr(comment, "body"):
+                        continue
+                    comments.append(
+                        RedditPost(
+                            id=comment.id,
+                            subreddit=subreddit_name,
+                            title="",
+                            text=comment.body,
+                            author=str(comment.author) if comment.author else "[deleted]",
+                            score=comment.score,
+                            upvote_ratio=0.0,
+                            created_utc=datetime.fromtimestamp(
+                                comment.created_utc, tz=timezone.utc
+                            ),
+                            url=f"https://reddit.com{submission.permalink}{comment.id}/",
+                            is_comment=True,
+                            parent_id=submission.id,
+                        )
                     )
-                )
+    except Exception:
+        await listing.aclose()
+        raise
 
     logger.debug(
         f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen"
