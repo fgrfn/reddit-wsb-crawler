@@ -29,6 +29,7 @@ dependencies = [
 
     # Discord Bot (Slash-Commands)
     "discord.py==2.4.0",
+    "audioop-lts>=0.2.1; python_version >= '3.13'",  # audioop wurde in 3.13 entfernt
 
     # Logging
     "loguru==0.7.2",
