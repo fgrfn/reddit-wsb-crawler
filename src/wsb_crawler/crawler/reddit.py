@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import asyncpraw
 from loguru import logger
@@ -17,9 +18,18 @@ from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
 
+if TYPE_CHECKING:
+    from wsb_crawler.storage.database import Database
 
-def _make_reddit_client() -> asyncpraw.Reddit:
-    cfg = get_settings().reddit
+_db: "Database | None" = None
+
+
+def set_database(db: "Database") -> None:
+    global _db
+    _db = db
+
+
+def _make_reddit_client(cfg) -> asyncpraw.Reddit:
     return asyncpraw.Reddit(
         client_id=cfg.client_id,
         client_secret=cfg.client_secret,
@@ -97,29 +107,30 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     Gibt ein vollständiges CrawlResult zurück mit aggregierten
     Mention-Counts und allen Einzel-Mentions.
     """
-    cfg = get_settings().crawler
+    cfg = await get_settings(_db)
+    crawler_cfg = cfg.crawler
     started_at = datetime.utcnow()
 
     all_posts: list[RedditPost] = []
     all_comments: list[RedditPost] = []
 
-    async with _make_reddit_client() as reddit:
+    async with _make_reddit_client(cfg.reddit) as reddit:
         # Alle Subreddits gleichzeitig crawlen (asyncio.gather)
         tasks = [
             _fetch_posts(
                 reddit,
                 sub,
-                limit=cfg.posts_limit,
-                comments_limit=cfg.comments_limit,
+                limit=crawler_cfg.posts_limit,
+                comments_limit=crawler_cfg.comments_limit,
             )
-            for sub in cfg.subreddits
+            for sub in crawler_cfg.subreddits
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(f"Fehler beim Crawlen von r/{cfg.subreddits[i]}: {result}")
+            logger.error(f"Fehler beim Crawlen von r/{crawler_cfg.subreddits[i]}: {result}")
             continue
         posts, comments = result
         all_posts.extend(posts)
@@ -127,7 +138,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
 
     logger.info(
         f"Crawl abgeschlossen: {len(all_posts)} Posts, "
-        f"{len(all_comments)} Kommentare aus {len(cfg.subreddits)} Subreddits"
+        f"{len(all_comments)} Kommentare aus {len(crawler_cfg.subreddits)} Subreddits"
     )
 
     # Ticker aus allen Posts + Kommentaren extrahieren

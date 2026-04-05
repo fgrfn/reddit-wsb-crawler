@@ -17,11 +17,12 @@ from loguru import logger
 
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts import bot as discord_bot
-from wsb_crawler.alerts.discord import send_alerts, send_heartbeat
+from wsb_crawler.alerts.discord import send_alerts, send_heartbeat, set_database as discord_set_db
 from wsb_crawler.analysis.detector import analyze_mentions
 from wsb_crawler.api.server import run_server
 from wsb_crawler.config import DB_PATH, get_settings
-from wsb_crawler.crawler.reddit import crawl_all_subreddits
+from wsb_crawler.crawler.reddit import crawl_all_subreddits, set_database as reddit_set_db
+from wsb_crawler.enrichment.news import set_database as news_set_db
 from wsb_crawler.storage.database import Database
 
 DASHBOARD_URL = "http://localhost:8080"
@@ -130,6 +131,11 @@ async def main_async() -> None:
 
     async with Database(DB_PATH) as db:
         configured = await db.is_configured()
+
+        # DB in alle Module injecten, die get_settings() benötigen
+        reddit_set_db(db)
+        discord_set_db(db)
+        news_set_db(db)
 
         # Browser öffnen
         url = DASHBOARD_URL if configured else f"{DASHBOARD_URL}/setup"

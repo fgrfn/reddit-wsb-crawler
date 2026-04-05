@@ -9,12 +9,23 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import httpx
 from loguru import logger
 
-from wsb_crawler.config import get_settings
+from wsb_crawler.config import Settings, get_settings
 from wsb_crawler.models import Alert, AlertReason, MarketStatus, RunStatus, TrendEntry
+
+if TYPE_CHECKING:
+    from wsb_crawler.storage.database import Database
+
+_db: "Database | None" = None
+
+
+def set_database(db: "Database") -> None:
+    global _db
+    _db = db
 
 # Discord Embed-Farben
 COLOR_SPIKE = 0xFF4500       # Reddit-Orange
@@ -46,11 +57,10 @@ def _format_change(pct: float | None) -> str:
     return f"{sign}{pct:.2f}%"
 
 
-def _build_alert_embed(alert: Alert) -> dict:
+def _build_alert_embed(alert: Alert, cfg: Settings) -> dict:
     """Erstellt ein Discord Rich Embed für einen Alert."""
     spike = alert.spike
     price = spike.price_data
-    cfg = get_settings()
 
     # Farbe je nach Reason
     color = {
@@ -165,13 +175,12 @@ def _build_heartbeat_embed(status: RunStatus) -> dict:
     }
 
 
-async def _send_webhook(payload: dict, retries: int = 3) -> bool:
+async def _send_webhook(payload: dict, webhook_url: str, retries: int = 3) -> bool:
     """Sendet eine Nachricht an den Discord-Webhook mit Rate-Limit-Handling."""
-    cfg = get_settings().discord
     for attempt in range(retries):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(cfg.webhook_url, json=payload)
+                response = await client.post(webhook_url, json=payload)
 
                 if response.status_code == 429:
                     retry_after = float(response.json().get("retry_after", 2.0))
@@ -193,12 +202,13 @@ async def _send_webhook(payload: dict, retries: int = 3) -> bool:
 
 async def send_alert(alert: Alert) -> bool:
     """Sendet einen Alert als Discord Rich Embed."""
-    embed = _build_alert_embed(alert)
+    cfg = await get_settings(_db)
+    embed = _build_alert_embed(alert, cfg)
     payload = {
         "username": "WSB-Crawler",
         "embeds": [embed],
     }
-    success = await _send_webhook(payload)
+    success = await _send_webhook(payload, cfg.discord.webhook_url)
     if success:
         alert.sent = True
         logger.info(f"Alert gesendet: ${alert.ticker}")
@@ -224,8 +234,8 @@ async def send_alerts(alerts: list[Alert]) -> int:
 
 async def send_heartbeat(status: RunStatus) -> None:
     """Sendet ein stilles Status-Update (kein @everyone Ping)."""
-    cfg = get_settings().discord
-    if not cfg.status_update:
+    cfg = await get_settings(_db)
+    if not cfg.discord.status_update:
         return
 
     embed = _build_heartbeat_embed(status)
@@ -234,14 +244,16 @@ async def send_heartbeat(status: RunStatus) -> None:
         "embeds": [embed],
         # Kein content → kein Ping
     }
-    await _send_webhook(payload)
+    await _send_webhook(payload, cfg.discord.webhook_url)
     logger.debug("Heartbeat gesendet")
 
 
 async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
     """Sendet die Top-Ticker-Übersicht als Discord-Embed (für /top Command)."""
+    cfg = await get_settings(_db)
+    webhook_url = cfg.discord.webhook_url
     if not entries:
-        await _send_webhook({"content": f"Keine Daten für die letzten {days} Tage."})
+        await _send_webhook({"content": f"Keine Daten für die letzten {days} Tage."}, webhook_url)
         return
 
     lines = []
@@ -262,4 +274,4 @@ async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
         "footer": {"text": "WSB-Crawler v2"},
         "timestamp": datetime.now(tz=timezone.utc).isoformat(),
     }
-    await _send_webhook({"username": "WSB-Crawler", "embeds": [embed]})
+    await _send_webhook({"username": "WSB-Crawler", "embeds": [embed]}, webhook_url)
