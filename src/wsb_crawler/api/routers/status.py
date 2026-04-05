@@ -10,6 +10,7 @@ from collections import deque
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
+from wsb_crawler.api.routers.dashboard import is_crawl_running
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["status"])
@@ -62,6 +63,7 @@ async def get_status() -> dict:
         "tracked_tickers": run_status.tracked_tickers,
         "next_run_at": run_status.next_run_at.isoformat() if run_status.next_run_at else None,
         "is_healthy": run_status.is_healthy,
+        "crawl_running": is_crawl_running(),
     }
 
 

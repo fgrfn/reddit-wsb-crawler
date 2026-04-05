@@ -35,7 +35,7 @@ async def analyze_mentions(
 
     Gibt maximal alert_max_per_run Alerts zurück.
     """
-    cfg = get_settings().alerts
+    cfg = (await get_settings(db)).alerts
     alerts: list[Alert] = []
 
     if not mention_counts:

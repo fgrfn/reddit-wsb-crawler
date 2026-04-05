@@ -5,7 +5,7 @@ export default function Logs() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${location.host}/ws/logs`);
+    const ws = new WebSocket(`ws://${location.host}/api/ws/logs`);
     ws.onmessage = (e) => {
       setLines((prev) => [...prev.slice(-500), e.data]);
     };

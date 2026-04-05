@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 import asyncpraw
 from loguru import logger
@@ -17,13 +18,26 @@ from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
 
+if TYPE_CHECKING:
+    from wsb_crawler.storage.database import Database
 
-def _make_reddit_client() -> asyncpraw.Reddit:
-    cfg = get_settings().reddit
+_db: "Database | None" = None
+
+
+def set_database(db: "Database") -> None:
+    global _db
+    _db = db
+
+
+def _make_reddit_client(cfg) -> asyncpraw.Reddit:
+    # Alle Credentials müssen ASCII-kompatibel sein (aiohttp-Header-Anforderung)
+    def to_ascii(s: str) -> str:
+        return s.encode("ascii", "ignore").decode("ascii")
+
     return asyncpraw.Reddit(
-        client_id=cfg.client_id,
-        client_secret=cfg.client_secret,
-        user_agent=cfg.user_agent,
+        client_id=to_ascii(cfg.client_id),
+        client_secret=to_ascii(cfg.client_secret),
+        user_agent=to_ascii(cfg.user_agent),
     )
 
 
@@ -42,47 +56,51 @@ async def _fetch_posts(
 
     subreddit = await reddit.subreddit(subreddit_name)
 
-    async for submission in subreddit.hot(limit=limit):
-        post = RedditPost(
-            id=submission.id,
-            subreddit=subreddit_name,
-            title=submission.title,
-            text=submission.selftext or "",
-            author=str(submission.author) if submission.author else "[deleted]",
-            score=submission.score,
-            upvote_ratio=submission.upvote_ratio,
-            created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
-            url=f"https://reddit.com{submission.permalink}",
-            is_comment=False,
-        )
-        posts.append(post)
+    listing = subreddit.hot(limit=limit)
+    try:
+        async for submission in listing:
+            post = RedditPost(
+                id=submission.id,
+                subreddit=subreddit_name,
+                title=submission.title,
+                text=submission.selftext or "",
+                author=str(submission.author) if submission.author else "[deleted]",
+                score=submission.score,
+                upvote_ratio=submission.upvote_ratio,
+                created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
+                url=f"https://reddit.com{submission.permalink}",
+                is_comment=False,
+            )
+            posts.append(post)
 
-        # Top-Kommentare holen (nicht alle – zu viele API-Calls)
-        if comments_limit > 0:
-            submission.comment_sort = "top"
-            await submission.load()
-            submission.comments.replace_more(limit=0)  # MoreComments überspringen
+            # Top-Kommentare holen (nicht alle – zu viele API-Calls)
+            if comments_limit > 0:
+                submission.comment_sort = "top"
+                await submission.load()
+                submission.comments.replace_more(limit=0)  # MoreComments überspringen
 
-            for comment in list(submission.comments)[:comments_limit]:
-                if not hasattr(comment, "body"):
-                    continue
-                comments.append(
-                    RedditPost(
-                        id=comment.id,
-                        subreddit=subreddit_name,
-                        title="",
-                        text=comment.body,
-                        author=str(comment.author) if comment.author else "[deleted]",
-                        score=comment.score,
-                        upvote_ratio=0.0,
-                        created_utc=datetime.fromtimestamp(
-                            comment.created_utc, tz=timezone.utc
-                        ),
-                        url=f"https://reddit.com{submission.permalink}{comment.id}/",
-                        is_comment=True,
-                        parent_id=submission.id,
+                for comment in list(submission.comments)[:comments_limit]:
+                    if not hasattr(comment, "body"):
+                        continue
+                    comments.append(
+                        RedditPost(
+                            id=comment.id,
+                            subreddit=subreddit_name,
+                            title="",
+                            text=comment.body,
+                            author=str(comment.author) if comment.author else "[deleted]",
+                            score=comment.score,
+                            upvote_ratio=0.0,
+                            created_utc=datetime.fromtimestamp(
+                                comment.created_utc, tz=timezone.utc
+                            ),
+                            url=f"https://reddit.com{submission.permalink}{comment.id}/",
+                            is_comment=True,
+                            parent_id=submission.id,
+                        )
                     )
-                )
+    except Exception:
+        raise
 
     logger.debug(
         f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen"
@@ -97,29 +115,30 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     Gibt ein vollständiges CrawlResult zurück mit aggregierten
     Mention-Counts und allen Einzel-Mentions.
     """
-    cfg = get_settings().crawler
+    cfg = await get_settings(_db)
+    crawler_cfg = cfg.crawler
     started_at = datetime.utcnow()
 
     all_posts: list[RedditPost] = []
     all_comments: list[RedditPost] = []
 
-    async with _make_reddit_client() as reddit:
+    async with _make_reddit_client(cfg.reddit) as reddit:
         # Alle Subreddits gleichzeitig crawlen (asyncio.gather)
         tasks = [
             _fetch_posts(
                 reddit,
                 sub,
-                limit=cfg.posts_limit,
-                comments_limit=cfg.comments_limit,
+                limit=crawler_cfg.posts_limit,
+                comments_limit=crawler_cfg.comments_limit,
             )
-            for sub in cfg.subreddits
+            for sub in crawler_cfg.subreddits
         ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(f"Fehler beim Crawlen von r/{cfg.subreddits[i]}: {result}")
+            logger.error(f"Fehler beim Crawlen von r/{crawler_cfg.subreddits[i]}: {result}")
             continue
         posts, comments = result
         all_posts.extend(posts)
@@ -127,7 +146,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
 
     logger.info(
         f"Crawl abgeschlossen: {len(all_posts)} Posts, "
-        f"{len(all_comments)} Kommentare aus {len(cfg.subreddits)} Subreddits"
+        f"{len(all_comments)} Kommentare aus {len(crawler_cfg.subreddits)} Subreddits"
     )
 
     # Ticker aus allen Posts + Kommentaren extrahieren
@@ -146,7 +165,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     return CrawlResult(
         run_id=run_id,
         started_at=started_at,
-        subreddits=cfg.subreddits,
+        subreddits=cfg.crawler.subreddits,
         posts_scanned=len(all_posts),
         comments_scanned=len(all_comments),
         mention_counts=mention_counts,

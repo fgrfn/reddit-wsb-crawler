@@ -21,6 +21,12 @@ logs/
 # Config (enthält API-Keys!)
 config/.env
 
+# Node / Frontend
+web/node_modules/
+web/.vite/
+
+# Frontend-Build bleibt im Repo (api/static/) — wird NICHT ignoriert
+
 # Tests & Coverage
 .pytest_cache/
 .coverage

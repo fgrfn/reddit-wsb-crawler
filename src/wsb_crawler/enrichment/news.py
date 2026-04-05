@@ -8,6 +8,7 @@ TTL-Cache damit derselbe Ticker in einem Run nicht doppelt angefragt wird.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 import httpx
 from loguru import logger
@@ -16,6 +17,16 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from wsb_crawler.config import get_settings
 from wsb_crawler.models import NewsArticle
 from wsb_crawler.storage.cache import news_cache
+
+if TYPE_CHECKING:
+    from wsb_crawler.storage.database import Database
+
+_db: "Database | None" = None
+
+
+def set_database(db: "Database") -> None:
+    global _db
+    _db = db
 
 NEWSAPI_BASE = "https://newsapi.org/v2/everything"
 
@@ -40,7 +51,7 @@ async def get_news(ticker: str, company_name: str | None = None) -> list[NewsArt
         logger.debug(f"Cache-Hit für News: {ticker}")
         return cached
 
-    cfg = get_settings().newsapi
+    cfg = (await get_settings(_db)).newsapi
     since = (datetime.now(tz=timezone.utc) - timedelta(hours=cfg.window_hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )

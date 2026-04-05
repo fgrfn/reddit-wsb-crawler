@@ -61,22 +61,45 @@ const SECTIONS: { title: string; fields: Field[] }[] = [
 
 export default function Config() {
   const [values, setValues] = useState<Record<string, string>>({});
+  const [setSecrets, setSetSecrets] = useState<Set<string>>(new Set());
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     fetch("/api/config")
       .then((r) => r.json())
-      .then(setValues);
+      .then((data: Record<string, string>) => {
+        // Passwort-Felder: ••••••••-Platzhalter aus API NICHT in State laden
+        // → Felder bleiben leer; User tippt nur wenn er ändern will
+        const secretKeys = new Set(
+          SECTIONS.flatMap((s) => s.fields.filter((f) => f.type === "password").map((f) => f.key))
+        );
+        const cleaned: Record<string, string> = {};
+        const alreadySet = new Set<string>();
+        for (const [k, v] of Object.entries(data)) {
+          if (secretKeys.has(k)) {
+            cleaned[k] = "";
+            if (v && v !== "") alreadySet.add(k);
+          } else {
+            cleaned[k] = v ?? "";
+          }
+        }
+        setValues(cleaned);
+        setSetSecrets(alreadySet);
+      });
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Leere Felder nicht senden (unveränderte Secrets bleiben wie sie sind)
+      const payload = Object.fromEntries(
+        Object.entries(values).filter(([, v]) => v !== "")
+      );
       await fetch("/api/config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify(payload),
       });
       setSaved(true);
       setTimeout(() => setSaved(false), 2500);
@@ -104,7 +127,11 @@ export default function Config() {
               <input
                 className="input"
                 type={type ?? "text"}
-                placeholder={placeholder}
+                placeholder={
+                  type === "password" && setSecrets.has(key)
+                    ? "● gesetzt — leer lassen zum Beibehalten"
+                    : placeholder
+                }
                 value={values[key] ?? ""}
                 onChange={(e) => setValues((v) => ({ ...v, [key]: e.target.value }))}
               />

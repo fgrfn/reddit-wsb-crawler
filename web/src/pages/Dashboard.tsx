@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, Play } from "lucide-react";
 
 interface Ticker {
   ticker: string;
@@ -19,6 +19,7 @@ interface Status {
   total_alerts: number;
   tracked_tickers: number;
   is_healthy: boolean;
+  crawl_running: boolean;
 }
 
 const trendIcon = {
@@ -31,8 +32,10 @@ export default function Dashboard() {
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
   const [days, setDays] = useState(7);
+  const [starting, setStarting] = useState(false);
+  const [lastLog, setLastLog] = useState("");
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     fetch(`/api/tickers?days=${days}`)
       .then((r) => r.json())
       .then(setTickers);
@@ -41,11 +44,54 @@ export default function Dashboard() {
       .then(setStatus);
   }, [days]);
 
-  return (
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Auto-Refresh während ein Crawl läuft
+  useEffect(() => {
+    if (!status?.crawl_running) return;
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  }, [status?.crawl_running, refresh]);
+
+  // Log-WebSocket: nur verbinden während Crawl aktiv
+  const crawlActive = starting || Boolean(status?.crawl_running);
+  useEffect(() => {
+    if (!crawlActive) { setLastLog(""); return; }
+    const ws = new WebSocket(`ws://${location.host}/api/ws/logs`);
+    ws.onmessage = (e) => setLastLog(e.data);
+    return () => ws.close();
+  }, [crawlActive]);
+    setStarting(true);
+    try {
+      await fetch("/api/crawl", { method: "POST" });
+      refresh();
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const startCrawl = async () => {
     <div className="space-y-6">
+      {/* Lauf-Banner */}
+      {crawlActive && (
+        <div className="rounded-lg bg-brand/10 border border-brand/30 px-4 py-3 text-sm text-brand space-y-1">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
+            </span>
+            <span className="font-medium">Crawl läuft…</span>
+          </div>
+          {lastLog && (
+            <p className="font-mono text-xs text-brand/70 pl-5 truncate">{lastLog}</p>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Dashboard</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {[7, 14, 30].map((d) => (
             <button
               key={d}
@@ -59,6 +105,14 @@ export default function Dashboard() {
               {d}d
             </button>
           ))}
+          <button
+            onClick={startCrawl}
+            disabled={crawlActive}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-medium transition-colors bg-brand text-white hover:bg-brand/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Play size={12} />
+            {crawlActive ? "Läuft…" : "Lauf starten"}
+          </button>
         </div>
       </div>
 

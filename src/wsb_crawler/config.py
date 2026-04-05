@@ -134,27 +134,3 @@ async def get_settings(db: "Database") -> Settings:
             log_level=opt("log_level") or "INFO",
         ),
     )
-
-
-    reddit: RedditSettings = Field(default_factory=RedditSettings)
-    newsapi: NewsAPISettings = Field(default_factory=NewsAPISettings)
-    discord: DiscordSettings = Field(default_factory=DiscordSettings)
-    alerts: AlertSettings = Field(default_factory=AlertSettings)
-    crawler: CrawlerSettings = Field(default_factory=CrawlerSettings)
-
-
-@lru_cache(maxsize=1)
-def get_settings() -> Settings:
-    """
-    Gibt die globale Settings-Instanz zurück (Singleton via lru_cache).
-
-    Beim ersten Aufruf werden alle Werte aus .env geladen und validiert.
-    Bei Fehlern (fehlende Pflichtfelder, falsche Typen) wird sofort
-    eine ValidationError geworfen — nicht erst beim ersten API-Call.
-
-    Beispiel:
-        from wsb_crawler.config import get_settings
-        cfg = get_settings()
-        print(cfg.crawler.subreddits)
-    """
-    return Settings()

@@ -181,14 +181,11 @@ Das Frontend-Build muss vor dem Docker-Build erzeugt werden (`cd web && npm run 
 
 ## Bekannte Einschränkungen / TODO
 
-1. **`get_settings()` Call-Signatur in Modulen noch nicht aktualisiert:**
-   Die Module `crawler/reddit.py`, `analysis/detector.py`, `enrichment/*.py`, `alerts/discord.py`, `alerts/bot.py` rufen noch `get_settings()` ohne `db`-Argument auf (alte Signatur). Diese müssen `db` übergeben bekommen — entweder als Funktionsparameter oder über ein Modul-Level `_db` das in `main.py` vor dem Start gesetzt wird.
+1. **`datetime.utcnow()` Deprecation:** In `models.py` verwenden `PriceData.fetched_at` und `Alert.triggered_at` noch `datetime.utcnow` als `default_factory`. Ab Python 3.12 erzeugt das DeprecationWarnings. Fix: `lambda: datetime.now(tz=timezone.utc)` — erfordert aber Überprüfung aller datetime-Vergleiche (naiv vs. aware) in DB-Code.
 
-2. **`pydantic-settings` noch in `pyproject.toml`:** Importiert aber von `config.py` nicht mehr verwendet. Kann entfernt werden sobald alle Module migriert sind.
+2. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
 
-3. **Frontend-Build nicht im Dockerfile:** Muss manuell gebaut oder im CI erzeugt werden.
-
-4. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
+3. **Frontend-Build nicht im Dockerfile:** `npm run build` muss vor `docker build` ausgeführt werden (oder im CI via GitHub Actions Workflow), damit `src/wsb_crawler/api/static/` aktuell ist.
 
 ---
 
