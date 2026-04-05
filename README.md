@@ -132,7 +132,17 @@ Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der S
 
 ---
 
-## Web-Dashboard
+## Updates einspielen
+
+```bash
+bash update.sh
+```
+
+Das Script zieht die neuesten Commits, aktualisiert Python-Abhängigkeiten im Venv und startet den Service neu. Das Frontend wird automatisch über GitHub Actions gebaut — kein Node.js auf dem Server nötig.
+
+---
+
+
 
 Das Dashboard ist unter **http://localhost:8080** erreichbar (nur lokal, keine Authentifizierung nötig).
 

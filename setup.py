@@ -149,9 +149,20 @@ def install_python_deps() -> None:
 def build_frontend(has_node: bool) -> None:
     heading("5. Frontend bauen")
     web_dir = REPO_DIR / "web"
-    if not has_node:
-        warn("Übersprungen (Node.js nicht verfügbar)")
+    static_dir = REPO_DIR / "src" / "wsb_crawler" / "api" / "static"
+    index_html = static_dir / "index.html"
+
+    # Bereits gebautes Frontend vorhanden (z. B. im Repo committed)
+    if index_html.exists():
+        ok(f"Vorhandenes Build gefunden ({static_dir.relative_to(REPO_DIR)}) — übersprungen")
         return
+
+    if not has_node:
+        warn("Node.js nicht gefunden und kein vorhandenes Build — Dashboard nicht verfügbar!")
+        warn("Lokal bauen und committen:  cd web && npm install && npm run build")
+        warn("Danach: git add src/wsb_crawler/api/static/ && git commit && git push")
+        return
+
     if not web_dir.exists():
         warn("web/ Verzeichnis nicht gefunden — übersprungen")
         return
@@ -243,12 +254,22 @@ def _autostart_windows() -> bool:
 
 
 def _autostart_linux() -> bool:
-    """systemd User-Service."""
-    service_dir = Path.home() / ".config" / "systemd" / "user"
+    """systemd service — System-Service wenn root, sonst User-Service."""
+    is_root = os.geteuid() == 0
+    wsb_crawler_bin = str(_venv_wsb_crawler()) if _venv_wsb_crawler().exists() else (shutil.which("wsb-crawler") or f"{PYTHON} -m wsb_crawler.main")
+
+    if is_root:
+        # System-Service unter /etc/systemd/system/ (startet beim Boot, kein Login nötig)
+        service_dir = Path("/etc/systemd/system")
+        wantedby = "multi-user.target"
+        user_line = "User=root\n"
+    else:
+        service_dir = Path.home() / ".config" / "systemd" / "user"
+        wantedby = "default.target"
+        user_line = ""
+
     service_dir.mkdir(parents=True, exist_ok=True)
     service_file = service_dir / "wsb-crawler.service"
-
-    wsb_crawler_bin = str(_venv_wsb_crawler()) if _venv_wsb_crawler().exists() else (shutil.which("wsb-crawler") or f"{PYTHON} -m wsb_crawler.main")
 
     service = f"""[Unit]
 Description=WSB-Crawler Dashboard
@@ -257,20 +278,25 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory={REPO_DIR}
+{user_line}WorkingDirectory={REPO_DIR}
 ExecStart={wsb_crawler_bin}
 Restart=on-failure
 RestartSec=10
 
 [Install]
-WantedBy=default.target
+WantedBy={wantedby}
 """
     service_file.write_text(service)
 
     try:
-        run(["systemctl", "--user", "daemon-reload"])
-        run(["systemctl", "--user", "enable", "--now", "wsb-crawler.service"])
-        ok("systemd User-Service aktiviert (startet bei Login)")
+        if is_root:
+            run(["systemctl", "daemon-reload"])
+            run(["systemctl", "enable", "--now", "wsb-crawler.service"])
+            ok("systemd System-Service aktiviert (startet beim Boot)")
+        else:
+            run(["systemctl", "--user", "daemon-reload"])
+            run(["systemctl", "--user", "enable", "--now", "wsb-crawler.service"])
+            ok("systemd User-Service aktiviert (startet bei Login)")
         return True
     except subprocess.CalledProcessError as e:
         error(f"systemd-Fehler: {e}")
