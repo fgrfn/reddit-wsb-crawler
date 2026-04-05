@@ -30,10 +30,12 @@ def set_database(db: "Database") -> None:
 
 
 def _make_reddit_client(cfg) -> asyncpraw.Reddit:
+    # HTTP-Header müssen latin-1-kompatibel sein (aiohttp-Anforderung)
+    safe_agent = cfg.user_agent.encode("ascii", "ignore").decode("ascii")
     return asyncpraw.Reddit(
         client_id=cfg.client_id,
         client_secret=cfg.client_secret,
-        user_agent=cfg.user_agent,
+        user_agent=safe_agent,
     )
 
 
@@ -157,7 +159,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     return CrawlResult(
         run_id=run_id,
         started_at=started_at,
-        subreddits=cfg.subreddits,
+        subreddits=cfg.crawler.subreddits,
         posts_scanned=len(all_posts),
         comments_scanned=len(all_comments),
         mention_counts=mention_counts,
