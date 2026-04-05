@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
-import { TrendingUp, TrendingDown, Minus, Activity } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Activity, Play } from "lucide-react";
 
 interface Ticker {
   ticker: string;
@@ -19,6 +19,7 @@ interface Status {
   total_alerts: number;
   tracked_tickers: number;
   is_healthy: boolean;
+  crawl_running: boolean;
 }
 
 const trendIcon = {
@@ -31,8 +32,9 @@ export default function Dashboard() {
   const [tickers, setTickers] = useState<Ticker[]>([]);
   const [status, setStatus] = useState<Status | null>(null);
   const [days, setDays] = useState(7);
+  const [starting, setStarting] = useState(false);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     fetch(`/api/tickers?days=${days}`)
       .then((r) => r.json())
       .then(setTickers);
@@ -41,11 +43,34 @@ export default function Dashboard() {
       .then(setStatus);
   }, [days]);
 
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  // Auto-Refresh während ein Crawl läuft
+  useEffect(() => {
+    if (!status?.crawl_running) return;
+    const t = setInterval(refresh, 3000);
+    return () => clearInterval(t);
+  }, [status?.crawl_running, refresh]);
+
+  const startCrawl = async () => {
+    setStarting(true);
+    try {
+      await fetch("/api/crawl", { method: "POST" });
+      refresh();
+    } finally {
+      setStarting(false);
+    }
+  };
+
+  const crawlActive = starting || Boolean(status?.crawl_running);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">Dashboard</h1>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           {[7, 14, 30].map((d) => (
             <button
               key={d}
@@ -59,6 +84,14 @@ export default function Dashboard() {
               {d}d
             </button>
           ))}
+          <button
+            onClick={startCrawl}
+            disabled={crawlActive}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-sm font-medium transition-colors bg-brand text-white hover:bg-brand/80 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Play size={12} />
+            {crawlActive ? "Läuft…" : "Lauf starten"}
+          </button>
         </div>
       </div>
 

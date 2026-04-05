@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import sys
-import uuid
 import webbrowser
 from datetime import datetime, timezone
 
@@ -17,11 +16,11 @@ from loguru import logger
 
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts import bot as discord_bot
-from wsb_crawler.alerts.discord import send_alerts, send_heartbeat, set_database as discord_set_db
-from wsb_crawler.analysis.detector import analyze_mentions
+from wsb_crawler.alerts.discord import send_heartbeat, set_database as discord_set_db
 from wsb_crawler.api.server import run_server
 from wsb_crawler.config import DB_PATH, get_settings
-from wsb_crawler.crawler.reddit import crawl_all_subreddits, set_database as reddit_set_db
+from wsb_crawler.crawler.reddit import set_database as reddit_set_db
+from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.enrichment.news import set_database as news_set_db
 from wsb_crawler.storage.database import Database
 
@@ -45,46 +44,6 @@ def _setup_logging(log_level: str = "INFO") -> None:
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{line} | {message}",
     )
 
-
-async def run_single_crawl(db: Database) -> None:
-    cfg = await get_settings(db)
-    run_id = str(uuid.uuid4())
-
-    logger.info(f"═══ Crawl gestartet [{run_id[:8]}] ═══")
-    db_run_id = await db.start_run(cfg.crawler.subreddits)
-
-    try:
-        result = await crawl_all_subreddits(run_id=db_run_id)
-        await db.save_run_mentions(db_run_id, result.mention_counts)
-        alerts = await analyze_mentions(result.mention_counts, db)
-
-        sent_count = 0
-        if alerts:
-            sent_count = await send_alerts(alerts)
-            for alert in alerts:
-                if alert.sent:
-                    await db.set_cooldown(alert.ticker, cfg.alerts.cooldown_h)
-                    await db.save_alert(alert)
-
-        await db.finish_run(
-            db_run_id,
-            posts_scanned=result.posts_scanned,
-            comments_scanned=result.comments_scanned,
-        )
-
-        duration = result.duration_seconds or 0
-        logger.info(
-            f"═══ Crawl abgeschlossen [{run_id[:8]}] | "
-            f"{result.posts_scanned} Posts | "
-            f"{len(result.mention_counts)} Ticker | "
-            f"{sent_count} Alerts | "
-            f"{duration:.1f}s ═══"
-        )
-
-    except Exception as e:
-        logger.exception(f"Fehler im Crawl-Lauf: {e}")
-        await db.finish_run(db_run_id, 0, 0, is_healthy=False)
-        raise
 
 
 async def scheduler_loop(db: Database) -> None:
