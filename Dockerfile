@@ -7,7 +7,7 @@
 # ═══════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ────────────────────────────────────
-FROM python:3.13-slim AS builder
+FROM python:3.14-slim AS builder
 
 WORKDIR /build
 
@@ -23,7 +23,7 @@ RUN pip install --no-cache-dir --prefix=/install hatchling
 RUN pip install --no-cache-dir --prefix=/install .
 
 # ── Stage 2: Runtime ────────────────────────────────────
-FROM python:3.13-slim AS runtime
+FROM python:3.14-slim AS runtime
 
 ARG VERSION=2.0.0
 LABEL maintainer="WSB-Crawler"
