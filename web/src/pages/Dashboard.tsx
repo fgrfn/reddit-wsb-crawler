@@ -33,6 +33,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState<Status | null>(null);
   const [days, setDays] = useState(7);
   const [starting, setStarting] = useState(false);
+  const [lastLog, setLastLog] = useState("");
 
   const refresh = useCallback(() => {
     fetch(`/api/tickers?days=${days}`)
@@ -54,7 +55,14 @@ export default function Dashboard() {
     return () => clearInterval(t);
   }, [status?.crawl_running, refresh]);
 
-  const startCrawl = async () => {
+  // Log-WebSocket: nur verbinden während Crawl aktiv
+  const crawlActive = starting || Boolean(status?.crawl_running);
+  useEffect(() => {
+    if (!crawlActive) { setLastLog(""); return; }
+    const ws = new WebSocket(`ws://${location.host}/api/ws/logs`);
+    ws.onmessage = (e) => setLastLog(e.data);
+    return () => ws.close();
+  }, [crawlActive]);
     setStarting(true);
     try {
       await fetch("/api/crawl", { method: "POST" });
@@ -64,18 +72,21 @@ export default function Dashboard() {
     }
   };
 
-  const crawlActive = starting || Boolean(status?.crawl_running);
-
-  return (
+  const startCrawl = async () => {
     <div className="space-y-6">
       {/* Lauf-Banner */}
       {crawlActive && (
-        <div className="flex items-center gap-3 rounded-lg bg-brand/10 border border-brand/30 px-4 py-3 text-sm text-brand">
-          <span className="relative flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
-          </span>
-          Crawl läuft — Dashboard aktualisiert sich automatisch…
+        <div className="rounded-lg bg-brand/10 border border-brand/30 px-4 py-3 text-sm text-brand space-y-1">
+          <div className="flex items-center gap-3">
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-brand" />
+            </span>
+            <span className="font-medium">Crawl läuft…</span>
+          </div>
+          {lastLog && (
+            <p className="font-mono text-xs text-brand/70 pl-5 truncate">{lastLog}</p>
+          )}
         </div>
       )}
       <div className="flex items-center justify-between">
