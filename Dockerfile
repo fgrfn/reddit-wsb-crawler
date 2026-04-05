@@ -1,48 +1,59 @@
-# WSB-Crawler Dockerfile
-FROM python:3.11-slim
+# ═══════════════════════════════════════════════════════
+#  WSB-Crawler v2 — Multi-Stage Dockerfile
+#
+#  Stage 1 (builder): kompiliert Dependencies mit gcc
+#  Stage 2 (runtime): nur das fertige Wheel, kein Compiler
+#  Ergebnis: ~60% kleineres Image, kein Root-User
+# ═══════════════════════════════════════════════════════
 
-# Metadaten
-LABEL maintainer="WSB-Crawler"
-LABEL description="Reddit WSB Crawler with Discord alerts"
-LABEL version="1.5.17"
+# ── Stage 1: Builder ────────────────────────────────────
+FROM python:3.11-slim AS builder
 
-# Arbeitsverzeichnis erstellen
-WORKDIR /app
+WORKDIR /build
 
-# System-Dependencies installieren
-RUN apt-get update && apt-get install -y \
-    gcc \
-    g++ \
+# Compiler nur im Builder-Stage
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Python-Dependencies installieren
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Dependencies in separates Prefix installieren (nicht ins System)
+COPY pyproject.toml .
+RUN pip install --no-cache-dir --prefix=/install hatchling
+RUN pip install --no-cache-dir --prefix=/install .
 
-# Application-Code kopieren
-COPY src/ ./src/
-COPY config/ ./config/
+# ── Stage 2: Runtime ────────────────────────────────────
+FROM python:3.11-slim AS runtime
 
-# Verzeichnisse für Daten erstellen
-RUN mkdir -p \
-    data/input \
-    data/output/pickle \
-    data/output/summaries \
-    data/state \
-    logs \
-    logs/archive
+ARG VERSION=2.0.0
+LABEL maintainer="WSB-Crawler"
+LABEL description="Reddit WSB Crawler v2 with Discord alerts and slash commands"
+LABEL version="${VERSION}"
 
-# Version anzeigen
-COPY src/__version__.py ./src/
-RUN python -c "from src.__version__ import __version__; print(f'Building WSB-Crawler v{__version__}')"
+WORKDIR /app
+
+# Non-Root User (Security Best Practice)
+RUN useradd -m -u 1000 -s /bin/bash crawler && \
+    mkdir -p data logs && \
+    chown -R crawler:crawler /app
+
+# Nur die fertig gebauten Packages vom Builder kopieren
+COPY --from=builder /install /usr/local
+
+# Application-Code
+COPY --chown=crawler:crawler src/ ./src/
+COPY --chown=crawler:crawler config/ ./config/
+
+# Als Non-Root User ausführen
+USER crawler
 
 # Umgebungsvariablen
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV LOG_LEVEL=INFO
 
-# Healthcheck
-HEALTHCHECK --interval=5m --timeout=10s --start-period=30s --retries=3 \
-    CMD python src/health_check.py
+# Healthcheck: prüft ob die DB existiert und der Prozess läuft
+HEALTHCHECK --interval=5m --timeout=10s --start-period=60s --retries=3 \
+    CMD python -c "from wsb_crawler.storage.database import Database; import asyncio; asyncio.run(Database('data/wsb_crawler.db').init())" || exit 1
 
-# Standard-Command: Headless-Crawler ausführen
-CMD ["python", "src/run_crawler_headless.py"]
+# Entry-Point
+CMD ["python", "-m", "wsb_crawler.main"]

@@ -1,319 +1,234 @@
-<div align="center">
+# WSB-Crawler v2
 
-<img src="logo.png" alt="WSB-Crawler Logo" width="300"/>
+[![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
+[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
+[![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org)
+[![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-[![Version](https://img.shields.io/github/v/release/fgrfn/reddit-wsb-crawler?label=version)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
-[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://github.com/fgrfn/reddit-wsb-crawler/pkgs/container/reddit-wsb-crawler)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
-[![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
-[![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF.svg)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
+Automatisches Frühwarnsystem für Reddit-Aktien-Hypes — async, mit Web-Dashboard, SQLite-History und Discord-Alerts.
 
-**Automatisches Frühwarnsystem für Reddit-Aktien-Hypes**
-
-Crawlt r/wallstreetbets nach Ticker-Erwähnungen, analysiert Trends und sendet Discord-Alerts bei ungewöhnlicher Aktivität.
-
-[Features](#-features) • [Quick Start](#-quick-start) • [Docker](#-docker) • [Konfiguration](#-konfiguration) • [Dokumentation](#-dokumentation)
-
-</div>
+Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf ungewöhnliche Häufungen von Ticker-Nennungen und sendet bei Schwellwert-Überschreitung sofort Discord-Alerts. Konfiguration, Monitoring und Historie sind über ein modernes Browser-Dashboard erreichbar — keine `.env`-Dateien nötig.
 
 ---
 
-## ✨ Features
+## Was ist neu in v2?
 
-### 🔍 **Intelligentes Crawling**
-- Durchsucht konfigurierbare Subreddits (wallstreetbets, wallstreetbetsGER, etc.)
-- Regex-basierte Ticker-Erkennung in Posts & Kommentaren
-- Parallel-Processing für schnelle Analyse
-- Deduplizierung und Blacklist-Filter
+| Feature | v1 | v2 |
+|---|---|---|
+| Reddit-Crawling | sync (praw) | async (asyncpraw) |
+| API-Calls | sequentiell | parallel (asyncio.gather) |
+| State | Pickle-Dateien | SQLite (querybar) |
+| Config | `.env`-Datei | Web-Dashboard (SQLite-backed) |
+| Logging | colorama + pyfiglet + halo | loguru + Live-Log im Browser |
+| Discord | nur Webhooks | Webhooks + Slash-Commands (/top, /chart, /status) |
+| Dashboard | keins | FastAPI + React/Vite (localhost:8080) |
+| Setup | manuelle `.env` Bearbeitung | Setup-Wizard im Browser |
+| Docker | 2 Services, Profile-Flag | 1 Service, Port 8080 |
+| Tests | test_logging.py | pytest + pytest-asyncio, >70% Coverage |
+| Dependencies | ungepinnt | vollständig gepinnt in pyproject.toml |
 
-### 📊 **Umfassende Datenanalyse**
-- **Kursdaten**: Live-Kurse + Pre/After-Market von Yahoo Finance
-- **Trend-Analyse**: 1h, 24h, 7d Kursveränderungen
-- **News-Integration**: Aktuelle Headlines via NewsAPI
-- **Historischer Vergleich**: Erkennt signifikante Anstiege
+---
 
-### 🔔 **Smart Alerts**
-- **Discord Rich Embeds** mit Farbcodierung und strukturierten Feldern
-- Benachrichtigungen bei ungewöhnlicher Aktivität
-- Konfigurierbare Schwellwerte (Nennungen, Kursänderungen)
-- Kompaktes Format mit klickbaren Links
-- Silent Status-Updates (Heartbeat ohne Ping)
+## Quick Start
 
-### 🐳 **Production-Ready**
-- Vollständige Docker-Unterstützung
-- Automatische Releases via GitHub Actions
-- Semantic Versioning mit Auto-Increment
-- Persistente Daten & Caching
+### Voraussetzungen
 
-## 🚀 Quick Start
+- Python 3.11+
+- Node.js 18+ (nur zum Bauen des Frontends nötig)
+- Reddit-App: [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
+- Discord Webhook-URL
 
-### Option 1: Docker (empfohlen) 🐳
+### Setup-Script (empfohlen)
+
+Das Setup-Script installiert alle Abhängigkeiten, baut das Frontend und richtet optional einen Autostart-Service ein:
+
+```bash
+git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
+cd reddit-wsb-crawler
+
+python setup.py
+```
+
+Das Script fragt interaktiv, ob ein Autostart-Service eingerichtet werden soll (Windows Task Scheduler / Linux systemd / macOS launchd).
+
+### Manuell (lokal)
 
 ```bash
 # 1. Repository klonen
-git clone https://github.com/fgrfn/reddit-wsb-crawler.git
+git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
 cd reddit-wsb-crawler
 
-# 2. Config erstellen
-cp config/.env.example config/.env
-nano config/.env  # API-Keys eintragen (siehe unten)
-
-# 3. Interaktives Start-Script verwenden
-./start.sh
-# → Wähle Option 2 (Scheduler starten)
-# → Gib Intervall ein (Standard: 30 Minuten)
-
-# Oder manuell starten:
-# Einmaliger Crawl
-docker-compose up
-
-# Scheduler mit 30-Min-Intervall (empfohlen)
-CRAWL_INTERVAL_MINUTES=30 docker-compose --profile scheduler up -d
-
-# 4. Logs anschauen
-docker-compose logs -f wsb-crawler-scheduler
-```
-
-**Oder Pre-built Image nutzen:**
-
-```bash
-# Latest Version von GitHub Container Registry
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
-
-# Mit spezifischer Version für Reproduzierbarkeit
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.3.0
-```
-
-### Option 2: Python (lokal)
-
-```bash
-# 1. Repository klonen
-git clone https://github.com/fgrfn/reddit-wsb-crawler.git
-cd reddit-wsb-crawler
-
-# 2. Virtual Environment
+# 2. Python-Abhängigkeiten installieren
 python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+source venv/bin/activate   # Windows: venv\Scripts\activate
+pip install -e ".[dev]"
 
-# 3. Dependencies installieren
-pip install -r requirements.txt
+# 3. Frontend bauen
+cd web
+npm install
+npm run build
+cd ..
 
-# 4. Config erstellen
-cp config/.env.example config/.env
-nano config/.env  # API-Keys eintragen
+# 4. Starten
+wsb-crawler
+```
 
-# 5. Crawler starten
-python src/run_crawler_headless.py
+Der Browser öffnet sich automatisch. Beim ersten Start wird der Setup-Wizard angezeigt.
+
+### Docker
+
+```bash
+git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
+cd reddit-wsb-crawler
+
+docker compose up -d
+# Dashboard: http://localhost:8080
 ```
 
 ---
 
-## ⚙️ Konfiguration
+## Konfiguration
 
-#### Erforderliche Credentials:
+Alle Einstellungen werden über das Web-Dashboard unter **http://localhost:8080** gesetzt — keine `.env`-Datei nötig.
 
-| Variable | Beschreibung | Wo bekomme ich das? |
-|----------|--------------|---------------------|
-| `REDDIT_CLIENT_ID` | Reddit API Client ID | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
-| `REDDIT_CLIENT_SECRET` | Reddit API Secret | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
-| `REDDIT_USER_AGENT` | User Agent String | z.B. `python:wsb-crawler:v1.0.0 (by /u/your_username)` |
-| `NEWSAPI_KEY` | NewsAPI Key | [newsapi.org/register](https://newsapi.org/register) |
-| `DISCORD_WEBHOOK_URL` | Discord Webhook URL | Discord Server Settings → Integrations → Webhooks |
+### Erster Start — Setup-Wizard
 
-#### Optionale Einstellungen:
+Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der Setup-Wizard unter `http://localhost:8080/setup`.
 
-```ini
-# Subreddits (komma-separiert)
-SUBREDDITS=wallstreetbets,wallstreetbetsGER,mauerstrassenwetten
+**Schritt 1 — Reddit API**
 
-# News-Einstellungen
-NEWSAPI_LANG=en           # Sprache für News (en, de, etc.)
-NEWSAPI_WINDOW_HOURS=48   # Zeitfenster für News in Stunden
+| Feld | Beschreibung | Link |
+|---|---|---|
+| Client ID | Reddit App Client ID | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
+| Client Secret | Reddit App Secret | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
+| User Agent | Frei wählbar, z. B. `wsb-crawler/2.0` | — |
 
----
+**Schritt 2 — Discord**
 
-### Alert-Bedingungen
+| Feld | Beschreibung |
+|---|---|
+| Webhook URL | Discord → Servereinstellungen → Integrationen → Webhooks |
+| Bot Token | Optional — aktiviert Slash-Commands |
+| Channel ID | Optional — Kanal für Slash-Commands |
 
-Ein Alert wird ausgelöst, wenn:
+**Schritt 3 — Crawler**
 
-- **Neue Ticker:** ≥ 20 Nennungen (konfigurierbar: `ALERT_MIN_ABS`)
-- **Bekannte Ticker:** 
-  - Anstieg ≥ 10 Nennungen (`ALERT_MIN_DELTA`)
-  - **UND** ≥ 200% des vorherigen Werts (`ALERT_RATIO`)
-- Optional: Kursveränderung ≥ 5% (`ALERT_MIN_PRICE_MOVE`)
+| Feld | Standard | Beschreibung |
+|---|---|---|
+| Subreddits | `wallstreetbets` | Kommagetrennte Liste |
+| Intervall | `30` Min | Crawl-Häufigkeit |
+| Alert-Schwellwerte | s. u. | Wann ein Alert ausgelöst wird |
 
-Pro Crawl werden max. 3 Alerts gesendet (`ALERT_MAX_PER_RUN`) mit 4h Cooldown pro Ticker (`ALERT_COOLDOWN_H`)
+### Alert-Schwellwerte
 
----
-
-## 🐳 Docker
-
-### Pre-built Images
-
-Das Projekt stellt automatisch gebaute Docker Images bereit:
-
-| Tag | Beschreibung | Verwendung |
-|-----|--------------|------------|
-| `latest` | Neueste Version vom main branch | Empfohlen für Production |
-| `v1.0.1` | Spezifische Release-Version | Für Reproduzierbarkeit |
-| `v1.0` | Minor-Version (automatisch) | Latest Patch einer Minor-Version |
-
-```bash
-# Latest Version
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:latest
-docker run --env-file config/.env \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  ghcr.io/fgrfn/reddit-wsb-crawler:latest
-
-# Spezifische Version für Reproduzierbarkeit
-docker pull ghcr.io/fgrfn/reddit-wsb-crawler:v1.0.1
-```
-
-### Docker Compose (empfohlen)
-
-Das Repo enthält ein vollständiges `docker-compose.yml` mit allen Konfigurationen.
-
-**1. Einmalig ausführen:**
-```bash
-# Mit lokalem Build
-docker-compose up
-
-# Mit Pre-built Image
-docker-compose -f docker-compose.prod.yml up
-```
-
-**2. Mit Scheduler (regelmäßige Crawls):**
-```bash
-# Führt Crawler im Intervall aus (Standard: alle 60 Minuten)
-docker-compose --profile scheduler up -d
-
-# Logs anschauen
-docker-compose logs -f wsb-crawler-scheduler
-
-# Intervall anpassen (z.B. 15 Minuten)
-CRAWL_INTERVAL=900 docker-compose --profile scheduler up -d
-```
-
-**3. Beispiel `docker-compose.prod.yml`:**
-```yaml
-version: '3.8'
-
-services:
-  wsb-crawler:
-    image: ghcr.io/fgrfn/reddit-wsb-crawler:latest
-    container_name: wsb-crawler
-    restart: unless-stopped
-    
-    environment:
-      - TZ=Europe/Berlin
-    
-    env_file:
-      - config/.env
-    
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./config/.env:/app/config/.env:ro
-    
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-```
-
-### Erforderliche Environment-Variablen
-
-Erstelle `config/.env` mit folgenden Variablen:
-
-**Pflicht-Felder:**
-```bash
-# Reddit API (https://www.reddit.com/prefs/apps)
-REDDIT_CLIENT_ID=your_client_id_here
-REDDIT_CLIENT_SECRET=your_client_secret_here
-REDDIT_USER_AGENT=python:wsb-crawler:v1.0.0 (by /u/yourusername)
-
-# NewsAPI (https://newsapi.org/register)
-NEWSAPI_KEY=your_newsapi_key_here
-
-# Discord Webhook
-DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/YOUR_WEBHOOK_URL
-```
-
-**Optional (mit Defaults):**
-```bash
-# Subreddits (komma-separiert)
-SUBREDDITS=wallstreetbets,wallstreetbetsGER
-
-# News-Einstellungen
-NEWSAPI_LANG=en                # Sprache (en, de, fr, etc.)
-NEWSAPI_WINDOW_HOURS=48        # Zeitfenster für News
-
-# Discord Status-Updates
-DISCORD_STATUS_UPDATE=true     # Silent Status (ohne @everyone)
-
-# Alert-Schwellwerte
-ALERT_MIN_ABS=20              # Min. Nennungen für neue Ticker
-ALERT_MIN_DELTA=10            # Min. Anstieg für bekannte Ticker
-ALERT_RATIO=2.0               # Min. Faktor (200% des Vorwerts)
-ALERT_MIN_PRICE_MOVE=5.0      # Min. Kursänderung in %
-ALERT_MAX_PER_RUN=3           # Max. Alerts pro Crawl
-ALERT_COOLDOWN_H=4            # Cooldown pro Ticker in Stunden
-
-# Scheduler (nur für --profile scheduler)
-CRAWL_INTERVAL=3600           # Intervall in Sekunden (60 Min.)
-```
-
-Vollständige Vorlage: [`config/.env.example`](config/.env.example)
-
-Mehr Details: [DOCKER.md](DOCKER.md)
+| Einstellung | Standard | Beschreibung |
+|---|---|---|
+| Min. Nennungen (neu) | 20 | Mindest-Nennungen für unbekannte Ticker |
+| Min. Anstieg (abs.) | 10 | Absoluter Anstieg ggü. letztem Lauf |
+| Anstiegsfaktor | 2.0 | Faktor ggü. historischem Durchschnitt |
+| Min. Kursbewegung | 5 % | Mindest-Kursveränderung |
+| Max. Alerts pro Lauf | 3 | Begrenzung pro Crawl |
+| Cooldown | 4 h | Wartezeit pro Ticker zwischen Alerts |
 
 ---
 
-## 📊 Monitoring & Logs
+## Web-Dashboard
 
-### Logs ansehen
+Das Dashboard ist unter **http://localhost:8080** erreichbar (nur lokal, keine Authentifizierung nötig).
+
+| Seite | Inhalt |
+|---|---|
+| Dashboard | Crawler-Status, Top-Ticker-Chart, Mention-Tabelle |
+| Alerts | Alert-Historie mit Ticker-Filter |
+| Konfiguration | Alle Einstellungen bearbeiten und speichern |
+| Logs | Live-Logstream via WebSocket |
+
+---
+
+## Discord Slash-Commands
+
+Erfordert einen konfigurierten Discord Bot Token (optional).
+
+| Command | Beschreibung |
+|---|---|
+| `/top [days]` | Top-10-Ticker der letzten N Tage (Standard: 7) |
+| `/chart <ticker> [days]` | Mention-Verlauf als ASCII-Chart (Standard: 30 Tage) |
+| `/status` | Letzter Crawl, Laufzeit, Alerts gesamt |
+
+---
+
+## Entwicklung
 
 ```bash
-# Docker
-docker-compose logs -f
-docker-compose logs --tail=50 wsb-crawler
+# Tests ausführen
+pytest
 
-# Lokal
-tail -f logs/crawler.log
+# Linting
+ruff check src/ tests/
+
+# Formatierung
+ruff format src/ tests/
+
+# Typ-Check
+mypy src/
+
+# Frontend (Dev-Server mit Hot-Reload, proxied nach :8080)
+cd web
+npm run dev
 ```
 
-### Log-Dateien
+### Branch-Strategie
 
-- `logs/crawler.log` - Hauptlog
-- `logs/resolver.log` - Ticker-Namensauflösung
-- `logs/openai_costs.log` - API-Kosten (falls verwendet)
-- `logs/archive/` - Archivierte Logs
-
----
-
-## 📝 License
-
-MIT License - siehe [LICENSE](LICENSE)
+```
+main        ← Stable Releases (Tags)
+dev         ← aktive Entwicklung
+feature/xyz ← Feature-Branches → PR nach dev
+```
 
 ---
 
-<div align="center">
+## Projektstruktur
 
-**Entwickelt mit ❤️ für die WSB-Community**
+```
+reddit-wsb-crawler/
+├── setup.py                    # Installations- & Autostart-Script
+├── pyproject.toml
+├── docker-compose.yml
+├── web/                        # React/Vite Frontend
+│   ├── src/
+│   │   ├── pages/              # Dashboard, Alerts, Config, Logs, Setup
+│   │   └── components/         # Layout
+│   └── vite.config.ts          # Build → src/wsb_crawler/api/static/
+└── src/wsb_crawler/
+    ├── config.py               # Dataclasses + async get_settings(db)
+    ├── models.py               # Typisierte Datenstrukturen
+    ├── main.py                 # Entry Point: API-Server + Scheduler
+    ├── api/
+    │   ├── server.py           # FastAPI-App, statische Dateien
+    │   └── routers/
+    │       ├── config.py       # GET/PUT /api/config
+    │       ├── dashboard.py    # /api/tickers, /api/alerts, /api/runs
+    │       └── status.py       # /api/status, WebSocket /ws/logs
+    ├── crawler/
+    │   ├── reddit.py           # Async Reddit-Crawling (asyncpraw)
+    │   └── ticker.py           # Regex-Erkennung + Blacklist
+    ├── enrichment/
+    │   ├── prices.py           # Kursdaten (yfinance)
+    │   ├── news.py             # Headlines (NewsAPI)
+    │   └── resolver.py         # Ticker → Firmenname
+    ├── analysis/
+    │   ├── detector.py         # Spike-Erkennung
+    │   └── trends.py           # Trend-Analyse
+    ├── alerts/
+    │   ├── discord.py          # Rich Embeds + Heartbeat
+    │   └── bot.py              # Discord Slash-Commands
+    └── storage/
+        ├── database.py         # SQLite via aiosqlite (inkl. settings-Tabelle)
+        └── cache.py            # In-Memory TTL-Cache
+```
 
-⭐ Wenn dir dieses Projekt gefällt, gib uns einen Star!
+---
 
-[⬆ Nach oben](#-wsb-crawler)
+## License
 
-</div>
-
-
-
-
-
-
-
-
-
+MIT — siehe [LICENSE](LICENSE)

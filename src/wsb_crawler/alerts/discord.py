@@ -1,0 +1,265 @@
+"""
+Discord-Integration: Alerts als Rich Embeds, Heartbeat-Status-Updates.
+
+Nutzt httpx direkt (kein discord.py für Webhooks nötig).
+Rate-Limit-Handling: Discord erlaubt 5 Requests pro 2 Sekunden pro Webhook.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from datetime import datetime, timezone
+
+import httpx
+from loguru import logger
+
+from wsb_crawler.config import get_settings
+from wsb_crawler.models import Alert, AlertReason, MarketStatus, RunStatus, TrendEntry
+
+# Discord Embed-Farben
+COLOR_SPIKE = 0xFF4500       # Reddit-Orange
+COLOR_NEW = 0x00B0F4         # Blau
+COLOR_PRICE_MOVE = 0xFFAA00  # Amber
+COLOR_HEARTBEAT = 0x2B2D31   # Discord-Dunkel
+COLOR_SUCCESS = 0x57F287     # Grün
+
+TREND_EMOJI = {"up": "📈", "down": "📉", "flat": "➡️"}
+MARKET_LABEL = {
+    MarketStatus.PRE_MARKET: "Pre-Market",
+    MarketStatus.OPEN: "Offen",
+    MarketStatus.AFTER_HOURS: "After-Hours",
+    MarketStatus.CLOSED: "Geschlossen",
+}
+
+
+def _format_price(value: float | None, currency: str = "USD") -> str:
+    if value is None:
+        return "—"
+    symbol = "$" if currency == "USD" else f"{currency} "
+    return f"{symbol}{value:,.2f}"
+
+
+def _format_change(pct: float | None) -> str:
+    if pct is None:
+        return "—"
+    sign = "+" if pct >= 0 else ""
+    return f"{sign}{pct:.2f}%"
+
+
+def _build_alert_embed(alert: Alert) -> dict:
+    """Erstellt ein Discord Rich Embed für einen Alert."""
+    spike = alert.spike
+    price = spike.price_data
+    cfg = get_settings()
+
+    # Farbe je nach Reason
+    color = {
+        AlertReason.NEW_TICKER: COLOR_NEW,
+        AlertReason.SPIKE: COLOR_SPIKE,
+        AlertReason.PRICE_MOVE: COLOR_PRICE_MOVE,
+    }.get(alert.reason, COLOR_SPIKE)
+
+    reason_label = {
+        AlertReason.NEW_TICKER: "🆕 Neuer Ticker",
+        AlertReason.SPIKE: "🚀 Spike erkannt",
+        AlertReason.PRICE_MOVE: "💹 Kurs + Aktivität",
+    }.get(alert.reason, "⚡ Alert")
+
+    company = price.company_name if price else None
+    title = f"{reason_label}: **${alert.ticker}**"
+    if company:
+        title += f" — {company}"
+
+    fields = []
+
+    # Mentions-Block
+    mention_text = f"**{spike.current_mentions}**"
+    if not spike.is_new:
+        mention_text += f"\n∅ {spike.avg_mentions:.1f}/Lauf ({spike.ratio:.1f}x)"
+        mention_text += f"\n+{spike.delta} mehr als normal"
+    fields.append({"name": "📊 Erwähnungen", "value": mention_text, "inline": True})
+
+    # Kurs-Block
+    if price:
+        market_label = MARKET_LABEL.get(price.market_status, "—")
+        price_text = f"**{_format_price(price.primary_price, price.currency)}**"
+        if price.primary_change is not None:
+            price_text += f"\n{_format_change(price.primary_change)} (24h)"
+        if price.change_1h is not None:
+            price_text += f"\n{_format_change(price.change_1h)} (1h)"
+        if price.change_7d is not None:
+            price_text += f"\n{_format_change(price.change_7d)} (7d)"
+        price_text += f"\n_{market_label}_"
+        fields.append({"name": "💰 Kurs", "value": price_text, "inline": True})
+
+    # Kursverläufe (1h/24h/7d) als kompakte Zeile
+    if price and any(v is not None for v in [price.change_1h, price.change_24h, price.change_7d]):
+        bars = []
+        if price.change_1h is not None:
+            bars.append(f"1h: {_format_change(price.change_1h)}")
+        if price.change_24h is not None:
+            bars.append(f"24h: {_format_change(price.change_24h)}")
+        if price.change_7d is not None:
+            bars.append(f"7d: {_format_change(price.change_7d)}")
+        fields.append({"name": "📉 Trend", "value": "  |  ".join(bars), "inline": False})
+
+    # News-Block (max. 3 Headlines)
+    if spike.news:
+        news_lines = []
+        for article in spike.news[:3]:
+            age_h = (datetime.now(tz=timezone.utc) - article.published_at).total_seconds() / 3600
+            age_str = f"{int(age_h)}h" if age_h < 24 else f"{int(age_h/24)}d"
+            news_lines.append(f"[{article.title[:70]}...]({article.url}) _{age_str}_")
+        fields.append({
+            "name": "📰 Aktuelle News",
+            "value": "\n".join(news_lines),
+            "inline": False,
+        })
+
+    # Footer
+    subreddits = ", ".join(f"r/{s}" for s in cfg.crawler.subreddits)
+    footer = f"WSB-Crawler v2 • {subreddits}"
+
+    return {
+        "title": title,
+        "color": color,
+        "fields": fields,
+        "footer": {"text": footer},
+        "timestamp": alert.triggered_at.isoformat(),
+    }
+
+
+def _build_heartbeat_embed(status: RunStatus) -> dict:
+    """Status-Update Embed (kein Ping, silent)."""
+    if status.last_run_at:
+        last_run_str = f"<t:{int(status.last_run_at.timestamp())}:R>"
+        duration_str = (
+            f"{status.last_run_duration_seconds:.0f}s"
+            if status.last_run_duration_seconds else "—"
+        )
+    else:
+        last_run_str = "—"
+        duration_str = "—"
+
+    fields = [
+        {"name": "⏱ Letzter Lauf", "value": last_run_str, "inline": True},
+        {"name": "⏳ Dauer", "value": duration_str, "inline": True},
+        {"name": "🔔 Alerts gesamt", "value": str(status.total_alerts_sent), "inline": True},
+        {"name": "📌 Ticker getrackt", "value": str(status.tracked_tickers), "inline": True},
+        {"name": "🔄 Läufe gesamt", "value": str(status.total_runs), "inline": True},
+    ]
+
+    if status.next_run_at:
+        fields.append({
+            "name": "⏭ Nächster Lauf",
+            "value": f"<t:{int(status.next_run_at.timestamp())}:R>",
+            "inline": True,
+        })
+
+    return {
+        "title": "💓 WSB-Crawler Status",
+        "color": COLOR_HEARTBEAT,
+        "fields": fields,
+        "footer": {"text": "WSB-Crawler v2 • Automatischer Heartbeat"},
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+
+
+async def _send_webhook(payload: dict, retries: int = 3) -> bool:
+    """Sendet eine Nachricht an den Discord-Webhook mit Rate-Limit-Handling."""
+    cfg = get_settings().discord
+    for attempt in range(retries):
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.post(cfg.webhook_url, json=payload)
+
+                if response.status_code == 429:
+                    retry_after = float(response.json().get("retry_after", 2.0))
+                    logger.warning(f"Discord Rate-Limit — warte {retry_after}s")
+                    await asyncio.sleep(retry_after)
+                    continue
+
+                response.raise_for_status()
+                return True
+
+        except Exception as e:
+            wait = 2 ** attempt
+            logger.warning(f"Discord-Webhook Fehler (Versuch {attempt + 1}/{retries}): {e}")
+            if attempt < retries - 1:
+                await asyncio.sleep(wait)
+
+    return False
+
+
+async def send_alert(alert: Alert) -> bool:
+    """Sendet einen Alert als Discord Rich Embed."""
+    embed = _build_alert_embed(alert)
+    payload = {
+        "username": "WSB-Crawler",
+        "embeds": [embed],
+    }
+    success = await _send_webhook(payload)
+    if success:
+        alert.sent = True
+        logger.info(f"Alert gesendet: ${alert.ticker}")
+    else:
+        logger.error(f"Alert konnte nicht gesendet werden: ${alert.ticker}")
+    return success
+
+
+async def send_alerts(alerts: list[Alert]) -> int:
+    """
+    Sendet mehrere Alerts nacheinander (nicht parallel, wegen Rate-Limits).
+    Gibt Anzahl erfolgreich gesendeter Alerts zurück.
+    """
+    sent = 0
+    for alert in alerts:
+        if await send_alert(alert):
+            sent += 1
+        # Kurze Pause zwischen Alerts
+        if len(alerts) > 1:
+            await asyncio.sleep(1.0)
+    return sent
+
+
+async def send_heartbeat(status: RunStatus) -> None:
+    """Sendet ein stilles Status-Update (kein @everyone Ping)."""
+    cfg = get_settings().discord
+    if not cfg.status_update:
+        return
+
+    embed = _build_heartbeat_embed(status)
+    payload = {
+        "username": "WSB-Crawler",
+        "embeds": [embed],
+        # Kein content → kein Ping
+    }
+    await _send_webhook(payload)
+    logger.debug("Heartbeat gesendet")
+
+
+async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
+    """Sendet die Top-Ticker-Übersicht als Discord-Embed (für /top Command)."""
+    if not entries:
+        await _send_webhook({"content": f"Keine Daten für die letzten {days} Tage."})
+        return
+
+    lines = []
+    for i, entry in enumerate(entries, 1):
+        trend = TREND_EMOJI.get(entry.trend_direction.value, "")
+        name = entry.company_name or entry.ticker
+        price_str = _format_price(entry.current_price) if entry.current_price else "—"
+        change_str = _format_change(entry.price_change_period) if entry.price_change_period else "—"
+        lines.append(
+            f"**{i}.** ${entry.ticker} — {name}\n"
+            f"   {trend} {entry.total_mentions} Nennungen | {price_str} ({change_str})"
+        )
+
+    embed = {
+        "title": f"🏆 Top Ticker — letzte {days} Tage",
+        "description": "\n\n".join(lines),
+        "color": COLOR_SUCCESS,
+        "footer": {"text": "WSB-Crawler v2"},
+        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+    }
+    await _send_webhook({"username": "WSB-Crawler", "embeds": [embed]})

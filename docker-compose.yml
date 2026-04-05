@@ -1,149 +1,48 @@
-version: '3.8'
+# ═══════════════════════════════════════════════════════
+#  WSB-Crawler v2 — Docker Compose
+#
+#  Starten:  docker compose up -d
+#  Dashboard: http://localhost:8080
+# ═══════════════════════════════════════════════════════
+
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+    args:
+      VERSION: "2.0.0"
+  image: wsb-crawler:2.0.0
+  environment:
+    - TZ=Europe/Berlin
+  volumes:
+    - ./data:/app/data
+    - ./logs:/app/logs
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
+  deploy:
+    resources:
+      limits:
+        cpus: "2"
+        memory: 1G
+      reservations:
+        cpus: "0.25"
+        memory: 256M
 
 services:
+
   wsb-crawler:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    <<: *common
     container_name: wsb-crawler
-    image: wsb-crawler:latest
-    restart: "no"  # Kein Auto-Restart - für einmalige Crawls
-    
-    environment:
-      # Timezone
-      - TZ=Europe/Berlin
-      
-      # Loop mode disabled for single run
-      - CRAWLER_LOOP_MODE=false
-      - CRAWL_INTERVAL_MINUTES=${CRAWL_INTERVAL_MINUTES:-30}
-      
-      # Reddit API (REQUIRED)
-      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
-      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
-      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:wsb-crawler:v1.0.0 (by /u/youruser)}
-      
-      # Subreddits
-      - SUBREDDITS=${SUBREDDITS:-wallstreetbets,wallstreetbetsGER}
-      
-      # NewsAPI (REQUIRED)
-      - NEWSAPI_KEY=${NEWSAPI_KEY}
-      - NEWSAPI_LANG=${NEWSAPI_LANG:-en}
-      - NEWSAPI_WINDOW_HOURS=${NEWSAPI_WINDOW_HOURS:-48}
-      
-      # Discord (REQUIRED)
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
-      - DISCORD_STATUS_UPDATE=${DISCORD_STATUS_UPDATE:-true}
-      
-      # Alert Thresholds
-      - ALERT_MIN_ABS=${ALERT_MIN_ABS:-20}
-      - ALERT_MIN_DELTA=${ALERT_MIN_DELTA:-10}
-      - ALERT_RATIO=${ALERT_RATIO:-2.0}
-      - ALERT_MIN_PRICE_MOVE=${ALERT_MIN_PRICE_MOVE:-5.0}
-      - ALERT_MAX_PER_RUN=${ALERT_MAX_PER_RUN:-3}
-      - ALERT_COOLDOWN_H=${ALERT_COOLDOWN_H:-4}
-      
-      # Optional: Alpha Vantage API
-      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-}
-    
-    env_file:
-      - config/.env
-    
-    volumes:
-      # Persistente Daten
-      - ./data:/app/data
-      - ./logs:/app/logs
-      # Config (read-only)
-      - ./config/.env:/app/config/.env:ro
-    
-    # Für scheduled runs mit cron
-    # command: >
-    #   sh -c "while true; do
-    #     python src/run_crawler_headless.py;
-    #     echo 'Crawl completed. Waiting 1 hour...';
-    #     sleep 3600;
-    #   done"
-    
-    # Logging-Konfiguration
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-    
-    # Ressourcen-Limits (optional)
-    deploy:
-      resources:
-        limits:
-          cpus: '2'
-          memory: 2G
-        reservations:
-          cpus: '0.5'
-          memory: 512M
-
-  # Optional: Scheduler-Service für regelmäßige Crawls
-  wsb-crawler-scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: wsb-crawler-scheduler
-    image: wsb-crawler:latest
     restart: unless-stopped
-    profiles:
-      - scheduler
-    
-    environment:
-      - TZ=Europe/Berlin
-      # Crawl-Intervall in Minuten (Standard: 30 Minuten)
-      - CRAWLER_LOOP_MODE=true
-      - CRAWL_INTERVAL_MINUTES=${CRAWL_INTERVAL_MINUTES:-30}
-      
-      # Reddit API (REQUIRED)
-      - REDDIT_CLIENT_ID=${REDDIT_CLIENT_ID}
-      - REDDIT_CLIENT_SECRET=${REDDIT_CLIENT_SECRET}
-      - REDDIT_USER_AGENT=${REDDIT_USER_AGENT:-python:wsb-crawler:v1.0.0 (by /u/youruser)}
-      
-      # Subreddits
-      - SUBREDDITS=${SUBREDDITS:-wallstreetbets,wallstreetbetsGER}
-      
-      # NewsAPI (REQUIRED)
-      - NEWSAPI_KEY=${NEWSAPI_KEY}
-      - NEWSAPI_LANG=${NEWSAPI_LANG:-en}
-      - NEWSAPI_WINDOW_HOURS=${NEWSAPI_WINDOW_HOURS:-48}
-      
-      # Discord (REQUIRED)
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
-      - DISCORD_STATUS_UPDATE=${DISCORD_STATUS_UPDATE:-true}
-      
-      # Alert Thresholds
-      - ALERT_MIN_ABS=${ALERT_MIN_ABS:-20}
-      - ALERT_MIN_DELTA=${ALERT_MIN_DELTA:-10}
-      - ALERT_RATIO=${ALERT_RATIO:-2.0}
-      - ALERT_MIN_PRICE_MOVE=${ALERT_MIN_PRICE_MOVE:-5.0}
-      - ALERT_MAX_PER_RUN=${ALERT_MAX_PER_RUN:-3}
-      - ALERT_COOLDOWN_H=${ALERT_COOLDOWN_H:-4}
-      
-      # Optional: Alpha Vantage API
-      - ALPHAVANTAGE_API_KEY=${ALPHAVANTAGE_API_KEY:-}
-    
-    env_file:
-      - config/.env
-    
-    volumes:
-      - ./data:/app/data
-      - ./logs:/app/logs
-      - ./config/.env:/app/config/.env:ro
-    
-    # Das Script läuft jetzt intern in einer Schleife
-    command: ["python", "src/run_crawler_headless.py"]
-    
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-volumes:
-  wsb-data:
-    driver: local
-  wsb-logs:
-    driver: local
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/status')"]
+      interval: 5m
+      timeout: 10s
+      start_period: 30s
+      retries: 3

@@ -1,63 +1,35 @@
 # Git
-.git
+.git/
 .gitignore
-.github
 
-# Python
-__pycache__
-*.py[cod]
-*$py.class
-*.so
-.Python
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
 *.egg-info/
-dist/
-build/
-*.egg
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs (werden als Volume gemountet)
-logs/*.log
-logs/archive/
-
-# Data (werden als Volume gemountet)
+# Entwicklungs-Daten (werden als Volume gemountet)
 data/
+logs/
 
-# Dokumentation
-*.md
-!README.md
-docs/
+# Config mit echten Keys (wird als Volume gemountet)
+config/.env
 
-# Tests
+# Tests (nicht im Production-Image)
 tests/
-.pytest_cache/
-.coverage
-htmlcov/
 
-# CI/CD
+# Docs
+docs/
+*.md
+
+# IDE
+.idea/
+.vscode/
+
+# CI
 .github/
 
-# Docker
-docker-compose*.yml
-Dockerfile
-.dockerignore
-
-# Temp files
-*.tmp
-*.bak
-.cache/
+# Dev-Tools
+.mypy_cache/
+.pytest_cache/
+htmlcov/
