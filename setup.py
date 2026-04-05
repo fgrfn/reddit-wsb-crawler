@@ -77,12 +77,40 @@ def check_python_version() -> None:
     ok(f"Python {v.major}.{v.minor}.{v.micro}")
 
 
+def _install_node_linux() -> bool:
+    """Installiert Node.js 20 LTS via NodeSource-Script (Debian/Ubuntu)."""
+    if shutil.which("curl") is None and shutil.which("wget") is None:
+        warn("curl/wget nicht gefunden — Node.js kann nicht automatisch installiert werden.")
+        return False
+    info("Node.js 20 LTS via NodeSource installieren…")
+    try:
+        # NodeSource setup script herunterladen und ausführen
+        if shutil.which("curl"):
+            run(["bash", "-c", "curl -fsSL https://deb.nodesource.com/setup_20.x | bash -"])
+        else:
+            run(["bash", "-c", "wget -qO- https://deb.nodesource.com/setup_20.x | bash -"])
+        run(["apt-get", "install", "-y", "nodejs"])
+        return True
+    except subprocess.CalledProcessError as e:
+        error(f"Node.js Installation fehlgeschlagen: {e}")
+        return False
+
+
 def check_node() -> bool:
     heading("3. Node.js prüfen (für Frontend-Build)")
     if shutil.which("node") and shutil.which("npm"):
         result = subprocess.run(["node", "--version"], capture_output=True, text=True)
         ok(f"Node.js {result.stdout.strip()}")
         return True
+
+    # Auf Linux automatisch installieren (apt-basierte Systeme)
+    if SYSTEM == "Linux" and os.geteuid() == 0 and shutil.which("apt-get"):
+        warn("Node.js nicht gefunden — wird automatisch installiert.")
+        if _install_node_linux():
+            result = subprocess.run(["node", "--version"], capture_output=True, text=True)
+            ok(f"Node.js {result.stdout.strip()} installiert")
+            return True
+
     warn("Node.js nicht gefunden — Frontend-Build wird übersprungen.")
     warn("Dashboard funktioniert trotzdem (nur ohne React-Build).")
     info("Node.js installieren unter: https://nodejs.org")
