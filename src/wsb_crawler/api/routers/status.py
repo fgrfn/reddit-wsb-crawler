@@ -79,7 +79,9 @@ async def websocket_logs(websocket: WebSocket) -> None:
     await websocket.accept()
     _ws_clients.append(websocket)
     try:
-        # Zuerst Buffer senden (damit neue Clients Geschichte sehen)
+        # Clear-Signal + Buffer senden. Das Clear stellt sicher, dass beim
+        # Reconnect die Logs nicht doppelt angezeigt werden.
+        await websocket.send_text("__LOGS_CLEAR__")
         for line in list(_log_buffer):
             await websocket.send_text(line)
         # Verbindung offen halten
