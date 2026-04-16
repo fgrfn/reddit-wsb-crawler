@@ -741,21 +741,27 @@
       state.ws.onmessage = (e) => {
         if (e.data === '__LOGS_CLEAR__') {
           state.logs = [];
-          render();
+          const container = document.getElementById('logs-container');
+          if (container) container.innerHTML = '<span class="text-zinc-600">Verbunden. Warte auf Log-Einträge…</span>';
           return;
         }
         state.logs = [...state.logs.slice(-500), e.data];
         const container = document.getElementById('logs-container');
         if (container) {
-          container.innerHTML = state.logs.map(line => {
-            const levelColor = (l) => {
-              if (l.includes('ERROR') || l.includes('CRITICAL')) return 'text-red-400';
-              if (l.includes('WARNING')) return 'text-amber-400';
-              if (l.includes('SUCCESS')) return 'text-green-400';
-              return 'text-zinc-300';
-            };
-            return `<div class="${levelColor(line)}">${line}</div>`;
-          }).join('');
+          const levelColor = (l) => {
+            if (l.includes('ERROR') || l.includes('CRITICAL')) return 'text-red-400';
+            if (l.includes('WARNING')) return 'text-amber-400';
+            if (l.includes('SUCCESS')) return 'text-green-400';
+            return 'text-zinc-300';
+          };
+          const div = document.createElement('div');
+          div.className = levelColor(e.data);
+          div.textContent = e.data;
+          // Platzhalter-Span entfernen wenn noch vorhanden
+          if (container.firstChild && container.firstChild.tagName !== 'DIV') {
+            container.innerHTML = '';
+          }
+          container.appendChild(div);
           container.scrollTop = container.scrollHeight;
         }
       };
@@ -807,7 +813,11 @@
           content = await renderConfig();
         } else if (state.currentPage === 'logs') {
           content = renderLogs();
-          setTimeout(connectLogsWebSocket, 100);
+          // Nur verbinden wenn noch keine offene Verbindung besteht —
+          // verhindert Reconnect-Schleife bei jedem render()-Aufruf
+          if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) {
+            setTimeout(connectLogsWebSocket, 100);
+          }
         }
 
         app.innerHTML = renderLayout(content);
