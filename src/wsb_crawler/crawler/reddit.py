@@ -52,11 +52,20 @@ def _sanitize_credential(value: str, name: str) -> str:
 
 
 def _make_reddit_client(cfg) -> asyncpraw.Reddit:
-    return asyncpraw.Reddit(
-        client_id=_sanitize_credential(cfg.client_id, "reddit_client_id"),
-        client_secret=_sanitize_credential(cfg.client_secret, "reddit_client_secret"),
-        user_agent=_sanitize_credential(cfg.user_agent, "reddit_user_agent"),
-    )
+    kwargs: dict = {
+        "client_id": _sanitize_credential(cfg.client_id, "reddit_client_id"),
+        "client_secret": _sanitize_credential(cfg.client_secret, "reddit_client_secret"),
+        "user_agent": _sanitize_credential(cfg.user_agent, "reddit_user_agent"),
+    }
+    if cfg.username and cfg.password:
+        # User-Authentifizierung (grant_type=password) — benötigt für NSFW-Subreddits
+        # wie r/wallstreetbets. Ohne username/password gibt Reddit 403 zurück.
+        kwargs["username"] = _sanitize_credential(cfg.username, "reddit_username")
+        kwargs["password"] = _sanitize_credential(cfg.password, "reddit_password")
+        logger.debug("Reddit: Authentifizierung als Benutzer '{}'", cfg.username)
+    else:
+        logger.debug("Reddit: Application-only OAuth (kein username/password gesetzt)")
+    return asyncpraw.Reddit(**kwargs)
 
 
 async def _fetch_posts(

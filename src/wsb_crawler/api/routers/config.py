@@ -21,6 +21,8 @@ class ConfigPayload(BaseModel):
     reddit_client_id: str | None = None
     reddit_client_secret: str | None = None
     reddit_user_agent: str | None = None
+    reddit_username: str | None = None
+    reddit_password: str | None = None
 
     # NewsAPI (optional)
     newsapi_key: str | None = None
@@ -62,7 +64,10 @@ async def get_config() -> dict:
     """Gibt alle gespeicherten Settings zurück. Secrets werden maskiert."""
     settings = await db.get_all_settings()
     # Secrets maskieren (nicht komplett entfernen, damit UI weiß ob gesetzt)
-    for secret_key in ("reddit_client_secret", "newsapi_key", "discord_bot_token", "alphavantage_api_key"):
+    for secret_key in (
+        "reddit_client_secret", "reddit_password",
+        "newsapi_key", "discord_bot_token", "alphavantage_api_key",
+    ):
         if settings.get(secret_key):
             settings[secret_key] = "••••••••"
     return settings
