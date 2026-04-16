@@ -735,6 +735,11 @@
         }
       };
       state.ws.onmessage = (e) => {
+        if (e.data === '__LOGS_CLEAR__') {
+          state.logs = [];
+          render();
+          return;
+        }
         state.logs = [...state.logs.slice(-500), e.data];
         const container = document.getElementById('logs-container');
         if (container) {
