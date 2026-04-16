@@ -21,8 +21,12 @@ _log_buffer: deque[str] = deque(maxlen=200)
 _ws_clients: list[WebSocket] = []
 
 
-def _setup_ws_log_sink() -> None:
-    """Loguru-Sink der Log-Messages in den WebSocket-Buffer schreibt."""
+def setup_ws_log_sink() -> None:
+    """Loguru-Sink der Log-Messages in den WebSocket-Buffer schreibt.
+
+    Muss explizit NACH logger.remove() / _setup_logging() aufgerufen werden,
+    da logger.remove() alle Sinks entfernt — auch diesen.
+    """
 
     async def _broadcast(message: str) -> None:
         disconnected = []
@@ -49,9 +53,6 @@ def _setup_ws_log_sink() -> None:
             pass
 
     logger.add(_sink, format="{time:HH:mm:ss} | {level: <8} | {message}", level="INFO")
-
-
-_setup_ws_log_sink()
 
 
 @router.get("/status")

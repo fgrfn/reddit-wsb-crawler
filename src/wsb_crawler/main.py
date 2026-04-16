@@ -17,6 +17,7 @@ from loguru import logger
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts import bot as discord_bot
 from wsb_crawler.alerts.discord import send_heartbeat, set_database as discord_set_db
+from wsb_crawler.api.routers.status import setup_ws_log_sink
 from wsb_crawler.api.server import run_server
 from wsb_crawler.config import DB_PATH, get_settings
 from wsb_crawler.crawler.reddit import set_database as reddit_set_db
@@ -89,6 +90,9 @@ async def scheduler_loop(db: Database) -> None:
 
 async def main_async() -> None:
     _setup_logging()
+    # WebSocket-Log-Sink NACH logger.remove() registrieren — sonst wird er
+    # durch _setup_logging() entfernt und die Log-Seite im Dashboard bleibt leer.
+    setup_ws_log_sink()
     logger.info(f"WSB-Crawler v{__version__} startet")
 
     async with Database(DB_PATH) as db:
