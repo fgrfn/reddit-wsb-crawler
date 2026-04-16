@@ -62,7 +62,7 @@ async def get_config() -> dict:
     """Gibt alle gespeicherten Settings zurück. Secrets werden maskiert."""
     settings = await db.get_all_settings()
     # Secrets maskieren (nicht komplett entfernen, damit UI weiß ob gesetzt)
-    for secret_key in ("reddit_client_secret", "newsapi_key", "discord_bot_token"):
+    for secret_key in ("reddit_client_secret", "newsapi_key", "discord_bot_token", "alphavantage_api_key"):
         if settings.get(secret_key):
             settings[secret_key] = "••••••••"
     return settings
@@ -81,7 +81,8 @@ async def update_config(payload: ConfigPayload) -> dict:
         return {"ok": True, "updated": []}
 
     for key, value in data.items():
-        await db.set_setting(key, str(value))
+        # Führende/nachfolgende Whitespace-Zeichen entfernen (verhindert Copy-Paste-Fehler)
+        await db.set_setting(key, str(value).strip())
 
     return {"ok": True, "updated": list(data.keys())}
 

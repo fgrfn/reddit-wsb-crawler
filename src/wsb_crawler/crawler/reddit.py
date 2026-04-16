@@ -30,15 +30,32 @@ def set_database(db: "Database") -> None:
     _db = db
 
 
-def _make_reddit_client(cfg) -> asyncpraw.Reddit:
-    # Alle Credentials müssen ASCII-kompatibel sein (aiohttp-Header-Anforderung)
-    def to_ascii(s: str) -> str:
-        return s.encode("ascii", "ignore").decode("ascii")
+def _sanitize_credential(value: str, name: str) -> str:
+    """Bereinigt einen Credential-String.
 
+    - Entfernt führende/nachfolgende Whitespace-Zeichen (häufigste Fehlerquelle
+      bei Copy-Paste aus Reddit/Discord-Dashboards).
+    - Warnt explizit wenn Nicht-ASCII-Zeichen enthalten sind (aiohttp-Header
+      akzeptieren nur ASCII), anstatt diese lautlos zu verwerfen.
+    """
+    stripped = value.strip()
+    try:
+        stripped.encode("ascii")
+    except UnicodeEncodeError:
+        logger.warning(
+            "Credential '{}' enthält Nicht-ASCII-Zeichen — diese werden entfernt. "
+            "Bitte Wert im Dashboard neu eingeben.",
+            name,
+        )
+        stripped = stripped.encode("ascii", "ignore").decode("ascii")
+    return stripped
+
+
+def _make_reddit_client(cfg) -> asyncpraw.Reddit:
     return asyncpraw.Reddit(
-        client_id=to_ascii(cfg.client_id),
-        client_secret=to_ascii(cfg.client_secret),
-        user_agent=to_ascii(cfg.user_agent),
+        client_id=_sanitize_credential(cfg.client_id, "reddit_client_id"),
+        client_secret=_sanitize_credential(cfg.client_secret, "reddit_client_secret"),
+        user_agent=_sanitize_credential(cfg.user_agent, "reddit_user_agent"),
     )
 
 
