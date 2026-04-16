@@ -12,6 +12,7 @@ Verwendung:
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -79,8 +80,26 @@ async def get_settings(db: "Database") -> Settings:
     """
     Liest alle Settings aus der DB und gibt ein Settings-Objekt zurück.
     Wirft RuntimeError wenn Pflichtfelder fehlen (→ Setup-Wizard nötig).
+
+    ENV-Variablen haben Vorrang vor DB-Werten (KEY_NAME → key_name).
+    Beispiel: REDDIT_CLIENT_SECRET=xxx überschreibt den DB-Eintrag.
+    Nützlich für Docker-Deployments wo Secrets per Environment injiziert werden.
     """
     s = await db.get_all_settings()
+
+    # ENV-Variablen auf DB-Dict mergen: REDDIT_CLIENT_ID → reddit_client_id
+    for key in set(s.keys()) | {
+        "reddit_client_id", "reddit_client_secret", "reddit_user_agent",
+        "discord_webhook_url", "discord_bot_token", "discord_command_channel_id",
+        "discord_status_update", "newsapi_key", "newsapi_lang", "newsapi_window_hours",
+        "alert_min_abs", "alert_min_delta", "alert_ratio", "alert_min_price_move",
+        "alert_max_per_run", "alert_cooldown_h", "subreddits",
+        "crawl_interval_minutes", "posts_limit", "comments_limit",
+        "alphavantage_api_key", "log_level",
+    }:
+        env_val = os.getenv(key.upper(), "").strip()
+        if env_val:
+            s[key] = env_val
 
     def req(key: str) -> str:
         val = s.get(key)
