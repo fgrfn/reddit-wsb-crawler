@@ -29,6 +29,8 @@ class RedditSettings:
     client_id: str
     client_secret: str
     user_agent: str = "python:wsb-crawler:v2.0.0 (by /u/youruser)"
+    username: str | None = None
+    password: str | None = None
 
 
 @dataclass
@@ -90,6 +92,7 @@ async def get_settings(db: "Database") -> Settings:
     # ENV-Variablen auf DB-Dict mergen: REDDIT_CLIENT_ID → reddit_client_id
     for key in set(s.keys()) | {
         "reddit_client_id", "reddit_client_secret", "reddit_user_agent",
+        "reddit_username", "reddit_password",
         "discord_webhook_url", "discord_bot_token", "discord_command_channel_id",
         "discord_status_update", "newsapi_key", "newsapi_lang", "newsapi_window_hours",
         "alert_min_abs", "alert_min_delta", "alert_ratio", "alert_min_price_move",
@@ -121,6 +124,8 @@ async def get_settings(db: "Database") -> Settings:
             client_id=req("reddit_client_id"),
             client_secret=req("reddit_client_secret"),
             user_agent=opt("reddit_user_agent") or "python:wsb-crawler:v2.0.0 (by /u/youruser)",
+            username=opt("reddit_username"),
+            password=opt("reddit_password"),
         ),
         newsapi=NewsAPISettings(
             key=opt("newsapi_key") or "",

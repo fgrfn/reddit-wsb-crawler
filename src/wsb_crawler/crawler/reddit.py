@@ -52,11 +52,23 @@ def _sanitize_credential(value: str, name: str) -> str:
 
 
 def _make_reddit_client(cfg) -> asyncpraw.Reddit:
-    return asyncpraw.Reddit(
-        client_id=_sanitize_credential(cfg.client_id, "reddit_client_id"),
-        client_secret=_sanitize_credential(cfg.client_secret, "reddit_client_secret"),
-        user_agent=_sanitize_credential(cfg.user_agent, "reddit_user_agent"),
-    )
+    kwargs: dict = {
+        "client_id": _sanitize_credential(cfg.client_id, "reddit_client_id"),
+        "client_secret": _sanitize_credential(cfg.client_secret, "reddit_client_secret"),
+        "user_agent": _sanitize_credential(cfg.user_agent, "reddit_user_agent"),
+    }
+    if cfg.username and cfg.password:
+        # User-Authentifizierung (grant_type=password) — für NSFW-Subreddits empfohlen
+        kwargs["username"] = _sanitize_credential(cfg.username, "reddit_username")
+        kwargs["password"] = _sanitize_credential(cfg.password, "reddit_password")
+        logger.debug("Reddit: Authentifizierung als Benutzer '{}'", cfg.username)
+    else:
+        # asyncpraw 7.7+ benötigt read_only=True für korrektes application-only OAuth
+        # (client_credentials grant). Ohne dieses Flag versucht asyncpraw u.U. eine
+        # User-Auth mit leeren Credentials → 403. praw (sync) setzt dies implizit.
+        kwargs["read_only"] = True
+        logger.debug("Reddit: Application-only OAuth (read_only=True)")
+    return asyncpraw.Reddit(**kwargs)
 
 
 async def _fetch_posts(
