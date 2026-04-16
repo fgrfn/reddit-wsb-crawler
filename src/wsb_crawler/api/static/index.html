@@ -360,10 +360,15 @@
       
       if (isLast) {
         try {
+          // Leere Strings herausfiltern (wie saveConfig) — verhindert das
+          // Überschreiben von Defaults mit leeren Werten für optionale Felder
+          const setupPayload = Object.fromEntries(
+            Object.entries(state.setupValues).filter(([, v]) => v !== '')
+          );
           await api('/config', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(state.setupValues)
+            body: JSON.stringify(setupPayload)
           });
           state.configured = true;
           navigate('dashboard');

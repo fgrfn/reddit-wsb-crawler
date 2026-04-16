@@ -175,12 +175,24 @@ def _build_heartbeat_embed(status: RunStatus) -> dict:
     }
 
 
-async def _send_webhook(payload: dict, webhook_url: str, retries: int = 3) -> bool:
-    """Sendet eine Nachricht an den Discord-Webhook mit Rate-Limit-Handling."""
+async def _send_webhook(
+    payload: dict,
+    webhook_url: str,
+    retries: int = 3,
+    wait: bool = False,
+) -> str | bool:
+    """Sendet eine Nachricht an den Discord-Webhook mit Rate-Limit-Handling.
+
+    Args:
+        wait: Wenn True, wird ?wait=true übergeben und die Message-ID (str) zurückgegeben.
+              Bei Fehler wird False zurückgegeben.
+    """
+    url = f"{webhook_url}?wait=true" if wait else webhook_url
+
     for attempt in range(retries):
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(webhook_url, json=payload)
+                response = await client.post(url, json=payload)
 
                 if response.status_code == 429:
                     retry_after = float(response.json().get("retry_after", 2.0))
@@ -189,15 +201,47 @@ async def _send_webhook(payload: dict, webhook_url: str, retries: int = 3) -> bo
                     continue
 
                 response.raise_for_status()
+                if wait:
+                    return str(response.json()["id"])
                 return True
 
         except Exception as e:
-            wait = 2 ** attempt
+            backoff = 2 ** attempt
             logger.warning(f"Discord-Webhook Fehler (Versuch {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
-                await asyncio.sleep(wait)
+                await asyncio.sleep(backoff)
 
     return False
+
+
+async def _edit_webhook_message(
+    payload: dict,
+    webhook_url: str,
+    message_id: str,
+) -> bool:
+    """Bearbeitet eine bestehende Webhook-Nachricht via PATCH.
+
+    Gibt False zurück wenn die Nachricht nicht mehr existiert (z.B. manuell gelöscht).
+    """
+    # Webhook-URL: https://discord.com/api/webhooks/{id}/{token}
+    edit_url = f"{webhook_url}/messages/{message_id}"
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.patch(edit_url, json=payload)
+            if response.status_code == 404:
+                logger.debug("Heartbeat-Nachricht nicht mehr vorhanden — wird neu erstellt")
+                return False
+            if response.status_code == 429:
+                retry_after = float(response.json().get("retry_after", 2.0))
+                logger.warning(f"Discord Rate-Limit beim Editieren — warte {retry_after}s")
+                await asyncio.sleep(retry_after)
+                # Einmal wiederholen
+                response = await client.patch(edit_url, json=payload)
+            response.raise_for_status()
+            return True
+    except Exception as e:
+        logger.warning(f"Discord-Nachricht konnte nicht bearbeitet werden: {e}")
+        return False
 
 
 async def send_alert(alert: Alert) -> bool:
@@ -233,7 +277,11 @@ async def send_alerts(alerts: list[Alert]) -> int:
 
 
 async def send_heartbeat(status: RunStatus) -> None:
-    """Sendet ein stilles Status-Update (kein @everyone Ping)."""
+    """Sendet ein stilles Status-Update (kein @everyone Ping).
+
+    Die erste Nachricht wird immer editiert statt neu gepostet.
+    Die Message-ID wird in der DB unter 'heartbeat_message_id' persistiert.
+    """
     cfg = await get_settings(_db)
     if not cfg.discord.status_update:
         return
@@ -244,8 +292,26 @@ async def send_heartbeat(status: RunStatus) -> None:
         "embeds": [embed],
         # Kein content → kein Ping
     }
-    await _send_webhook(payload, cfg.discord.webhook_url)
-    logger.debug("Heartbeat gesendet")
+
+    # Gespeicherte Message-ID laden
+    message_id: str | None = await _db.get_setting("heartbeat_message_id")
+
+    if message_id:
+        # Versuche bestehende Nachricht zu editieren
+        edited = await _edit_webhook_message(payload, cfg.discord.webhook_url, message_id)
+        if edited:
+            logger.debug(f"Heartbeat aktualisiert (message_id={message_id})")
+            return
+        # Nachricht existiert nicht mehr → neue erstellen
+        await _db.set_setting("heartbeat_message_id", "")
+
+    # Erste Nachricht senden und ID speichern
+    result = await _send_webhook(payload, cfg.discord.webhook_url, wait=True)
+    if result and isinstance(result, str):
+        await _db.set_setting("heartbeat_message_id", result)
+        logger.info(f"Heartbeat erstellt (message_id={result})")
+    else:
+        logger.warning("Heartbeat konnte nicht gesendet werden")
 
 
 async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
