@@ -58,13 +58,16 @@ def _make_reddit_client(cfg) -> asyncpraw.Reddit:
         "user_agent": _sanitize_credential(cfg.user_agent, "reddit_user_agent"),
     }
     if cfg.username and cfg.password:
-        # User-Authentifizierung (grant_type=password) — benötigt für NSFW-Subreddits
-        # wie r/wallstreetbets. Ohne username/password gibt Reddit 403 zurück.
+        # User-Authentifizierung (grant_type=password) — für NSFW-Subreddits empfohlen
         kwargs["username"] = _sanitize_credential(cfg.username, "reddit_username")
         kwargs["password"] = _sanitize_credential(cfg.password, "reddit_password")
         logger.debug("Reddit: Authentifizierung als Benutzer '{}'", cfg.username)
     else:
-        logger.debug("Reddit: Application-only OAuth (kein username/password gesetzt)")
+        # asyncpraw 7.7+ benötigt read_only=True für korrektes application-only OAuth
+        # (client_credentials grant). Ohne dieses Flag versucht asyncpraw u.U. eine
+        # User-Auth mit leeren Credentials → 403. praw (sync) setzt dies implizit.
+        kwargs["read_only"] = True
+        logger.debug("Reddit: Application-only OAuth (read_only=True)")
     return asyncpraw.Reddit(**kwargs)
 
 
