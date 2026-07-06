@@ -20,6 +20,42 @@ from wsb_crawler.runtime.progress import update_run
 from wsb_crawler.storage.database import Database
 
 
+def _confidence_score(spike: SpikeResult) -> int:
+    """Ein einfacher Erklärbarkeits-Score für Alert-Vorschau und Dashboard."""
+    score = 30
+    score += min(30, spike.current_mentions)
+    if spike.is_new:
+        score += 10
+    if spike.ratio == float("inf"):
+        score += 20
+    else:
+        score += min(20, int(spike.ratio * 4))
+    if spike.price_data and spike.price_data.primary_change is not None:
+        score += min(10, int(abs(spike.price_data.primary_change)))
+    if spike.news:
+        score += min(10, len(spike.news) * 2)
+    return max(0, min(100, score))
+
+
+def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
+    return [
+        {
+            "ticker": alert.ticker,
+            "reason": alert.reason.value,
+            "mentions": alert.spike.current_mentions,
+            "avg_mentions": round(alert.spike.avg_mentions, 2),
+            "ratio": None if alert.spike.ratio == float("inf") else round(alert.spike.ratio, 2),
+            "delta": alert.spike.delta,
+            "is_new": alert.spike.is_new,
+            "price": alert.spike.price_data.primary_price if alert.spike.price_data else None,
+            "price_change": alert.spike.price_data.primary_change if alert.spike.price_data else None,
+            "news_count": len(alert.spike.news),
+            "confidence": _confidence_score(alert.spike),
+        }
+        for alert in alerts
+    ]
+
+
 async def analyze_mentions(
     mention_counts: dict[str, int],
     db: Database,
@@ -52,6 +88,7 @@ async def analyze_mentions(
             progress=70,
             candidate_count=0,
             active_candidate_count=0,
+            alert_preview=[],
         )
         return alerts
 
@@ -116,6 +153,7 @@ async def analyze_mentions(
             message="Keine Spike-Kandidaten in diesem Lauf.",
             progress=78,
             active_candidate_count=0,
+            alert_preview=[],
         )
         return alerts
 
@@ -142,6 +180,7 @@ async def analyze_mentions(
             phase_label="Spikes analysieren",
             message="Alle Kandidaten sind noch im Cooldown.",
             progress=80,
+            alert_preview=[],
         )
         return alerts
 
@@ -198,5 +237,6 @@ async def analyze_mentions(
         phase_label="Kurse & News",
         message=f"{len(alerts)} Alert(s) vorbereitet.",
         progress=85,
+        alert_preview=_alert_preview(alerts),
     )
     return alerts
