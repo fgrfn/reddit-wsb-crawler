@@ -58,7 +58,9 @@ async def analyze_mentions(
     # Vorfilter: jeder Alert-Typ erfordert mindestens min(min_abs, min_delta)
     # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls
     min_relevant = min(cfg.min_abs, cfg.min_delta)
-    relevant_items = [(ticker, current) for ticker, current in mention_counts.items() if current >= min_relevant]
+    relevant_items = [
+        (ticker, current) for ticker, current in mention_counts.items() if current >= min_relevant
+    ]
     spike_results: list[SpikeResult] = []
 
     update_run(

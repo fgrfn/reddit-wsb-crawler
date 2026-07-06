@@ -92,7 +92,9 @@ async def _fetch_posts(
     comments: list[RedditPost] = []
 
     update_subreddit(subreddit_name, posts=0, comments=0)
-    logger.info(f"r/{subreddit_name}: lade bis zu {limit} Posts mit je {comments_limit} Top-Kommentaren")
+    logger.info(
+        f"r/{subreddit_name}: lade bis zu {limit} Posts mit je {comments_limit} Top-Kommentaren"
+    )
 
     subreddit = await reddit.subreddit(subreddit_name)
 
@@ -185,7 +187,8 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
             if isinstance(result, asyncprawcore.exceptions.Forbidden):
                 logger.error(
                     "Reddit 403 bei r/{}: {}. Bitte Reddit-API-Config prüfen "
-                    "(client_id, client_secret, user_agent) und sicherstellen, dass die App als 'script' erstellt wurde.",
+                    "(client_id, client_secret, user_agent) und sicherstellen, "
+                    "dass die App als 'script' erstellt wurde.",
                     sub,
                     result,
                 )
