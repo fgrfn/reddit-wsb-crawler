@@ -1,9 +1,9 @@
 """
 Kursdaten-Enrichment via yfinance.
 
-yfinance selbst ist synchron, wir wrappen es in asyncio.to_thread()
-damit es den Event-Loop nicht blockiert. Alle Ticker werden parallel
-geholt (asyncio.gather).
+yfinance selbst ist synchron, wir wrappen es in asyncio.to_thread(),
+drosseln die Zugriffe aber bewusst. Yahoo antwortet bei parallelen/retry-starken
+QuoteSummary-Anfragen schnell mit 429 Too Many Requests.
 """
 
 from __future__ import annotations
@@ -18,6 +18,15 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from wsb_crawler.models import MarketStatus, PriceData
 from wsb_crawler.storage.cache import price_cache
+
+# Yahoo/yfinance mag keine Burst-Anfragen. Selbst bei nur wenigen Alert-Kandidaten
+# erzeugt yfinance intern mehrere Requests pro Ticker. Daher: sequenziell + kurze
+# Pause + negative Cache-Einträge, damit Fehlschläge nicht im selben Run mehrfach
+# retried werden.
+YFINANCE_MAX_ATTEMPTS = 2
+YFINANCE_REQUEST_DELAY_SECONDS = 1.5
+_failed_price_cache: set[str] = set()
+_price_lock = asyncio.Lock()
 
 
 def _determine_market_status(info: dict[str, Any]) -> MarketStatus:
@@ -43,13 +52,14 @@ def _safe_float(value: object) -> float | None:
 def _fetch_price_sync(ticker: str) -> PriceData:
     """Synchroner yfinance-Call (wird in Thread ausgeführt)."""
     stock = yf.Ticker(ticker)
-    info = stock.info
+    info = stock.fast_info
 
-    # Kursverlauf für 1h/24h/7d Berechnung
+    # Kursverlauf für 1h/24h/7d Berechnung. fast_info vermeidet den besonders
+    # rate-limit-anfälligen quoteSummary/info-Endpunkt für Basisdaten.
     hist_1d = stock.history(period="1d", interval="1h")
     hist_7d = stock.history(period="7d", interval="1d")
 
-    current_price = _safe_float(info.get("currentPrice") or info.get("regularMarketPrice"))
+    current_price = _safe_float(info.get("last_price") or info.get("regular_market_price"))
 
     # Prozentuale Veränderungen berechnen
     change_1h = None
@@ -71,42 +81,41 @@ def _fetch_price_sync(ticker: str) -> PriceData:
         if week_open and week_open > 0:
             change_7d = (current_price - week_open) / week_open * 100
 
-    market_status = _determine_market_status(info)
-
-    volume_f = _safe_float(info.get("volume"))
+    volume_f = _safe_float(info.get("last_volume"))
     volume = int(volume_f) if volume_f else None
 
     return PriceData(
         ticker=ticker,
-        company_name=info.get("shortName") or info.get("longName"),
+        company_name=None,
         price=current_price,
         currency=info.get("currency", "USD"),
         change_1h=change_1h,
         change_24h=change_24h,
         change_7d=change_7d,
-        pre_market_price=_safe_float(info.get("preMarketPrice")),
-        pre_market_change=_safe_float(info.get("preMarketChangePercent")),
-        after_hours_price=_safe_float(info.get("postMarketPrice")),
-        after_hours_change=_safe_float(info.get("postMarketChangePercent")),
-        market_status=market_status,
+        pre_market_price=None,
+        pre_market_change=None,
+        after_hours_price=None,
+        after_hours_change=None,
+        market_status=MarketStatus.CLOSED,
         volume=volume,
-        market_cap=_safe_float(info.get("marketCap")),
+        market_cap=_safe_float(info.get("market_cap")),
         fetched_at=datetime.now(tz=UTC),
     )
 
 
 @retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=10),
+    stop=stop_after_attempt(YFINANCE_MAX_ATTEMPTS),
+    wait=wait_exponential(multiplier=2, min=3, max=15),
     reraise=True,
 )
 async def _fetch_price_with_retry(ticker: str) -> PriceData:
-    """Kurs mit bis zu 3 Versuchen holen.
+    """Kurs mit wenigen Versuchen holen.
 
-    Muss Exceptions durchreichen, damit tenacity überhaupt retryen kann —
-    der frühere Aufbau fing alles intern ab und machte den Retry wirkungslos.
+    Muss Exceptions durchreichen, damit tenacity überhaupt retryen kann.
     """
-    return await asyncio.to_thread(_fetch_price_sync, ticker)
+    async with _price_lock:
+        await asyncio.sleep(YFINANCE_REQUEST_DELAY_SECONDS)
+        return await asyncio.to_thread(_fetch_price_sync, ticker)
 
 
 async def get_price(ticker: str) -> PriceData | None:
@@ -121,20 +130,28 @@ async def get_price(ticker: str) -> PriceData | None:
         logger.debug(f"Cache-Hit für Kurs: {ticker}")
         return cached
 
+    if ticker in _failed_price_cache:
+        logger.debug(f"Negativer Cache-Hit für Kurs: {ticker}")
+        return None
+
     try:
         data: PriceData = await _fetch_price_with_retry(ticker)
         price_cache.set(ticker, data)
         logger.debug(f"Kurs geholt: {ticker} = {data.primary_price} {data.currency}")
         return data
     except Exception as e:
+        _failed_price_cache.add(ticker)
         logger.warning(f"Konnte Kurs für {ticker} nicht holen: {e}")
         return None
 
 
 async def get_prices_bulk(tickers: list[str]) -> dict[str, PriceData | None]:
     """
-    Holt Kursdaten für mehrere Ticker gleichzeitig (parallel).
+    Holt Kursdaten für mehrere Ticker gedrosselt.
     Gibt {ticker: PriceData | None} zurück.
     """
-    results = await asyncio.gather(*[get_price(t) for t in tickers])
-    return dict(zip(tickers, results, strict=False))
+    unique_tickers = list(dict.fromkeys(tickers))
+    results: dict[str, PriceData | None] = {}
+    for ticker in unique_tickers:
+        results[ticker] = await get_price(ticker)
+    return {ticker: results.get(ticker) for ticker in tickers}

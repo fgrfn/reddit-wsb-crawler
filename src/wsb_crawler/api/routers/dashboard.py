@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
+from wsb_crawler.config import is_configured
 from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.storage.database import Database
 
@@ -87,6 +88,11 @@ async def get_runs(limit: int = Query(default=20, ge=1, le=100)) -> list[dict[st
 async def trigger_crawl() -> dict[str, Any]:
     """Startet einen Crawl-Lauf manuell (fire-and-forget als asyncio-Task)."""
     global _crawl_task
+    if not await is_configured(db):
+        raise HTTPException(
+            status_code=400,
+            detail="Konfiguration unvollständig. Bitte zuerst die Ersteinrichtung abschließen.",
+        )
     if is_crawl_running():
         raise HTTPException(status_code=409, detail="Crawl läuft bereits")
     _crawl_task = asyncio.create_task(run_single_crawl(db))

@@ -71,6 +71,40 @@ class TestTickerExtraction:
         assert "FED" not in tickers
         assert "DOWN" not in tickers
 
+    def test_implicit_two_letter_tickers_are_filtered(self):
+        """Zwei Buchstaben ohne $ sind fast immer Wörter/Abkürzungen."""
+        post = _make_post(text="AI and MU are mentioned, but not as cashtags")
+        tickers = [m.ticker for m in extract_tickers(post)]
+        assert "AI" not in tickers
+        assert "MU" not in tickers
+
+    def test_explicit_two_letter_tickers_are_allowed(self):
+        """Zwei Buchstaben mit $ bleiben erlaubt, z.B. $AI oder $MU."""
+        post = _make_post(text="$AI and $MU are explicit cashtags")
+        tickers = [m.ticker for m in extract_tickers(post)]
+        assert "AI" in tickers
+        assert "MU" in tickers
+
+    def test_extra_noise_terms_filtered(self):
+        """Häufige Reddit-/Makro-Abkürzungen werden nicht als Ticker gezählt."""
+        post = _make_post(text="USA USD BTC LMAO WEN BUY ROI DRAM RAM LFG LLM QNX")
+        tickers = [m.ticker for m in extract_tickers(post)]
+        for word in [
+            "USA",
+            "USD",
+            "BTC",
+            "LMAO",
+            "WEN",
+            "BUY",
+            "ROI",
+            "DRAM",
+            "RAM",
+            "LFG",
+            "LLM",
+            "QNX",
+        ]:
+            assert word not in tickers
+
     def test_dedup_within_post(self):
         """Derselbe Ticker wird pro Post nur einmal gezählt."""
         post = _make_post(text="$GME $GME $GME GME GME GME to the moon")
@@ -180,4 +214,4 @@ class TestBlacklist:
     def test_valid_tickers_not_blacklisted(self):
         """Bekannte Ticker sind NICHT in der Blacklist."""
         for ticker in ["GME", "AMC", "TSLA", "NVDA", "AAPL"]:
-            assert ticker not in BLACKLIST, f"{ticker} sollte nicht in der Blacklist sein"
+            assert ticker not in BLACKLIST, f"{ticker} sollte nicht in BLACKLIST sein"
