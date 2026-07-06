@@ -3,463 +3,141 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WSB-Crawler v2</title>
+  <title>WSB-Crawler</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = {
-      darkMode: 'class',
-      theme: { extend: { colors: { brand: { DEFAULT: '#FF4500', dark: '#cc3700' } } } }
-    }
-  </script>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-    * { font-family: 'Inter', system-ui, sans-serif; }
+    * { font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
     .card { background: rgb(24 24 27); border: 1px solid rgb(39 39 42); border-radius: 1rem; padding: 1.25rem; }
-    .btn { display: inline-flex; align-items: center; justify-content: center; gap: .5rem; padding: .55rem .9rem; border-radius: .7rem; font-size: .875rem; font-weight: 700; transition: all .15s ease; white-space: nowrap; }
-    .btn:disabled { opacity: .5; cursor: not-allowed; }
-    .btn-primary { background: #FF4500; color: white; }
-    .btn-primary:hover:not(:disabled) { background: #cc3700; }
-    .btn-ghost { background: rgb(39 39 42); color: rgb(212 212 216); }
-    .btn-ghost:hover:not(:disabled) { background: rgb(63 63 70); color: white; }
-    .input { width: 100%; background: rgb(39 39 42); border: 1px solid rgb(63 63 70); border-radius: .7rem; padding: .6rem .75rem; font-size: .875rem; outline: none; }
-    .input:focus { border-color: #FF4500; box-shadow: 0 0 0 3px rgba(255, 69, 0, .16); }
-    .label { display: block; font-size: .8rem; font-weight: 700; color: rgb(161 161 170); margin-bottom: .35rem; }
-    .badge { display: inline-flex; align-items: center; gap: .35rem; padding: .2rem .55rem; border-radius: 999px; font-size: .72rem; font-weight: 800; }
-    .nav-link { display: flex; align-items: center; gap: .65rem; padding: .65rem .8rem; border-radius: .75rem; font-size: .875rem; color: rgb(161 161 170); text-decoration: none; transition: all .15s ease; }
-    .nav-link:hover { background: rgb(39 39 42); color: rgb(244 244 245); }
-    .nav-link.active { background: rgba(255, 69, 0, .12); color: #FF4500; font-weight: 800; }
-    .table-wrap { overflow-x: auto; }
-    .table-wrap table { min-width: 760px; }
-    @keyframes ping { 75%,100% { transform: scale(2); opacity: 0; } }
+    .btn { display:inline-flex; align-items:center; justify-content:center; gap:.45rem; padding:.55rem .9rem; border-radius:.7rem; font-size:.875rem; font-weight:800; transition:.15s; white-space:nowrap; }
+    .btn:disabled { opacity:.5; cursor:not-allowed; }
+    .btn-primary { background:#ff4500; color:white; }
+    .btn-primary:hover:not(:disabled) { background:#cc3700; }
+    .btn-ghost { background:rgb(39 39 42); color:rgb(212 212 216); }
+    .btn-ghost:hover:not(:disabled) { background:rgb(63 63 70); color:white; }
+    .input { width:100%; background:rgb(39 39 42); border:1px solid rgb(63 63 70); border-radius:.7rem; padding:.6rem .75rem; font-size:.875rem; outline:none; }
+    .label { display:block; font-size:.78rem; font-weight:800; color:rgb(161 161 170); margin-bottom:.35rem; }
+    .badge { display:inline-flex; align-items:center; gap:.35rem; padding:.2rem .55rem; border-radius:999px; font-size:.72rem; font-weight:900; }
+    .nav-link { display:flex; align-items:center; gap:.65rem; padding:.65rem .8rem; border-radius:.75rem; font-size:.875rem; color:rgb(161 161 170); text-decoration:none; }
+    .nav-link:hover { background:rgb(39 39 42); color:white; }
+    .nav-link.active { background:rgba(255,69,0,.12); color:#ff4500; font-weight:900; }
+    .table-wrap { overflow-x:auto; }
+    .table-wrap table { min-width:760px; }
+    @keyframes ping { 75%,100% { transform:scale(2); opacity:0; } }
     .animate-ping { animation: ping 1s cubic-bezier(0,0,.2,1) infinite; }
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
-    ::-webkit-scrollbar-track { background: #18181b; }
-    ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 4px; }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 antialiased">
   <div id="app"></div>
-
   <script>
     const state = {
-      currentPage: 'loading',
-      configured: null,
-      setupValues: {},
-      days: 7,
-      alertFilter: '',
-      logs: [],
-      ws: null,
-      toast: null,
-      refreshTimer: null,
+      currentPage: 'loading', configured: null, days: 7, alertFilter: '', setupValues: {},
+      logs: [], ws: null, toast: null, refreshTimer: null, about: null
     };
-
-    const icons = {
-      dashboard: '▦', bell: '●', settings: '⚙', logs: '≡', play: '▶', refresh: '↻', check: '✓', warn: '!',
-      trendUp: '↗', trendDown: '↘', minus: '→', save: '💾'
-    };
-
+    const icons = { dashboard:'▦', bell:'●', settings:'⚙', logs:'≡', play:'▶', refresh:'↻', check:'✓', warn:'!', save:'💾', flask:'🧪' };
     const REQUIRED_SETUP_FIELDS = ['reddit_client_id', 'reddit_client_secret', 'discord_webhook_url'];
     const SETUP_FIELDS = [
-      { key: 'reddit_client_id', label: 'Reddit Client ID', placeholder: 'abc123xyz', required: true },
-      { key: 'reddit_client_secret', label: 'Reddit Client Secret', type: 'password', placeholder: '••••••••', required: true },
-      { key: 'discord_webhook_url', label: 'Discord Webhook URL', placeholder: 'https://discord.com/api/webhooks/...', required: true },
-      { key: 'subreddits', label: 'Subreddits', placeholder: 'wallstreetbets,wallstreetbetsGER' },
-      { key: 'crawl_interval_minutes', label: 'Crawl-Intervall', placeholder: '30' },
+      { key:'reddit_client_id', label:'Reddit Client ID', required:true },
+      { key:'reddit_client_secret', label:'Reddit Client Secret', type:'password', required:true },
+      { key:'discord_webhook_url', label:'Discord Webhook URL', required:true },
+      { key:'subreddits', label:'Subreddits', placeholder:'wallstreetbets,wallstreetbetsGER' },
+      { key:'crawl_interval_minutes', label:'Crawl-Intervall Minuten', placeholder:'30' },
     ];
-
     const CONFIG_SECTIONS = [
-      { title: 'Reddit API', fields: [
-        { key: 'reddit_client_id', label: 'Client ID', placeholder: 'abc123' },
-        { key: 'reddit_client_secret', label: 'Client Secret', type: 'password', placeholder: '••••••••' },
-        { key: 'reddit_username', label: 'Reddit Benutzername', placeholder: 'dein_reddit_user' },
-        { key: 'reddit_password', label: 'Reddit Passwort', type: 'password', placeholder: '••••••••' },
-        { key: 'reddit_user_agent', label: 'User Agent', placeholder: 'python:wsb-crawler:v2 (by /u/deinuser)' },
+      { title:'Reddit API', fields:[
+        { key:'reddit_client_id', label:'Client ID' }, { key:'reddit_client_secret', label:'Client Secret', type:'password' },
+        { key:'reddit_username', label:'Reddit Benutzername' }, { key:'reddit_password', label:'Reddit Passwort', type:'password' },
+        { key:'reddit_user_agent', label:'User Agent' },
       ]},
-      { title: 'Discord', fields: [
-        { key: 'discord_webhook_url', label: 'Webhook URL', type: 'password', placeholder: 'https://discord.com/api/webhooks/...' },
-        { key: 'discord_bot_token', label: 'Bot Token optional', type: 'password', placeholder: 'Nur für Slash-Commands' },
+      { title:'Discord', fields:[
+        { key:'discord_webhook_url', label:'Webhook URL', type:'password' }, { key:'discord_bot_token', label:'Bot Token optional', type:'password' },
       ]},
-      { title: 'NewsAPI', fields: [
-        { key: 'newsapi_key', label: 'API Key optional', type: 'password', placeholder: 'newsapi.org' },
-        { key: 'newsapi_window_hours', label: 'News-Fenster Stunden', placeholder: '48' },
+      { title:'Subreddits & Crawler', fields:[
+        { key:'subreddits', label:'Subreddits' }, { key:'crawl_interval_minutes', label:'Intervall Minuten' },
+        { key:'posts_limit', label:'Posts pro Subreddit' }, { key:'comments_limit', label:'Kommentare pro Post' },
       ]},
-      { title: 'Subreddits & Crawler', fields: [
-        { key: 'subreddits', label: 'Subreddits', placeholder: 'wallstreetbets,wallstreetbetsGER' },
-        { key: 'crawl_interval_minutes', label: 'Intervall Minuten', placeholder: '30' },
-        { key: 'posts_limit', label: 'Posts pro Subreddit', placeholder: '500' },
-        { key: 'comments_limit', label: 'Kommentare pro Post', placeholder: '100' },
-      ]},
-      { title: 'Alert-Schwellwerte', fields: [
-        { key: 'alert_min_abs', label: 'Min. Nennungen neuer Ticker', placeholder: '20' },
-        { key: 'alert_min_delta', label: 'Min. Anstieg absolut', placeholder: '10' },
-        { key: 'alert_ratio', label: 'Min. Faktor', placeholder: '2.0' },
-        { key: 'alert_min_price_move', label: 'Min. Kursänderung %', placeholder: '5.0' },
-        { key: 'alert_max_per_run', label: 'Max. Alerts pro Lauf', placeholder: '3' },
-        { key: 'alert_cooldown_h', label: 'Cooldown Stunden', placeholder: '4' },
+      { title:'Alert-Schwellwerte', fields:[
+        { key:'alert_min_abs', label:'Min. Nennungen neuer Ticker' }, { key:'alert_min_delta', label:'Min. Anstieg absolut' },
+        { key:'alert_ratio', label:'Min. Faktor' }, { key:'alert_min_price_move', label:'Min. Kursänderung %' },
+        { key:'alert_max_per_run', label:'Max. Alerts pro Lauf' }, { key:'alert_cooldown_h', label:'Cooldown Stunden' },
       ]},
     ];
+    let configValues = {}; let configSecrets = new Set(); let configSaved = false;
 
-    let configValues = {};
-    let configSecrets = new Set();
-    let configSaved = false;
-
-    function escapeHtml(value) {
-      return String(value ?? '')
-        .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
-    }
-
-    function fmtNumber(value) {
-      return new Intl.NumberFormat('de-DE').format(Number(value || 0));
-    }
-
-    function fmtDate(value) {
-      if (!value) return '—';
-      return new Date(value).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-    }
-
-    function fmtDuration(seconds) {
-      if (seconds === null || seconds === undefined) return '—';
-      const s = Math.max(0, Number(seconds));
-      if (s < 60) return `${Math.round(s)}s`;
-      return `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`;
-    }
-
-    function trendIcon(trend) {
-      if (trend === 'up') return `<span class="text-green-400">${icons.trendUp}</span>`;
-      if (trend === 'down') return `<span class="text-red-400">${icons.trendDown}</span>`;
-      return `<span class="text-zinc-500">${icons.minus}</span>`;
-    }
+    const escapeHtml = v => String(v ?? '').replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;');
+    const fmtNumber = v => new Intl.NumberFormat('de-DE').format(Number(v || 0));
+    const fmtDate = v => v ? new Date(v).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' }) : '—';
+    const fmtDuration = sec => { if (sec === null || sec === undefined) return '—'; const s=Math.max(0,Number(sec)); return s < 60 ? `${Math.round(s)}s` : `${Math.floor(s/60)}m ${Math.round(s%60)}s`; };
+    const trendIcon = t => t === 'up' ? '<span class="text-green-400">↗</span>' : t === 'down' ? '<span class="text-red-400">↘</span>' : '<span class="text-zinc-500">→</span>';
 
     async function api(path, options = {}) {
       const res = await fetch(`/api${path}`, options);
       if (!res.ok) {
-        let message = `HTTP ${res.status}`;
-        try {
-          const data = await res.json();
-          message = data.detail || JSON.stringify(data);
-        } catch {
-          message = await res.text() || message;
-        }
-        throw new Error(message);
+        let msg = `HTTP ${res.status}`;
+        try { const data = await res.json(); msg = data.detail || JSON.stringify(data); } catch { msg = await res.text() || msg; }
+        throw new Error(msg);
       }
       return res.json();
     }
-
-    function showToast(message, type = 'info') {
-      state.toast = { message, type };
-      render();
-      setTimeout(() => { state.toast = null; render(); }, 3500);
-    }
-
-    function toastMarkup() {
-      if (!state.toast) return '';
-      const cls = state.toast.type === 'error' ? 'border-red-500/40 bg-red-500/15 text-red-200' : 'border-brand/40 bg-brand/15 text-orange-100';
-      return `<div class="fixed right-4 top-4 z-50 max-w-md rounded-xl border px-4 py-3 text-sm shadow-2xl ${cls}">${escapeHtml(state.toast.message)}</div>`;
-    }
-
-    function navigate(page) {
-      state.currentPage = page;
-      window.location.hash = page === 'dashboard' ? '' : page;
-      render();
-    }
-
-    function initRouter() {
-      state.currentPage = window.location.hash.slice(1) || 'dashboard';
-      window.addEventListener('hashchange', () => {
-        state.currentPage = window.location.hash.slice(1) || 'dashboard';
-        render();
-      });
-    }
-
-    function scheduleDashboardRefresh(active) {
-      if (state.refreshTimer) clearTimeout(state.refreshTimer);
-      state.refreshTimer = null;
-      if (active && state.currentPage === 'dashboard') {
-        state.refreshTimer = setTimeout(() => render(), 2500);
-      }
-    }
+    function showToast(message, type='info') { state.toast = { message, type }; render(); setTimeout(() => { state.toast = null; render(); }, 3500); }
+    function toastMarkup() { if (!state.toast) return ''; const cls = state.toast.type === 'error' ? 'border-red-500/40 bg-red-500/15 text-red-200' : 'border-orange-500/40 bg-orange-500/15 text-orange-100'; return `<div class="fixed right-4 top-4 z-50 max-w-md rounded-xl border px-4 py-3 text-sm shadow-2xl ${cls}">${escapeHtml(state.toast.message)}</div>`; }
+    function navigate(page) { state.currentPage = page; window.location.hash = page === 'dashboard' ? '' : page; render(); }
+    function initRouter() { state.currentPage = window.location.hash.slice(1) || 'dashboard'; window.addEventListener('hashchange', () => { state.currentPage = window.location.hash.slice(1) || 'dashboard'; render(); }); }
+    function scheduleDashboardRefresh(active) { if (state.refreshTimer) clearTimeout(state.refreshTimer); state.refreshTimer = null; if (active && state.currentPage === 'dashboard') state.refreshTimer = setTimeout(() => render(), 2500); }
 
     function renderLayout(content) {
-      const nav = [
-        { page: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
-        { page: 'alerts', label: 'Alerts', icon: 'bell' },
-        { page: 'config', label: 'Konfiguration', icon: 'settings' },
-        { page: 'logs', label: 'Logs', icon: 'logs' },
-      ];
-      const navHtml = nav.map(({ page, label, icon }) => `
-        <a href="#${page === 'dashboard' ? '' : page}" class="nav-link ${state.currentPage === page ? 'active' : ''}" onclick="navigate('${page}'); return false;">
-          <span class="w-4 text-center">${icons[icon]}</span><span>${label}</span>
-        </a>`).join('');
-      return `
-        ${toastMarkup()}
-        <div class="min-h-screen lg:flex">
-          <aside class="hidden w-64 shrink-0 border-r border-zinc-800 bg-zinc-950 p-4 lg:flex lg:flex-col">
-            <div class="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-4">
-              <div class="text-xl font-black tracking-tight text-brand">WSB-Crawler</div>
-              <div class="mt-1 text-xs text-zinc-500">Reddit Hype Monitor v2</div>
-            </div>
-            <nav class="space-y-1">${navHtml}</nav>
-          </aside>
-          <div class="flex-1">
-            <header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur lg:hidden">
-              <div class="mb-3 flex items-center justify-between"><div><div class="font-black text-brand">WSB-Crawler</div><div class="text-xs text-zinc-500">v2 Dashboard</div></div><button class="btn btn-ghost" onclick="render()">${icons.refresh}</button></div>
-              <nav class="grid grid-cols-4 gap-1">${navHtml}</nav>
-            </header>
-            <main class="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">${content}</main>
-          </div>
-        </div>`;
+      const nav = [ ['dashboard','Dashboard','dashboard'], ['alerts','Alerts','bell'], ['config','Konfiguration','settings'], ['logs','Logs','logs'] ];
+      const navHtml = nav.map(([page,label,icon]) => `<a href="#${page === 'dashboard' ? '' : page}" class="nav-link ${state.currentPage === page ? 'active' : ''}" onclick="navigate('${page}'); return false;"><span class="w-4 text-center">${icons[icon]}</span><span>${label}</span></a>`).join('');
+      const version = state.about?.version ? `v${escapeHtml(state.about.version)}` : 'v2';
+      return `${toastMarkup()}<div class="min-h-screen lg:flex"><aside class="hidden w-64 shrink-0 border-r border-zinc-800 bg-zinc-950 p-4 lg:flex lg:flex-col"><div class="mb-6 rounded-2xl border border-zinc-800 bg-zinc-900/80 px-4 py-4"><div class="text-xl font-black tracking-tight text-orange-500">WSB-Crawler</div><div class="mt-1 text-xs text-zinc-500">${version}${state.about?.build_commit ? ' · ' + escapeHtml(state.about.build_commit.slice(0,7)) : ''}</div></div><nav class="space-y-1">${navHtml}</nav></aside><div class="flex-1"><header class="sticky top-0 z-30 border-b border-zinc-800 bg-zinc-950/90 px-4 py-3 backdrop-blur lg:hidden"><div class="mb-3 flex items-center justify-between"><div><div class="font-black text-orange-500">WSB-Crawler</div><div class="text-xs text-zinc-500">${version}</div></div><button class="btn btn-ghost" onclick="render()">${icons.refresh}</button></div><nav class="grid grid-cols-4 gap-1">${navHtml}</nav></header><main class="mx-auto max-w-7xl p-4 sm:p-6 lg:p-8">${content}</main></div></div>`;
     }
-
-    function pageHeader(title, subtitle = '', action = '') {
-      return `<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h1 class="text-2xl font-black tracking-tight sm:text-3xl">${title}</h1>${subtitle ? `<p class="mt-1 text-sm text-zinc-500">${subtitle}</p>` : ''}</div>${action}</div>`;
-    }
+    const pageHeader = (title, subtitle='', action='') => `<div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between"><div><h1 class="text-2xl font-black tracking-tight sm:text-3xl">${title}</h1>${subtitle ? `<p class="mt-1 text-sm text-zinc-500">${subtitle}</p>` : ''}</div>${action}</div>`;
 
     function renderSetup() {
-      return `
-        ${toastMarkup()}
-        <div class="min-h-screen bg-[radial-gradient(circle_at_top,rgba(255,69,0,.18),transparent_35%),#09090b] px-4 py-8">
-          <div class="mx-auto max-w-2xl space-y-6">
-            <div class="text-center"><div class="text-3xl font-black text-brand">WSB-Crawler</div><p class="mt-2 text-sm text-zinc-500">Ersteinrichtung — danach startet der Scheduler automatisch.</p></div>
-            <div class="card space-y-5">
-              <div class="rounded-xl border border-brand/25 bg-brand/10 px-4 py-3 text-sm text-orange-100">Pflicht sind Reddit Client ID, Reddit Secret und Discord Webhook. Optionale Felder kannst du später ergänzen.</div>
-              <div class="grid gap-4 sm:grid-cols-2">
-                ${SETUP_FIELDS.map(f => `<div class="${f.key === 'discord_webhook_url' ? 'sm:col-span-2' : ''}"><label class="label">${f.label}${f.required ? '<span class="ml-1 text-brand">*</span>' : ''}</label><input class="input" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${escapeHtml(state.setupValues[f.key] || '')}" oninput="state.setupValues['${f.key}'] = this.value" /></div>`).join('')}
-              </div>
-              <button class="btn btn-primary w-full" onclick="saveSetup()">${icons.check} Einrichtung speichern</button>
-              <div id="setup-error"></div>
-            </div>
-          </div>
-        </div>`;
+      return `${toastMarkup()}<div class="min-h-screen bg-zinc-950 px-4 py-8"><div class="mx-auto max-w-2xl space-y-6"><div class="text-center"><div class="text-3xl font-black text-orange-500">WSB-Crawler</div><p class="mt-2 text-sm text-zinc-500">Ersteinrichtung — danach startet der Scheduler automatisch.</p></div><div class="card space-y-5"><div class="rounded-xl border border-orange-500/25 bg-orange-500/10 px-4 py-3 text-sm text-orange-100">Pflicht sind Reddit Client ID, Reddit Secret und Discord Webhook.</div><div class="grid gap-4 sm:grid-cols-2">${SETUP_FIELDS.map(f => `<div class="${f.key === 'discord_webhook_url' ? 'sm:col-span-2' : ''}"><label class="label">${f.label}${f.required ? '<span class="ml-1 text-orange-500">*</span>' : ''}</label><input class="input" type="${f.type || 'text'}" placeholder="${f.placeholder || ''}" value="${escapeHtml(state.setupValues[f.key] || '')}" oninput="state.setupValues['${f.key}'] = this.value" /></div>`).join('')}</div><button class="btn btn-primary w-full" onclick="saveSetup()">${icons.check} Einrichtung speichern</button><div id="setup-error"></div></div></div></div>`;
     }
+    async function saveSetup() { const err=document.getElementById('setup-error'); const missing=REQUIRED_SETUP_FIELDS.filter(k => !String(state.setupValues[k] || '').trim()); if (missing.length) { err.innerHTML='<p class="rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-300">Bitte alle Pflichtfelder ausfüllen.</p>'; return; } try { const payload=Object.fromEntries(Object.entries(state.setupValues).filter(([,v]) => String(v||'').trim() !== '')); await api('/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); const status=await api('/config/status'); if (!status.configured) throw new Error('Backend meldet Konfiguration noch unvollständig.'); state.configured=true; showToast('Einrichtung gespeichert.'); navigate('dashboard'); } catch(e) { err.innerHTML=`<p class="rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-300">${escapeHtml(e.message)}</p>`; } }
 
-    async function saveSetup() {
-      const errorDiv = document.getElementById('setup-error');
-      const missing = REQUIRED_SETUP_FIELDS.filter(key => !String(state.setupValues[key] || '').trim());
-      if (missing.length) {
-        errorDiv.innerHTML = `<p class="rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-300">Bitte alle Pflichtfelder ausfüllen.</p>`;
-        return;
-      }
-      try {
-        const payload = Object.fromEntries(Object.entries(state.setupValues).filter(([, v]) => String(v || '').trim() !== ''));
-        await api('/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        const status = await api('/config/status');
-        if (!status.configured) throw new Error('Konfiguration gespeichert, aber Backend meldet noch unvollständig.');
-        state.configured = true;
-        showToast('Einrichtung gespeichert.');
-        navigate('dashboard');
-      } catch (e) {
-        errorDiv.innerHTML = `<p class="rounded-xl bg-red-500/15 px-4 py-3 text-sm text-red-300">${escapeHtml(e.message)}</p>`;
-      }
+    function renderDiagnostics(run) {
+      const items = Array.isArray(run?.diagnostics) ? run.diagnostics : [];
+      if (!items.length) return '';
+      return `<section class="card border-amber-500/30 bg-amber-500/5"><div class="mb-3 flex items-center justify-between"><h2 class="font-black text-amber-200">Letzte Hinweise & Fehler</h2><span class="badge bg-amber-500/20 text-amber-200">${items.length}</span></div><div class="space-y-2">${items.slice().reverse().map(d => `<div class="rounded-xl bg-zinc-950/60 px-3 py-2 text-sm"><div class="flex items-center justify-between gap-3"><span class="font-bold ${d.level === 'ERROR' ? 'text-red-300' : d.level === 'WARNING' ? 'text-amber-300' : 'text-zinc-300'}">${escapeHtml(d.level)}</span><span class="text-xs text-zinc-500">${escapeHtml(d.source || '')}</span></div><div class="mt-1 text-zinc-400">${escapeHtml(d.message)}</div></div>`).join('')}</div></section>`;
     }
-
+    function renderAlertPreview(run) {
+      const items = Array.isArray(run?.alert_preview) ? run.alert_preview : [];
+      if (!items.length) return '';
+      return `<section class="card border-blue-500/30 bg-blue-500/5"><div class="mb-4 flex items-center justify-between"><h2 class="font-black text-blue-200">Alert-Vorschau</h2><span class="badge bg-blue-500/20 text-blue-200">${items.length} Kandidaten</span></div><div class="grid gap-3 lg:grid-cols-2">${items.map(a => `<div class="rounded-xl bg-zinc-950/60 px-3 py-3 text-sm"><div class="flex items-start justify-between gap-3"><div><button class="font-mono text-base font-black text-orange-300 hover:underline" onclick="navigate('ticker/${escapeHtml(a.ticker)}')">$${escapeHtml(a.ticker)}</button><div class="mt-1 text-xs text-zinc-500">${fmtNumber(a.mentions)} Nennungen · ${a.ratio === null ? 'neu' : Number(a.ratio).toFixed(1) + 'x Ø'} · ${fmtNumber(a.news_count)} News</div></div><span class="badge bg-blue-500/20 text-blue-200">Score ${fmtNumber(a.confidence)}</span></div></div>`).join('')}</div></section>`;
+    }
     function renderRunProgress(run) {
       if (!run) return '';
-      const active = Boolean(run.active);
-      const progress = Math.round(Number(run.progress || 0));
-      const subreddits = Object.entries(run.subreddit_progress || {});
-      const topTickers = Array.isArray(run.top_tickers) ? run.top_tickers : [];
-      const steps = Array.isArray(run.steps) ? run.steps : [];
-      return `
-        <section class="card border-brand/30 bg-brand/5">
-          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <div class="mb-2 flex items-center gap-2">
-                ${active ? '<span class="relative flex h-2.5 w-2.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand opacity-75"></span><span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-brand"></span></span>' : ''}
-                <span class="badge ${active ? 'bg-brand/20 text-orange-200' : run.success ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}">${active ? 'Läuft' : run.success ? 'Abgeschlossen' : 'Fehler'}</span>
-                <span class="font-mono text-xs text-zinc-500">${escapeHtml(run.short_id || '')}</span>
-              </div>
-              <h2 class="text-lg font-black">${escapeHtml(run.phase_label || 'Crawl')}</h2>
-              <p class="mt-1 text-sm text-zinc-400">${escapeHtml(run.message || '')}</p>
-            </div>
-            <div class="text-sm text-zinc-500">Laufzeit: <span class="font-bold text-zinc-200">${fmtDuration(run.duration_s)}</span></div>
-          </div>
-          <div class="mb-5 h-3 overflow-hidden rounded-full bg-zinc-800"><div class="h-full rounded-full bg-brand transition-all" style="width: ${progress}%"></div></div>
-          <div class="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-            ${[
-              ['Posts', run.posts_scanned], ['Kommentare', run.comments_scanned], ['Ticker', run.tickers_found], ['Kandidaten', run.candidate_count], ['Alerts', run.alerts_sent]
-            ].map(([label, value]) => `<div class="rounded-xl bg-zinc-950/60 px-3 py-3"><div class="text-xs text-zinc-500">${label}</div><div class="text-xl font-black tabular-nums">${fmtNumber(value)}</div></div>`).join('')}
-          </div>
-          ${steps.length ? `<div class="mb-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">${steps.map(step => `<div class="rounded-xl border ${step.done ? 'border-green-500/30 bg-green-500/10 text-green-200' : step.key === run.phase ? 'border-brand/40 bg-brand/10 text-orange-100' : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'} px-3 py-2 text-xs font-bold">${step.done ? icons.check : step.key === run.phase ? '…' : '·'} ${escapeHtml(step.label)}</div>`).join('')}</div>` : ''}
-          ${subreddits.length ? `<div class="mb-5 grid gap-3 lg:grid-cols-2">${subreddits.map(([sub, data]) => `<div class="rounded-xl bg-zinc-950/60 px-3 py-3 text-sm"><div class="mb-1 flex items-center justify-between"><span class="font-bold">r/${escapeHtml(sub)}</span><span class="text-xs ${data.error ? 'text-red-400' : data.done ? 'text-green-400' : 'text-zinc-500'}">${data.error ? 'Fehler' : data.done ? 'fertig' : 'läuft'}</span></div><div class="text-xs text-zinc-500">${fmtNumber(data.posts)} Posts · ${fmtNumber(data.comments)} Kommentare</div>${data.error ? `<div class="mt-1 text-xs text-red-300">${escapeHtml(data.error)}</div>` : ''}</div>`).join('')}</div>` : ''}
-          ${topTickers.length ? `<div><div class="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500">Top-Ticker im laufenden Run</div><div class="flex flex-wrap gap-2">${topTickers.slice(0, 10).map(([ticker, count]) => `<span class="badge bg-zinc-800 text-zinc-200">$${escapeHtml(ticker)} · ${fmtNumber(count)}</span>`).join('')}</div></div>` : ''}
-        </section>`;
+      const active=Boolean(run.active), progress=Math.round(Number(run.progress || 0));
+      const subreddits=Object.entries(run.subreddit_progress || {}), topTickers=Array.isArray(run.top_tickers) ? run.top_tickers : [], steps=Array.isArray(run.steps) ? run.steps : [];
+      return `<section class="card border-orange-500/30 bg-orange-500/5"><div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div><div class="mb-2 flex flex-wrap items-center gap-2">${active ? '<span class="relative flex h-2.5 w-2.5"><span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-orange-500 opacity-75"></span><span class="relative inline-flex h-2.5 w-2.5 rounded-full bg-orange-500"></span></span>' : ''}<span class="badge ${active ? 'bg-orange-500/20 text-orange-200' : run.success ? 'bg-green-500/20 text-green-300' : 'bg-red-500/20 text-red-300'}">${active ? 'Läuft' : run.success ? 'Abgeschlossen' : 'Fehler'}</span>${run.dry_run ? '<span class="badge bg-blue-500/20 text-blue-200">Dry-Run</span>' : ''}<span class="font-mono text-xs text-zinc-500">${escapeHtml(run.short_id || '')}</span></div><h2 class="text-lg font-black">${escapeHtml(run.phase_label || 'Crawl')}</h2><p class="mt-1 text-sm text-zinc-400">${escapeHtml(run.message || '')}</p></div><div class="text-sm text-zinc-500">Laufzeit: <span class="font-bold text-zinc-200">${fmtDuration(run.duration_s)}</span></div></div><div class="mb-5 h-3 overflow-hidden rounded-full bg-zinc-800"><div class="h-full rounded-full bg-orange-500 transition-all" style="width:${progress}%"></div></div><div class="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">${[['Posts',run.posts_scanned],['Kommentare',run.comments_scanned],['Ticker',run.tickers_found],['Kandidaten',run.candidate_count],['Alerts',run.alerts_sent]].map(([l,v]) => `<div class="rounded-xl bg-zinc-950/60 px-3 py-3"><div class="text-xs text-zinc-500">${l}</div><div class="text-xl font-black tabular-nums">${fmtNumber(v)}</div></div>`).join('')}</div>${steps.length ? `<div class="mb-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">${steps.map(step => `<div class="rounded-xl border ${step.done ? 'border-green-500/30 bg-green-500/10 text-green-200' : step.key === run.phase ? 'border-orange-500/40 bg-orange-500/10 text-orange-100' : 'border-zinc-800 bg-zinc-950/40 text-zinc-500'} px-3 py-2 text-xs font-bold">${step.done ? icons.check : step.key === run.phase ? '…' : '·'} ${escapeHtml(step.label)}</div>`).join('')}</div>` : ''}${subreddits.length ? `<div class="mb-5 grid gap-3 lg:grid-cols-2">${subreddits.map(([sub,data]) => `<div class="rounded-xl bg-zinc-950/60 px-3 py-3 text-sm"><div class="mb-1 flex items-center justify-between"><span class="font-bold">r/${escapeHtml(sub)}</span><span class="text-xs ${data.error ? 'text-red-400' : data.done ? 'text-green-400' : 'text-zinc-500'}">${data.error ? 'Fehler' : data.done ? 'fertig' : 'läuft'}</span></div><div class="text-xs text-zinc-500">${fmtNumber(data.posts)} Posts · ${fmtNumber(data.comments)} Kommentare</div>${data.error ? `<div class="mt-1 text-xs text-red-300">${escapeHtml(data.error)}</div>` : ''}</div>`).join('')}</div>` : ''}${topTickers.length ? `<div><div class="mb-2 text-xs font-bold uppercase tracking-wide text-zinc-500">Top-Ticker im laufenden Run</div><div class="flex flex-wrap gap-2">${topTickers.slice(0,10).map(([ticker,count]) => `<button class="badge bg-zinc-800 text-zinc-200 hover:bg-zinc-700" onclick="navigate('ticker/${escapeHtml(ticker)}')">$${escapeHtml(ticker)} · ${fmtNumber(count)}</button>`).join('')}</div></div>` : ''}</section>`;
     }
 
     async function renderDashboard() {
-      const [tickers, status, alerts, runs] = await Promise.all([
-        api(`/tickers?days=${state.days}`), api('/status'), api('/alerts?limit=5'), api('/runs?limit=5')
-      ]);
+      const [tickers,status,alerts,runs,about] = await Promise.all([api(`/tickers?days=${state.days}`), api('/status'), api('/alerts?limit=5'), api('/runs?limit=5'), api('/about')]);
+      state.about = about;
       scheduleDashboardRefresh(Boolean(status.crawl_running));
-      const run = status.current_run;
-      const maxMentions = Math.max(1, ...tickers.map(t => Number(t.total_mentions || 0)));
-      return `
-        <div class="space-y-6">
-          ${pageHeader('Dashboard', 'Live-Status, Fortschritt und Ergebnisse der letzten Crawls.', `<div class="flex flex-wrap gap-2">${[7, 14, 30].map(d => `<button onclick="setDays(${d})" class="btn ${state.days === d ? 'btn-primary' : 'btn-ghost'}">${d} Tage</button>`).join('')}<button onclick="render()" class="btn btn-ghost">${icons.refresh} Aktualisieren</button><button onclick="startCrawl()" ${status.crawl_running ? 'disabled' : ''} class="btn btn-primary">${icons.play} ${status.crawl_running ? 'Läuft…' : 'Lauf starten'}</button></div>`)}
-          ${renderRunProgress(run)}
-          <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            ${[
-              ['Crawl-Runs', status.total_runs, `Letzte Dauer: ${fmtDuration(status.last_run_duration_s)}`],
-              ['Alerts gesamt', status.total_alerts, `${alerts.length} zuletzt geladen`],
-              ['Ticker getrackt', status.tracked_tickers, `${tickers.length} im ${state.days}d Fenster`],
-              ['Letzter Lauf', fmtDate(status.last_run_at), `Nächster Lauf: ${fmtDate(status.next_run_at)}`],
-            ].map(([label, value, sub]) => `<div class="card"><div class="text-xs font-bold uppercase tracking-wide text-zinc-500">${label}</div><div class="mt-2 text-2xl font-black">${value}</div><div class="mt-1 text-xs text-zinc-500">${sub}</div></div>`).join('')}
-          </div>
-          <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-            <section class="card">
-              <div class="mb-5 flex items-center justify-between"><div><h2 class="text-lg font-black">Top-Ticker</h2><p class="text-sm text-zinc-500">Nach Nennungen in den letzten ${state.days} Tagen.</p></div><span class="badge bg-zinc-800 text-zinc-300">${tickers.length} Treffer</span></div>
-              ${tickers.length === 0 ? `<div class="rounded-2xl border border-dashed border-zinc-700 px-4 py-10 text-center text-sm text-zinc-500">Noch keine Daten. Starte den ersten Crawl-Lauf.</div>` : `<div class="space-y-3">${tickers.slice(0, 15).map((t, i) => { const width = Math.max(4, (Number(t.total_mentions || 0) / maxMentions) * 100); const color = t.trend === 'up' ? 'bg-green-500' : t.trend === 'down' ? 'bg-red-500' : 'bg-brand'; return `<div class="grid grid-cols-[3rem_minmax(0,1fr)_4rem] items-center gap-3 rounded-xl px-2 py-1 hover:bg-zinc-900/70"><div class="font-mono text-sm font-black">$${escapeHtml(t.ticker)}</div><div class="h-7 rounded-full bg-zinc-800"><div class="${color} flex h-full items-center rounded-full px-2 text-xs font-black text-white" style="width: ${width}%">#${i + 1}</div></div><div class="text-right text-sm font-bold tabular-nums">${fmtNumber(t.total_mentions)}</div></div>`; }).join('')}</div>`}
-            </section>
-            <aside class="space-y-6">
-              <section class="card"><div class="mb-4 flex items-center justify-between"><h2 class="font-black">Letzte Alerts</h2><button class="text-xs font-bold text-brand" onclick="navigate('alerts')">Alle anzeigen</button></div>${alerts.length === 0 ? `<p class="text-sm text-zinc-500">Noch keine Alerts.</p>` : `<div class="space-y-3">${alerts.map(a => alertRow(a)).join('')}</div>`}</section>
-              <section class="card"><div class="mb-4 flex items-center justify-between"><h2 class="font-black">Letzte Runs</h2><span class="text-xs text-zinc-500">${runs.length} Einträge</span></div>${runs.length === 0 ? `<p class="text-sm text-zinc-500">Noch kein Lauf vorhanden.</p>` : `<div class="space-y-2">${runs.map(r => `<div class="rounded-xl bg-zinc-900/70 px-3 py-3 text-sm"><div class="flex items-center justify-between gap-3"><span class="font-bold">${fmtDate(r.started_at)}</span><span class="text-xs text-zinc-500">${fmtNumber(r.tickers_found || 0)} Ticker</span></div><div class="mt-1 text-xs text-zinc-500">${fmtNumber(r.posts_scanned || 0)} Posts · ${fmtNumber(r.comments_scanned || 0)} Kommentare · ${fmtNumber(r.alerts_sent || 0)} Alerts</div></div>`).join('')}</div>`}</section>
-            </aside>
-          </div>
-          <section class="card p-0"><div class="border-b border-zinc-800 px-5 py-4"><h2 class="font-black">Ticker-Tabelle</h2></div><div class="table-wrap"><table class="w-full text-sm"><thead><tr class="border-b border-zinc-800 bg-zinc-950/40">${['Ticker', 'Nennungen', 'Ø/Tag', 'Peak', 'Trend'].map(h => `<th class="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-zinc-500">${h}</th>`).join('')}</tr></thead><tbody>${tickers.length === 0 ? `<tr><td colspan="5" class="py-10 text-center text-zinc-500">Keine Daten vorhanden.</td></tr>` : tickers.map(t => `<tr class="border-b border-zinc-800/60 hover:bg-zinc-900/70"><td class="px-4 py-3 font-mono font-black">$${escapeHtml(t.ticker)}</td><td class="px-4 py-3 tabular-nums">${fmtNumber(t.total_mentions)}</td><td class="px-4 py-3 tabular-nums text-zinc-400">${Number(t.avg_daily || 0).toFixed(1)}</td><td class="px-4 py-3 tabular-nums text-zinc-400">${fmtNumber(t.peak_mentions)}</td><td class="px-4 py-3">${trendIcon(t.trend)}</td></tr>`).join('')}</tbody></table></div></section>
-        </div>`;
+      const run=status.current_run, maxMentions=Math.max(1, ...tickers.map(t => Number(t.total_mentions || 0)));
+      return `<div class="space-y-6">${pageHeader('Dashboard','Live-Status, Fortschritt und Ergebnisse der letzten Crawls.',`<div class="flex flex-wrap gap-2">${[7,14,30].map(d => `<button onclick="setDays(${d})" class="btn ${state.days === d ? 'btn-primary' : 'btn-ghost'}">${d} Tage</button>`).join('')}<button onclick="render()" class="btn btn-ghost">${icons.refresh} Aktualisieren</button><button onclick="startCrawl(false)" ${status.crawl_running ? 'disabled' : ''} class="btn btn-primary">${icons.play} ${status.crawl_running ? 'Läuft…' : 'Live-Lauf'}</button><button onclick="startCrawl(true)" ${status.crawl_running ? 'disabled' : ''} class="btn btn-ghost">${icons.flask} Dry-Run</button></div>`)}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">${[['Version',about.version || '—',about.build_commit ? about.build_commit.slice(0,7) : 'Build unbekannt'],['Crawl-Runs',status.total_runs,`Letzte Dauer: ${fmtDuration(status.last_run_duration_s)}`],['Alerts gesamt',status.total_alerts,`${alerts.length} zuletzt geladen`],['Ticker getrackt',status.tracked_tickers,`${tickers.length} im ${state.days}d Fenster`],['Letzter Lauf',fmtDate(status.last_run_at),`Nächster Lauf: ${fmtDate(status.next_run_at)}`]].map(([l,v,s]) => `<div class="card"><div class="text-xs font-bold uppercase tracking-wide text-zinc-500">${l}</div><div class="mt-2 text-2xl font-black">${v}</div><div class="mt-1 text-xs text-zinc-500">${s}</div></div>`).join('')}</div>${renderRunProgress(run)}${renderDiagnostics(run)}${renderAlertPreview(run)}<div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_380px]"><section class="card"><div class="mb-5 flex items-center justify-between"><div><h2 class="text-lg font-black">Top-Ticker</h2><p class="text-sm text-zinc-500">Klick auf einen Ticker öffnet Details.</p></div><span class="badge bg-zinc-800 text-zinc-300">${tickers.length} Treffer</span></div>${tickers.length === 0 ? `<div class="rounded-2xl border border-dashed border-zinc-700 px-4 py-10 text-center text-sm text-zinc-500">Noch keine Daten.</div>` : `<div class="space-y-3">${tickers.slice(0,15).map((t,i) => { const width=Math.max(4,(Number(t.total_mentions||0)/maxMentions)*100); const color=t.trend==='up'?'bg-green-500':t.trend==='down'?'bg-red-500':'bg-orange-500'; return `<button class="grid w-full grid-cols-[4rem_minmax(0,1fr)_5rem] items-center gap-3 rounded-xl px-2 py-1 text-left hover:bg-zinc-900/70" onclick="navigate('ticker/${escapeHtml(t.ticker)}')"><div class="font-mono text-sm font-black">$${escapeHtml(t.ticker)}</div><div class="h-7 rounded-full bg-zinc-800"><div class="${color} flex h-full items-center rounded-full px-2 text-xs font-black text-white" style="width:${width}%">#${i+1}</div></div><div class="text-right text-sm font-bold tabular-nums">${fmtNumber(t.total_mentions)}</div></button>`; }).join('')}</div>`}</section><aside class="space-y-6"><section class="card"><div class="mb-4 flex items-center justify-between"><h2 class="font-black">Letzte Alerts</h2><button class="text-xs font-bold text-orange-500" onclick="navigate('alerts')">Alle anzeigen</button></div>${alerts.length === 0 ? `<p class="text-sm text-zinc-500">Noch keine Alerts.</p>` : `<div class="space-y-3">${alerts.map(a => alertRow(a)).join('')}</div>`}</section><section class="card"><div class="mb-4 flex items-center justify-between"><h2 class="font-black">Letzte Runs</h2><span class="text-xs text-zinc-500">${runs.length} Einträge</span></div>${runs.length === 0 ? `<p class="text-sm text-zinc-500">Noch kein Lauf vorhanden.</p>` : `<div class="space-y-2">${runs.map(r => `<div class="rounded-xl bg-zinc-900/70 px-3 py-3 text-sm"><div class="flex items-center justify-between gap-3"><span class="font-bold">${fmtDate(r.started_at)}</span><span class="text-xs ${r.is_healthy ? 'text-green-400' : 'text-red-400'}">${r.is_healthy ? 'OK' : 'Fehler'}</span></div><div class="mt-1 text-xs text-zinc-500">${fmtNumber(r.posts_scanned)} Posts · ${fmtNumber(r.comments_scanned)} Kommentare</div></div>`).join('')}</div>`}</section></aside></div><section class="card p-0"><div class="border-b border-zinc-800 px-5 py-4"><h2 class="font-black">Ticker-Tabelle</h2></div><div class="table-wrap"><table class="w-full text-sm"><thead><tr class="border-b border-zinc-800 bg-zinc-950/40">${['Ticker','Nennungen','Ø/Tag','Peak','Trend'].map(h => `<th class="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-zinc-500">${h}</th>`).join('')}</tr></thead><tbody>${tickers.length === 0 ? `<tr><td colspan="5" class="py-10 text-center text-zinc-500">Keine Daten.</td></tr>` : tickers.map(t => `<tr class="cursor-pointer border-b border-zinc-800/60 hover:bg-zinc-900/70" onclick="navigate('ticker/${escapeHtml(t.ticker)}')"><td class="px-4 py-3 font-mono font-black">$${escapeHtml(t.ticker)}</td><td class="px-4 py-3 tabular-nums">${fmtNumber(t.total_mentions)}</td><td class="px-4 py-3 tabular-nums text-zinc-400">${Number(t.avg_daily||0).toFixed(1)}</td><td class="px-4 py-3 tabular-nums text-zinc-400">${fmtNumber(t.peak_mentions)}</td><td class="px-4 py-3">${trendIcon(t.trend)}</td></tr>`).join('')}</tbody></table></div></section></div>`;
     }
+    function setDays(d) { state.days=d; render(); }
+    async function startCrawl(dryRun=false) { try { await api(`/crawl${dryRun ? '?dry_run=true' : ''}`, { method:'POST' }); showToast(dryRun ? 'Dry-Run wurde gestartet.' : 'Crawl wurde gestartet.'); setTimeout(render, 1000); } catch(e) { showToast(`Crawl konnte nicht gestartet werden: ${e.message}`, 'error'); } }
 
-    function setDays(d) { state.days = d; render(); }
+    function alertReason(reason) { const map={new_ticker:['Neu','bg-blue-500/20 text-blue-300'],spike:['Spike','bg-orange-500/20 text-orange-200'],price_move:['Kurs + Aktivität','bg-amber-500/20 text-amber-200']}; const item=map[reason] || [reason || 'Alert','bg-zinc-700 text-zinc-300']; return { label:item[0], color:item[1] }; }
+    function alertRow(a) { const reason=alertReason(a.reason), change=a.price_change === null || a.price_change === undefined ? null : Number(a.price_change); return `<div class="rounded-xl bg-zinc-900/70 px-3 py-3 text-sm"><div class="flex items-start justify-between gap-3"><div><button class="font-mono text-base font-black hover:text-orange-300" onclick="navigate('ticker/${escapeHtml(a.ticker)}')">$${escapeHtml(a.ticker)}</button><div class="mt-1 text-xs text-zinc-500">${fmtDate(a.sent_at)} · ${fmtNumber(a.mentions)} Nennungen</div></div><span class="badge ${reason.color}">${reason.label}</span></div><div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-400"><span>Faktor: ${Number(a.ratio || 0).toFixed(1)}x</span><span>Kurs: ${a.price ? '$' + Number(a.price).toFixed(2) : '—'}</span><span class="${change === null ? '' : change >= 0 ? 'text-green-400' : 'text-red-400'}">${change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}</span></div></div>`; }
+    async function renderAlerts() { const filter=state.alertFilter.trim().toUpperCase(); const url=filter ? `/alerts?ticker=${encodeURIComponent(filter)}` : '/alerts?limit=100'; const alerts=await api(url); return `<div class="space-y-6">${pageHeader('Alert-History','Gesendete Discord-Alerts mit Nennungen, Faktor und Kursdaten.',`<div class="flex gap-2"><input class="input w-44" placeholder="Ticker filtern…" value="${escapeHtml(state.alertFilter)}" oninput="state.alertFilter=this.value; render();" /><button class="btn btn-ghost" onclick="state.alertFilter=''; render();">Reset</button></div>`)}<div class="grid gap-3">${alerts.length === 0 ? `<div class="card text-center text-sm text-zinc-500">Noch keine Alerts.</div>` : alerts.map(a => alertRow(a)).join('')}</div></div>`; }
+    async function renderTickerDetail() { const ticker=state.currentPage.split('/')[1]; const data=await api(`/tickers/${encodeURIComponent(ticker)}?days=${state.days}`); const max=Math.max(1, ...data.history.map(x => Number(x.mentions || 0))); return `<div class="space-y-6">${pageHeader(`$${escapeHtml(data.ticker)}`,'Ticker-Detailseite mit Mention-Verlauf und Alert-Historie.',`<div class="flex gap-2">${[7,30,90].map(d => `<button onclick="setDays(${d})" class="btn ${state.days === d ? 'btn-primary' : 'btn-ghost'}">${d} Tage</button>`).join('')}<button class="btn btn-ghost" onclick="navigate('dashboard')">Zurück</button></div>`)}<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">${[['Total',data.total_mentions],['Heute/letzter Punkt',data.latest_mentions],['Ø',Number(data.avg_mentions || 0).toFixed(1)],['Peak',data.peak_mentions],['Trend',trendIcon(data.trend)]].map(([l,v]) => `<div class="card"><div class="text-xs font-bold uppercase tracking-wide text-zinc-500">${l}</div><div class="mt-2 text-2xl font-black">${v}</div></div>`).join('')}</div><section class="card"><h2 class="mb-4 font-black">Mention-Verlauf</h2>${data.history.length === 0 ? `<p class="text-sm text-zinc-500">Keine Historie.</p>` : `<div class="space-y-2">${data.history.map(p => `<div class="grid grid-cols-[6rem_minmax(0,1fr)_4rem] items-center gap-3 text-sm"><div class="text-zinc-500">${fmtDate(p.date)}</div><div class="h-6 rounded-full bg-zinc-800"><div class="h-full rounded-full bg-orange-500" style="width:${Math.max(3,(Number(p.mentions||0)/max)*100)}%"></div></div><div class="text-right font-bold">${fmtNumber(p.mentions)}</div></div>`).join('')}</div>`}</section><section class="card"><h2 class="mb-4 font-black">Alerts</h2>${data.alerts.length === 0 ? `<p class="text-sm text-zinc-500">Keine Alerts für diesen Ticker.</p>` : `<div class="space-y-3">${data.alerts.map(a => alertRow(a)).join('')}</div>`}</section></div>`; }
 
-    async function startCrawl() {
-      try {
-        await api('/crawl', { method: 'POST' });
-        showToast('Crawl wurde gestartet.');
-        setTimeout(render, 1000);
-      } catch (e) {
-        showToast(`Crawl konnte nicht gestartet werden: ${e.message}`, 'error');
-      }
-    }
+    async function renderConfig() { if (Object.keys(configValues).length === 0) { const data=await api('/config'); const secretKeys=new Set(CONFIG_SECTIONS.flatMap(s => s.fields.filter(f => f.type === 'password').map(f => f.key))); configValues={}; configSecrets=new Set(); for (const [k,v] of Object.entries(data)) { if (secretKeys.has(k)) { configValues[k]=''; if (v && v !== '') configSecrets.add(k); } else configValues[k]=v || ''; } } return `<div class="max-w-3xl space-y-6">${pageHeader('Konfiguration','Secrets werden maskiert. Leere Passwortfelder behalten bestehende Werte.',`<button class="btn btn-primary" onclick="saveConfig()">${configSaved ? icons.check + ' Gespeichert' : icons.save + ' Speichern'}</button>`)}${CONFIG_SECTIONS.map(({title,fields}) => `<section class="card space-y-4"><h2 class="border-b border-zinc-800 pb-3 text-sm font-black text-zinc-300">${title}</h2><div class="grid gap-4 sm:grid-cols-2">${fields.map(f => `<div class="${f.key.includes('webhook') || f.key.includes('user_agent') || f.key === 'subreddits' ? 'sm:col-span-2' : ''}"><label class="label">${f.label}</label><input class="input" type="${f.type || 'text'}" placeholder="${f.type === 'password' && configSecrets.has(f.key) ? '● gesetzt — leer lassen zum Beibehalten' : ''}" value="${escapeHtml(configValues[f.key] || '')}" oninput="configValues['${f.key}']=this.value; configSaved=false;" /></div>`).join('')}</div></section>`).join('')}</div>`; }
+    async function saveConfig() { try { const payload=Object.fromEntries(Object.entries(configValues).filter(([,v]) => v !== '')); await api('/config', { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }); configSaved=true; showToast('Konfiguration gespeichert.'); render(); setTimeout(() => { configSaved=false; render(); }, 2500); } catch(e) { showToast(`Fehler beim Speichern: ${e.message}`, 'error'); } }
 
-    function alertReason(reason) {
-      const map = { new_ticker: ['Neu', 'bg-blue-500/20 text-blue-300'], spike: ['Spike', 'bg-brand/20 text-orange-200'], price_move: ['Kurs + Aktivität', 'bg-amber-500/20 text-amber-200'] };
-      const item = map[reason] || [reason || 'Alert', 'bg-zinc-700 text-zinc-300'];
-      return { label: item[0], color: item[1] };
-    }
+    function renderLogs() { const levelColor=line => line.includes('ERROR') || line.includes('CRITICAL') ? 'text-red-400' : line.includes('WARNING') ? 'text-amber-400' : line.includes('Crawl') || line.includes('fertig') ? 'text-green-400' : 'text-zinc-300'; return `<div class="space-y-4">${pageHeader('Live-Logs','Detaillierter Ablauf des aktuellen Crawls in Echtzeit.',`<button class="btn btn-ghost" onclick="state.logs=[]; render();">Leeren</button>`)}<div class="card bg-zinc-950 font-mono text-xs h-[calc(100vh-11rem)] overflow-y-auto p-4 space-y-0.5" id="logs-container">${state.logs.length === 0 ? `<span class="text-zinc-600">Warte auf Log-Einträge…</span>` : state.logs.map(line => `<div class="${levelColor(line)}">${escapeHtml(line)}</div>`).join('')}</div></div>`; }
+    function connectLogsWebSocket() { if (state.ws) state.ws.close(); const wsProto=location.protocol === 'https:' ? 'wss' : 'ws'; state.ws=new WebSocket(`${wsProto}://${location.host}/api/ws/logs`); state.ws.onmessage=e => { if (e.data === '__LOGS_CLEAR__') { state.logs=[]; return; } state.logs=[...state.logs.slice(-500), e.data]; const c=document.getElementById('logs-container'); if (c) { const d=document.createElement('div'); d.textContent=e.data; d.className=e.data.includes('ERROR') ? 'text-red-400' : e.data.includes('WARNING') ? 'text-amber-400' : e.data.includes('Crawl') || e.data.includes('fertig') ? 'text-green-400' : 'text-zinc-300'; if (c.firstChild && c.firstChild.tagName !== 'DIV') c.innerHTML=''; c.appendChild(d); c.scrollTop=c.scrollHeight; } }; }
+    function disconnectLogsWebSocket() { if (state.ws) { state.ws.close(); state.ws=null; } }
 
-    function alertRow(a) {
-      const reason = alertReason(a.reason);
-      const change = a.price_change === null || a.price_change === undefined ? null : Number(a.price_change);
-      return `<div class="rounded-xl bg-zinc-900/70 px-3 py-3 text-sm"><div class="flex items-start justify-between gap-3"><div><div class="font-mono text-base font-black">$${escapeHtml(a.ticker)}</div><div class="mt-1 text-xs text-zinc-500">${fmtDate(a.sent_at)} · ${fmtNumber(a.mentions)} Nennungen</div></div><span class="badge ${reason.color}">${reason.label}</span></div><div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-400"><span>Faktor: ${Number(a.ratio || 0).toFixed(1)}x</span><span>Kurs: ${a.price ? '$' + Number(a.price).toFixed(2) : '—'}</span><span class="${change === null ? '' : change >= 0 ? 'text-green-400' : 'text-red-400'}">${change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}</span></div></div>`;
-    }
-
-    async function renderAlerts() {
-      const filter = state.alertFilter.trim().toUpperCase();
-      const url = filter ? `/alerts?ticker=${encodeURIComponent(filter)}` : '/alerts?limit=100';
-      const alerts = await api(url);
-      return `<div class="space-y-6">${pageHeader('Alert-History', 'Gesendete Discord-Alerts mit Nennungen, Faktor und Kursdaten.', `<div class="flex gap-2"><input class="input w-44" placeholder="Ticker filtern…" value="${escapeHtml(state.alertFilter)}" oninput="state.alertFilter = this.value; render();" /><button class="btn btn-ghost" onclick="state.alertFilter = ''; render();">Reset</button></div>`)}<div class="grid gap-3 lg:hidden">${alerts.length === 0 ? `<div class="card text-center text-sm text-zinc-500">Noch keine Alerts.</div>` : alerts.map(a => alertRow(a)).join('')}</div><div class="card hidden p-0 lg:block"><div class="table-wrap"><table class="w-full text-sm"><thead><tr class="border-b border-zinc-800 bg-zinc-950/40">${['Zeit', 'Ticker', 'Typ', 'Nennungen', 'Faktor', 'Kurs', 'Änderung'].map(h => `<th class="px-4 py-3 text-left text-xs font-black uppercase tracking-wide text-zinc-500">${h}</th>`).join('')}</tr></thead><tbody>${alerts.length === 0 ? `<tr><td colspan="7" class="py-10 text-center text-zinc-500">Noch keine Alerts.</td></tr>` : alerts.map(a => { const reason = alertReason(a.reason); const change = a.price_change === null || a.price_change === undefined ? null : Number(a.price_change); return `<tr class="border-b border-zinc-800/60 hover:bg-zinc-900/70"><td class="px-4 py-3 text-zinc-500">${fmtDate(a.sent_at)}</td><td class="px-4 py-3 font-mono font-black">$${escapeHtml(a.ticker)}</td><td class="px-4 py-3"><span class="badge ${reason.color}">${reason.label}</span></td><td class="px-4 py-3 tabular-nums">${fmtNumber(a.mentions)}</td><td class="px-4 py-3 tabular-nums">${Number(a.ratio || 0).toFixed(1)}x</td><td class="px-4 py-3 tabular-nums">${a.price ? '$' + Number(a.price).toFixed(2) : '—'}</td><td class="px-4 py-3 tabular-nums ${change === null ? 'text-zinc-500' : change >= 0 ? 'text-green-400' : 'text-red-400'}">${change === null ? '—' : `${change >= 0 ? '+' : ''}${change.toFixed(2)}%`}</td></tr>`; }).join('')}</tbody></table></div></div></div>`;
-    }
-
-    async function renderConfig() {
-      if (Object.keys(configValues).length === 0) {
-        const data = await api('/config');
-        const secretKeys = new Set(CONFIG_SECTIONS.flatMap(s => s.fields.filter(f => f.type === 'password').map(f => f.key)));
-        configValues = {}; configSecrets = new Set();
-        for (const [k, v] of Object.entries(data)) {
-          if (secretKeys.has(k)) { configValues[k] = ''; if (v && v !== '') configSecrets.add(k); }
-          else { configValues[k] = v || ''; }
-        }
-      }
-      return `<div class="max-w-3xl space-y-6">${pageHeader('Konfiguration', 'Secrets werden maskiert. Leere Passwortfelder behalten bestehende Werte.', `<button class="btn btn-primary" onclick="saveConfig()">${configSaved ? icons.check + ' Gespeichert' : icons.save + ' Speichern'}</button>`)}${CONFIG_SECTIONS.map(({ title, fields }) => `<section class="card space-y-4"><h2 class="border-b border-zinc-800 pb-3 text-sm font-black text-zinc-300">${title}</h2><div class="grid gap-4 sm:grid-cols-2">${fields.map(f => `<div class="${f.key.includes('webhook') || f.key.includes('user_agent') || f.key === 'subreddits' ? 'sm:col-span-2' : ''}"><label class="label">${f.label}</label><input class="input" type="${f.type || 'text'}" placeholder="${f.type === 'password' && configSecrets.has(f.key) ? '● gesetzt — leer lassen zum Beibehalten' : f.placeholder}" value="${escapeHtml(configValues[f.key] || '')}" oninput="configValues['${f.key}'] = this.value; configSaved = false;" /></div>`).join('')}</div></section>`).join('')}</div>`;
-    }
-
-    async function saveConfig() {
-      try {
-        const payload = Object.fromEntries(Object.entries(configValues).filter(([, v]) => v !== ''));
-        await api('/config', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-        configSaved = true; showToast('Konfiguration gespeichert.'); render();
-        setTimeout(() => { configSaved = false; render(); }, 2500);
-      } catch (e) { showToast(`Fehler beim Speichern: ${e.message}`, 'error'); }
-    }
-
-    function renderLogs() {
-      const levelColor = line => {
-        if (line.includes('ERROR') || line.includes('CRITICAL')) return 'text-red-400';
-        if (line.includes('WARNING')) return 'text-amber-400';
-        if (line.includes('Crawl gestartet') || line.includes('Crawl abgeschlossen') || line.includes('fertig')) return 'text-green-400';
-        return 'text-zinc-300';
-      };
-      return `<div class="space-y-4">${pageHeader('Live-Logs', 'Detaillierter Ablauf des aktuellen Crawls in Echtzeit.', `<button class="btn btn-ghost" onclick="state.logs = []; render();">Leeren</button>`)}<div class="card bg-zinc-950 font-mono text-xs h-[calc(100vh-11rem)] overflow-y-auto p-4 space-y-0.5" id="logs-container">${state.logs.length === 0 ? `<span class="text-zinc-600">Warte auf Log-Einträge…</span>` : state.logs.map(line => `<div class="${levelColor(line)}">${escapeHtml(line)}</div>`).join('')}</div></div>`;
-    }
-
-    function connectLogsWebSocket() {
-      if (state.ws) state.ws.close();
-      const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
-      state.ws = new WebSocket(`${wsProto}://${location.host}/api/ws/logs`);
-      state.ws.onopen = () => {
-        const container = document.getElementById('logs-container');
-        if (container && state.logs.length === 0) container.innerHTML = '<span class="text-zinc-600">Verbunden. Warte auf Log-Einträge…</span>';
-      };
-      state.ws.onmessage = e => {
-        if (e.data === '__LOGS_CLEAR__') {
-          state.logs = [];
-          const container = document.getElementById('logs-container');
-          if (container) container.innerHTML = '<span class="text-zinc-600">Verbunden. Warte auf Log-Einträge…</span>';
-          return;
-        }
-        state.logs = [...state.logs.slice(-500), e.data];
-        const container = document.getElementById('logs-container');
-        if (container) {
-          const div = document.createElement('div');
-          div.textContent = e.data;
-          div.className = e.data.includes('ERROR') ? 'text-red-400' : e.data.includes('WARNING') ? 'text-amber-400' : e.data.includes('Crawl') || e.data.includes('fertig') ? 'text-green-400' : 'text-zinc-300';
-          if (container.firstChild && container.firstChild.tagName !== 'DIV') container.innerHTML = '';
-          container.appendChild(div);
-          container.scrollTop = container.scrollHeight;
-        }
-      };
-      state.ws.onerror = () => {
-        const container = document.getElementById('logs-container');
-        if (container && state.logs.length === 0) container.innerHTML = '<span class="text-red-400">WebSocket-Verbindung fehlgeschlagen.</span>';
-      };
-    }
-
-    function disconnectLogsWebSocket() {
-      if (state.ws) { state.ws.close(); state.ws = null; }
-    }
-
-    async function render() {
-      const app = document.getElementById('app');
-      try {
-        if (state.currentPage === 'loading') {
-          app.innerHTML = `<div class="flex h-screen items-center justify-center"><div class="text-zinc-500 text-sm">Lädt...</div></div>`;
-          return;
-        }
-        if (state.currentPage === 'setup' || !state.configured) {
-          scheduleDashboardRefresh(false);
-          disconnectLogsWebSocket();
-          app.innerHTML = renderSetup();
-          return;
-        }
-        if (state.currentPage !== 'logs') disconnectLogsWebSocket();
-        if (state.currentPage !== 'dashboard') scheduleDashboardRefresh(false);
-        let content = '';
-        if (state.currentPage === 'dashboard') content = await renderDashboard();
-        else if (state.currentPage === 'alerts') content = await renderAlerts();
-        else if (state.currentPage === 'config') content = await renderConfig();
-        else if (state.currentPage === 'logs') {
-          content = renderLogs();
-          if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) setTimeout(connectLogsWebSocket, 100);
-        } else content = await renderDashboard();
-        app.innerHTML = renderLayout(content);
-      } catch (e) {
-        app.innerHTML = `<div class="flex h-screen items-center justify-center p-6"><div class="card max-w-xl text-red-300"><div class="font-bold">Fehler</div><div class="mt-2 text-sm">${escapeHtml(e.message)}</div><button class="btn btn-ghost mt-4" onclick="render()">Erneut laden</button></div></div>`;
-      }
-    }
-
-    async function init() {
-      initRouter();
-      try {
-        const status = await api('/config/status');
-        state.configured = status.configured;
-        if (!status.configured) state.currentPage = 'setup';
-      } catch {
-        state.configured = false;
-        state.currentPage = 'setup';
-      }
-      render();
-    }
-
+    async function render() { const app=document.getElementById('app'); try { if (state.currentPage === 'loading') { app.innerHTML='<div class="flex h-screen items-center justify-center text-sm text-zinc-500">Lädt...</div>'; return; } if (state.currentPage === 'setup' || !state.configured) { scheduleDashboardRefresh(false); disconnectLogsWebSocket(); app.innerHTML=renderSetup(); return; } if (state.currentPage !== 'logs') disconnectLogsWebSocket(); if (state.currentPage !== 'dashboard') scheduleDashboardRefresh(false); let content=''; if (state.currentPage === 'dashboard') content=await renderDashboard(); else if (state.currentPage === 'alerts') content=await renderAlerts(); else if (state.currentPage === 'config') content=await renderConfig(); else if (state.currentPage === 'logs') { content=renderLogs(); if (!state.ws || state.ws.readyState === WebSocket.CLOSED || state.ws.readyState === WebSocket.CLOSING) setTimeout(connectLogsWebSocket,100); } else if (state.currentPage.startsWith('ticker/')) content=await renderTickerDetail(); else content=await renderDashboard(); app.innerHTML=renderLayout(content); } catch(e) { app.innerHTML=`<div class="flex h-screen items-center justify-center p-6"><div class="card max-w-xl text-red-300"><div class="font-bold">Fehler</div><div class="mt-2 text-sm">${escapeHtml(e.message)}</div><button class="btn btn-ghost mt-4" onclick="render()">Erneut laden</button></div></div>`; } }
+    async function init() { initRouter(); try { const [status, about] = await Promise.all([api('/config/status'), api('/about')]); state.configured=status.configured; state.about=about; if (!status.configured) state.currentPage='setup'; } catch { state.configured=false; state.currentPage='setup'; } render(); }
     init();
   </script>
 </body>
