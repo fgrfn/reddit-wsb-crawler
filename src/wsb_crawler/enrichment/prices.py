@@ -73,8 +73,8 @@ def _fetch_price_sync(ticker: str) -> PriceData:
 
     market_status = _determine_market_status(info)
 
-    raw_volume = info.get("volume")
-    volume = int(raw_volume) if isinstance(raw_volume, (int, float)) and raw_volume else None
+    volume_f = _safe_float(info.get("volume"))
+    volume = int(volume_f) if volume_f else None
 
     return PriceData(
         ticker=ticker,
