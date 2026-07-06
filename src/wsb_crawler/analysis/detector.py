@@ -82,11 +82,17 @@ def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
             "reason": alert.reason.value,
             "mentions": alert.spike.current_mentions,
             "avg_mentions": round(alert.spike.avg_mentions, 2),
-            "ratio": None if alert.spike.ratio == float("inf") else round(alert.spike.ratio, 2),
+            "ratio": None
+            if alert.spike.ratio == float("inf")
+            else round(alert.spike.ratio, 2),
             "delta": alert.spike.delta,
             "is_new": alert.spike.is_new,
-            "price": alert.spike.price_data.primary_price if alert.spike.price_data else None,
-            "price_change": alert.spike.price_data.primary_change if alert.spike.price_data else None,
+            "price": alert.spike.price_data.primary_price
+            if alert.spike.price_data
+            else None,
+            "price_change": alert.spike.price_data.primary_change
+            if alert.spike.price_data
+            else None,
             "news_count": len(alert.spike.news),
             "confidence": _confidence_score(alert.spike),
         }
@@ -134,7 +140,9 @@ async def analyze_mentions(
     # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls
     min_relevant = min(cfg.min_abs, cfg.min_delta)
     relevant_items = [
-        (ticker, current) for ticker, current in mention_counts.items() if current >= min_relevant
+        (ticker, current)
+        for ticker, current in mention_counts.items()
+        if current >= min_relevant
     ]
     spike_results: list[SpikeResult] = []
 
@@ -180,7 +188,9 @@ async def analyze_mentions(
             )
 
     raw_candidates = [s for s in spike_results if s.reason is not None]
-    candidates = [s for s in raw_candidates if _quality_allows_alert(s, min_abs=cfg.min_abs)]
+    candidates = [
+        s for s in raw_candidates if _quality_allows_alert(s, min_abs=cfg.min_abs)
+    ]
     filtered_count = len(raw_candidates) - len(candidates)
     if filtered_count:
         add_diagnostic(
@@ -202,7 +212,9 @@ async def analyze_mentions(
         )
         return alerts
 
-    logger.info(f"{len(candidates)} Spike-Kandidat(en) gefunden: {[c.ticker for c in candidates]}")
+    logger.info(
+        f"{len(candidates)} Spike-Kandidat(en) gefunden: {[c.ticker for c in candidates]}"
+    )
     update_run(
         message=f"{len(candidates)} Spike-Kandidat(en) gefunden. Prüfe Cooldowns…",
         progress=74,
