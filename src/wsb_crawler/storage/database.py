@@ -373,15 +373,18 @@ class Database:
             last_run = await cur.fetchone()
 
         async with self.conn.execute("SELECT COUNT(*) as c FROM crawl_runs") as cur:
-            total_runs = (await cur.fetchone())["c"]
+            row = await cur.fetchone()
+            total_runs = row["c"] if row else 0
 
         async with self.conn.execute("SELECT COUNT(*) as c FROM alert_history") as cur:
-            total_alerts = (await cur.fetchone())["c"]
+            row = await cur.fetchone()
+            total_alerts = row["c"] if row else 0
 
         async with self.conn.execute(
             "SELECT COUNT(DISTINCT ticker) as c FROM ticker_mentions"
         ) as cur:
-            tracked = (await cur.fetchone())["c"]
+            row = await cur.fetchone()
+            tracked = row["c"] if row else 0
 
         last_at = None
         duration = None
