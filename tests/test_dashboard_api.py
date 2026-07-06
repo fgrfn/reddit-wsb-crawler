@@ -5,11 +5,13 @@ Tests für Dashboard- und Status-Router (direkte Endpoint-Aufrufe).
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from wsb_crawler.api.routers import dashboard as dashboard_router
 from wsb_crawler.api.routers import status as status_router
+from wsb_crawler.models import MarketStatus, PriceData
 from wsb_crawler.storage.database import Database
 
 
@@ -33,6 +35,36 @@ class TestDashboardEndpoints:
         result = await dashboard_router.get_top_tickers(days=7)
         tickers = {r["ticker"] for r in result}
         assert "GME" in tickers
+        # Angereicherte Felder sind vorhanden (Cache leer → price/name None)
+        gme = next(r for r in result if r["ticker"] == "GME")
+        assert gme["trend"] in ("up", "down", "flat")
+        assert "company_name" in gme and "price" in gme and "price_change" in gme
+
+    async def test_ticker_detail_enriched(self, db: Database):
+        run_id = await db.start_run(["wsb"])
+        await db.save_run_mentions(run_id, {"GME": 20})
+        dummy = PriceData(
+            ticker="GME",
+            company_name="GameStop",
+            price=42.0,
+            change_24h=3.0,
+            market_status=MarketStatus.OPEN,
+        )
+        with (
+            patch(
+                "wsb_crawler.api.routers.dashboard.get_price",
+                new=AsyncMock(return_value=dummy),
+            ),
+            patch(
+                "wsb_crawler.api.routers.dashboard.resolve_name",
+                new=AsyncMock(return_value="GameStop Corp."),
+            ),
+        ):
+            detail = await dashboard_router.get_ticker_detail("gme", days=30)
+        assert detail["ticker"] == "GME"
+        assert detail["company_name"] == "GameStop Corp."
+        assert detail["price"] == 42.0
+        assert detail["price_change"] == 3.0
 
     async def test_ticker_history(self, db: Database):
         run_id = await db.start_run(["wsb"])

@@ -189,21 +189,31 @@ verlangen nicht-lokale Requests HTTP-Basic-Auth (Passwort = Token).
 ```json
 [
   { "ticker": "GME", "total_mentions": 320, "avg_daily": 45.7,
-    "peak_mentions": 120, "peak_day": "2026-07-04T00:00:00", "trend": "up" }
+    "peak_mentions": 120, "peak_day": "2026-07-04T00:00:00", "trend": "up",
+    "company_name": "GameStop Corp.", "price": 42.0, "price_change": 5.0 }
 ]
 ```
-`trend` ∈ `up | down | flat`.
+`trend` ∈ `up | down | flat` (aus der History berechnet). **`company_name`, `price`,
+`price_change` sind „best effort": Dieser Endpunkt wird gepollt und holt daher
+**keine** Live-Kurse (Rate-Limit-Schutz) — die Felder sind nur befüllt, wenn der
+Ticker im Cache warm ist (z. B. weil er kürzlich ein Alert-Kandidat war), sonst
+`null`. Fürs Design: Karten mit Kurs/Name als „anzeigen wenn vorhanden" behandeln.
+Der garantiert-frische Kurs kommt aus der Ticker-Detailseite.
 
 ### GET `/api/tickers/{ticker}?days=30`
 ```json
 {
   "ticker": "GME", "days": 30,
+  "company_name": "GameStop Corp.", "price": 42.0, "price_change": 3.0, "currency": "USD",
   "total_mentions": 320, "latest_mentions": 40,
   "peak_mentions": 120, "avg_mentions": 12.3, "trend": "up",
   "alerts": [ … Alert-Rows (siehe /api/alerts) … ],
   "history": [ { "date": "2026-07-01T00:00:00+00:00", "mentions": 12 } ]
 }
 ```
+Hier ist der Kurs **frisch** (einzelner Ticker → kein Burst-Risiko); `price`,
+`price_change`, `company_name`, `currency` können `null` sein, wenn yfinance nichts
+liefert.
 
 ### GET `/api/tickers/{ticker}/history?days=30`
 ```json
@@ -252,7 +262,7 @@ Server sendet zuerst `__LOGS_CLEAR__`, dann Log-Zeilen im Format
 
 | Objekt | Felder (relevant fürs UI) |
 |---|---|
-| **Ticker (Trend)** | ticker, total_mentions, avg_daily, peak_mentions, peak_day, trend(up/down/flat) |
+| **Ticker (Trend)** | ticker, total_mentions, avg_daily, peak_mentions, peak_day, trend(up/down/flat), company_name, price, price_change |
 | **Alert** | ticker, reason(new_ticker/spike/price_move), mentions, avg_mentions, ratio, price, price_change, sent_at |
 | **Alert-Preview (live)** | + confidence(0–100), sentiment(-1..1), sentiment_label, avg_score, delta, is_new, news_count |
 | **Run** | id, started_at, finished_at, posts_scanned, comments_scanned, subreddits, is_healthy |
