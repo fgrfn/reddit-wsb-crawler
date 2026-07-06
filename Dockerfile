@@ -17,7 +17,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Package + Dependencies in separates Prefix installieren (nicht ins System)
-COPY pyproject.toml .
+# README.md wird mitkopiert, weil pyproject.toml es als `readme` deklariert —
+# hatchling bricht sonst beim Metadaten-Bauen ab.
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
 RUN pip install --no-cache-dir --prefix=/install hatchling
 RUN pip install --no-cache-dir --prefix=/install .
