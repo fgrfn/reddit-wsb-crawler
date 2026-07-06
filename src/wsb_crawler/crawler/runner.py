@@ -86,7 +86,9 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
             message="Vergleiche aktuelle Nennungen mit der historischen 30-Tage-Basis…",
             progress=60,
         )
-        alerts = await analyze_mentions(result.mention_counts, db, run_id=run_id)
+        alerts = await analyze_mentions(
+            result.mention_counts, db, run_id=run_id, signals=result.mention_signals
+        )
 
         sent_count = 0
         if alerts:

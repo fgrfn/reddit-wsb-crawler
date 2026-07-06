@@ -7,6 +7,7 @@ Validierung gebraucht wird). Kein dict-Herumreichen mehr.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -73,6 +74,65 @@ class TickerMention:
     created_utc: datetime
 
 
+# ── Signalqualität ─────────────────────────────────────────────────────────
+
+# Sentiment-Schwelle: ab diesem Netto-Wert gilt ein Ticker als klar bull/bear.
+SENTIMENT_THRESHOLD = 0.15
+
+
+@dataclass
+class TickerSignal:
+    """
+    Qualitäts-Signale für einen Ticker innerhalb eines Laufs.
+
+    Ergänzt die reine Nennungszahl um Engagement (Post-Scores) und ein
+    einfaches Bull/Bear-Sentiment aus dem Umgebungstext. Fließt in
+    Confidence-Score, Kandidaten-Ranking und Alert-Anzeige ein — der
+    Spike-Auslöser selbst bleibt bewusst die Nennungszahl.
+    """
+
+    ticker: str
+    mention_count: int
+    total_score: int  # Summe der Post-Scores aller Nennungen
+    max_score: int  # höchster einzelner Post-Score
+    bull_hits: int  # bullische Keyword-Treffer im Kontext
+    bear_hits: int  # bearische Keyword-Treffer im Kontext
+
+    @property
+    def avg_score(self) -> float:
+        if self.mention_count == 0:
+            return 0.0
+        return self.total_score / self.mention_count
+
+    @property
+    def sentiment(self) -> float:
+        """Netto-Sentiment in [-1, 1] (bullish positiv, bearish negativ)."""
+        total = self.bull_hits + self.bear_hits
+        if total == 0:
+            return 0.0
+        return (self.bull_hits - self.bear_hits) / total
+
+    @property
+    def sentiment_label(self) -> str:
+        if self.sentiment > SENTIMENT_THRESHOLD:
+            return "bullish"
+        if self.sentiment < -SENTIMENT_THRESHOLD:
+            return "bearish"
+        return "neutral"
+
+    @property
+    def engagement_weight(self) -> float:
+        """
+        Bounded 0..1-Gewicht aus dem durchschnittlichen Post-Score.
+
+        Log-skaliert, damit ein einzelner viral-Post nicht alles dominiert:
+        Ø-Score ~10 → ~0.35, ~100 → ~0.67, ~1000+ → ~1.0. Downvotes (negativ)
+        werden auf 0 geklemmt.
+        """
+        avg = max(0.0, self.avg_score)
+        return min(1.0, math.log10(avg + 1) / 3)
+
+
 # ── Crawl-Ergebnis ─────────────────────────────────────────────────────────
 
 
@@ -90,6 +150,9 @@ class CrawlResult:
 
     # ticker → Anzahl Nennungen in diesem Lauf
     mention_counts: dict[str, int] = field(default_factory=dict)
+
+    # ticker → Qualitäts-Signale (Engagement + Sentiment)
+    mention_signals: dict[str, TickerSignal] = field(default_factory=dict)
 
     # Alle Einzelnennungen (für DB-Speicherung)
     mentions: list[TickerMention] = field(default_factory=list)
@@ -215,6 +278,7 @@ class SpikeResult:
     price_data: PriceData | None = None
     news: list[NewsArticle] = field(default_factory=list)
     history: TickerHistory | None = None
+    signal: TickerSignal | None = None  # Engagement + Sentiment (Ranking/Confidence)
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────
