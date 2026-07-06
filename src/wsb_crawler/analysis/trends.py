@@ -51,7 +51,11 @@ async def get_top_tickers(db: Database, days: int = 7, limit: int = 10) -> list[
                 peak_mentions=entry.peak_mentions,
                 trend_direction=_calculate_trend(history),
                 current_price=price.primary_price if price else None,
-                price_change_period=price.change_7d if price and days >= 7 else price.change_24h if price else None,
+                price_change_period=price.change_7d
+                if price and days >= 7
+                else price.change_24h
+                if price
+                else None,
             )
         )
 
@@ -83,8 +87,6 @@ def _calculate_trend(history: TickerHistory) -> TrendDirection:
     return TrendDirection.FLAT
 
 
-async def get_ticker_chart_data(
-    db: Database, ticker: str, days: int = 30
-) -> TickerHistory:
+async def get_ticker_chart_data(db: Database, ticker: str, days: int = 30) -> TickerHistory:
     """Gibt die Mention-History für einen Ticker zurück (für /chart Command)."""
     return await db.get_ticker_history(ticker, days=days)

@@ -11,8 +11,8 @@ Der Cache lebt nur für die Laufzeit des Prozesses.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
-from typing import Any, Generic, TypeVar
+from dataclasses import dataclass
+from typing import Generic, TypeVar
 
 T = TypeVar("T")
 
@@ -20,12 +20,15 @@ T = TypeVar("T")
 @dataclass
 class _CacheEntry(Generic[T]):
     value: T
-    expires_at: float   # Unix timestamp
+    expires_at: float  # monotonic timestamp
 
 
 class TTLCache(Generic[T]):
     """
-    Thread-safe In-Memory Cache mit TTL (Time-To-Live).
+    In-Memory Cache mit TTL (Time-To-Live).
+
+    Nur für Zugriff aus dem Event-Loop-Thread gedacht — es gibt bewusst
+    kein Locking.
 
     Beispiel:
         cache: TTLCache[PriceData] = TTLCache(ttl_seconds=300)
@@ -77,7 +80,7 @@ class TTLCache(Generic[T]):
 # ── Globale Cache-Instanzen ────────────────────────────────────────────────
 # Werden in den Enrichment-Modulen importiert.
 
-from wsb_crawler.models import PriceData, NewsArticle  # noqa: E402
+from wsb_crawler.models import NewsArticle, PriceData  # noqa: E402
 
 # Kursdaten: 5 Minuten TTL (Börse ändert sich, aber nicht jede Sekunde)
 price_cache: TTLCache[PriceData] = TTLCache(ttl_seconds=300)

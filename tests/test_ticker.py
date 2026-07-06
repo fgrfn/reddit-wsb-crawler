@@ -4,9 +4,7 @@ Tests für die Ticker-Erkennung (crawler/ticker.py).
 Kein Netzwerk, keine DB — reine Unit-Tests.
 """
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from wsb_crawler.crawler.ticker import (
     BLACKLIST,
@@ -25,7 +23,7 @@ def _make_post(title: str = "", text: str = "", score: int = 100) -> RedditPost:
         author="testuser",
         score=score,
         upvote_ratio=0.95,
-        created_utc=datetime.now(tz=timezone.utc),
+        created_utc=datetime.now(tz=UTC),
         url="https://reddit.com/r/wallstreetbets/test",
     )
 
@@ -44,6 +42,19 @@ class TestTickerExtraction:
         tickers = [m.ticker for m in extract_tickers(post)]
         assert "GME" in tickers
         assert "AMC" in tickers
+
+    def test_lowercase_dollar_ticker(self):
+        """WSB schreibt oft $gme klein — wird erkannt und normalisiert."""
+        post = _make_post(text="ich hab heute $gme und $amc gekauft")
+        tickers = [m.ticker for m in extract_tickers(post)]
+        assert "GME" in tickers
+        assert "AMC" in tickers
+
+    def test_single_char_ticker_only_with_dollar(self):
+        """Einzelbuchstaben-Ticker nur mit explizitem $-Präfix ($F = Ford)."""
+        post = _make_post(text="$F läuft gut, aber F allein zählt nicht")
+        tickers = [m.ticker for m in extract_tickers(post)]
+        assert "F" in tickers
 
     def test_title_and_text_combined(self):
         """Ticker aus Titel UND Text werden erkannt."""
@@ -105,10 +116,11 @@ class TestTickerExtraction:
 class TestAggregation:
     def test_aggregate_counts_correctly(self):
         """Mehrere Mentions werden korrekt summiert."""
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
 
         def _mention(ticker: str, post_id: str):
             from wsb_crawler.models import TickerMention
+
             return TickerMention(
                 ticker=ticker,
                 post_id=post_id,
@@ -135,7 +147,8 @@ class TestAggregation:
     def test_aggregate_sorted_by_count(self):
         """Ergebnis ist nach Häufigkeit sortiert (häufigste zuerst)."""
         from wsb_crawler.models import TickerMention
-        now = datetime.now(tz=timezone.utc)
+
+        now = datetime.now(tz=UTC)
 
         mentions = [
             TickerMention("TSLA", "p1", "wsb", "...", 100, now),
@@ -146,7 +159,7 @@ class TestAggregation:
 
         counts = aggregate_mentions(mentions)
         keys = list(counts.keys())
-        assert keys[0] == "GME"   # häufigste zuerst
+        assert keys[0] == "GME"  # häufigste zuerst
         assert keys[1] == "TSLA"
 
     def test_aggregate_empty(self):

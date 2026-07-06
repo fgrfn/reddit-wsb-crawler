@@ -8,8 +8,8 @@ Rate-Limit-Handling: Discord erlaubt 5 Requests pro 2 Sekunden pro Webhook.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from loguru import logger
@@ -20,19 +20,26 @@ from wsb_crawler.models import Alert, AlertReason, MarketStatus, RunStatus, Tren
 if TYPE_CHECKING:
     from wsb_crawler.storage.database import Database
 
-_db: "Database | None" = None
+_db: Database | None = None
 
 
-def set_database(db: "Database") -> None:
+def set_database(db: Database) -> None:
     global _db
     _db = db
 
+
+def _get_db() -> Database:
+    if _db is None:
+        raise RuntimeError("Datenbank nicht gesetzt — set_database() zuerst aufrufen")
+    return _db
+
+
 # Discord Embed-Farben
-COLOR_SPIKE = 0xFF4500       # Reddit-Orange
-COLOR_NEW = 0x00B0F4         # Blau
+COLOR_SPIKE = 0xFF4500  # Reddit-Orange
+COLOR_NEW = 0x00B0F4  # Blau
 COLOR_PRICE_MOVE = 0xFFAA00  # Amber
-COLOR_HEARTBEAT = 0x2B2D31   # Discord-Dunkel
-COLOR_SUCCESS = 0x57F287     # Grün
+COLOR_HEARTBEAT = 0x2B2D31  # Discord-Dunkel
+COLOR_SUCCESS = 0x57F287  # Grün
 
 TREND_EMOJI = {"up": "📈", "down": "📉", "flat": "➡️"}
 MARKET_LABEL = {
@@ -57,7 +64,7 @@ def _format_change(pct: float | None) -> str:
     return f"{sign}{pct:.2f}%"
 
 
-def _build_alert_embed(alert: Alert, cfg: Settings) -> dict:
+def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
     """Erstellt ein Discord Rich Embed für einen Alert."""
     spike = alert.spike
     price = spike.price_data
@@ -117,14 +124,16 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict:
     if spike.news:
         news_lines = []
         for article in spike.news[:3]:
-            age_h = (datetime.now(tz=timezone.utc) - article.published_at).total_seconds() / 3600
-            age_str = f"{int(age_h)}h" if age_h < 24 else f"{int(age_h/24)}d"
+            age_h = (datetime.now(tz=UTC) - article.published_at).total_seconds() / 3600
+            age_str = f"{int(age_h)}h" if age_h < 24 else f"{int(age_h / 24)}d"
             news_lines.append(f"[{article.title[:70]}...]({article.url}) _{age_str}_")
-        fields.append({
-            "name": "📰 Aktuelle News",
-            "value": "\n".join(news_lines),
-            "inline": False,
-        })
+        fields.append(
+            {
+                "name": "📰 Aktuelle News",
+                "value": "\n".join(news_lines),
+                "inline": False,
+            }
+        )
 
     # Footer
     subreddits = ", ".join(f"r/{s}" for s in cfg.crawler.subreddits)
@@ -139,13 +148,12 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict:
     }
 
 
-def _build_heartbeat_embed(status: RunStatus) -> dict:
+def _build_heartbeat_embed(status: RunStatus) -> dict[str, Any]:
     """Status-Update Embed (kein Ping, silent)."""
     if status.last_run_at:
         last_run_str = f"<t:{int(status.last_run_at.timestamp())}:R>"
         duration_str = (
-            f"{status.last_run_duration_seconds:.0f}s"
-            if status.last_run_duration_seconds else "—"
+            f"{status.last_run_duration_seconds:.0f}s" if status.last_run_duration_seconds else "—"
         )
     else:
         last_run_str = "—"
@@ -160,23 +168,25 @@ def _build_heartbeat_embed(status: RunStatus) -> dict:
     ]
 
     if status.next_run_at:
-        fields.append({
-            "name": "⏭ Nächster Lauf",
-            "value": f"<t:{int(status.next_run_at.timestamp())}:R>",
-            "inline": True,
-        })
+        fields.append(
+            {
+                "name": "⏭ Nächster Lauf",
+                "value": f"<t:{int(status.next_run_at.timestamp())}:R>",
+                "inline": True,
+            }
+        )
 
     return {
         "title": "💓 WSB-Crawler Status",
         "color": COLOR_HEARTBEAT,
         "fields": fields,
         "footer": {"text": "WSB-Crawler v2 • Automatischer Heartbeat"},
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
     }
 
 
 async def _send_webhook(
-    payload: dict,
+    payload: dict[str, Any],
     webhook_url: str,
     retries: int = 3,
     wait: bool = False,
@@ -206,7 +216,7 @@ async def _send_webhook(
                 return True
 
         except Exception as e:
-            backoff = 2 ** attempt
+            backoff = 2**attempt
             logger.warning(f"Discord-Webhook Fehler (Versuch {attempt + 1}/{retries}): {e}")
             if attempt < retries - 1:
                 await asyncio.sleep(backoff)
@@ -215,7 +225,7 @@ async def _send_webhook(
 
 
 async def _edit_webhook_message(
-    payload: dict,
+    payload: dict[str, Any],
     webhook_url: str,
     message_id: str,
 ) -> bool:
@@ -246,13 +256,14 @@ async def _edit_webhook_message(
 
 async def send_alert(alert: Alert) -> bool:
     """Sendet einen Alert als Discord Rich Embed."""
-    cfg = await get_settings(_db)
+    cfg = await get_settings(_get_db())
     embed = _build_alert_embed(alert, cfg)
     payload = {
         "username": "WSB-Crawler",
         "embeds": [embed],
     }
-    success = await _send_webhook(payload, cfg.discord.webhook_url)
+    # wait=False (Default) → _send_webhook liefert bool
+    success = bool(await _send_webhook(payload, cfg.discord.webhook_url))
     if success:
         alert.sent = True
         logger.info(f"Alert gesendet: ${alert.ticker}")
@@ -282,7 +293,7 @@ async def send_heartbeat(status: RunStatus) -> None:
     Die erste Nachricht wird immer editiert statt neu gepostet.
     Die Message-ID wird in der DB unter 'heartbeat_message_id' persistiert.
     """
-    cfg = await get_settings(_db)
+    cfg = await get_settings(_get_db())
     if not cfg.discord.status_update:
         return
 
@@ -294,7 +305,8 @@ async def send_heartbeat(status: RunStatus) -> None:
     }
 
     # Gespeicherte Message-ID laden
-    message_id: str | None = await _db.get_setting("heartbeat_message_id")
+    db = _get_db()
+    message_id: str | None = await db.get_setting("heartbeat_message_id")
 
     if message_id:
         # Versuche bestehende Nachricht zu editieren
@@ -303,12 +315,12 @@ async def send_heartbeat(status: RunStatus) -> None:
             logger.debug(f"Heartbeat aktualisiert (message_id={message_id})")
             return
         # Nachricht existiert nicht mehr → neue erstellen
-        await _db.set_setting("heartbeat_message_id", "")
+        await db.set_setting("heartbeat_message_id", "")
 
     # Erste Nachricht senden und ID speichern
     result = await _send_webhook(payload, cfg.discord.webhook_url, wait=True)
     if result and isinstance(result, str):
-        await _db.set_setting("heartbeat_message_id", result)
+        await db.set_setting("heartbeat_message_id", result)
         logger.info(f"Heartbeat erstellt (message_id={result})")
     else:
         logger.warning("Heartbeat konnte nicht gesendet werden")
@@ -316,7 +328,7 @@ async def send_heartbeat(status: RunStatus) -> None:
 
 async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
     """Sendet die Top-Ticker-Übersicht als Discord-Embed (für /top Command)."""
-    cfg = await get_settings(_db)
+    cfg = await get_settings(_get_db())
     webhook_url = cfg.discord.webhook_url
     if not entries:
         await _send_webhook({"content": f"Keine Daten für die letzten {days} Tage."}, webhook_url)
@@ -338,6 +350,6 @@ async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
         "description": "\n\n".join(lines),
         "color": COLOR_SUCCESS,
         "footer": {"text": "WSB-Crawler v2"},
-        "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+        "timestamp": datetime.now(tz=UTC).isoformat(),
     }
     await _send_webhook({"username": "WSB-Crawler", "embeds": [embed]}, webhook_url)

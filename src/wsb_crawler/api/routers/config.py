@@ -1,17 +1,34 @@
 """
 Config-Router: GET und PUT für alle Konfigurationseinstellungen.
-Kein Auth nötig — läuft nur auf localhost.
+
+Achtung: Die API hat keine Authentifizierung — deshalb bindet der Server
+per Default nur auf localhost und Secrets werden in GET-Responses maskiert.
 """
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["config"])
-db: Database  # wird in server.py gesetzt
+db: Database = None  # type: ignore[assignment]  # wird in server.py::set_database gesetzt
+
+MASK = "••••••••"
+
+# Werte die nie im Klartext zurückgegeben werden. Die Webhook-URL gehört
+# dazu: wer sie kennt, kann beliebige Nachrichten in den Channel posten.
+SECRET_KEYS = (
+    "reddit_client_secret",
+    "reddit_password",
+    "newsapi_key",
+    "discord_bot_token",
+    "discord_webhook_url",
+    "alphavantage_api_key",
+)
 
 
 class ConfigPayload(BaseModel):
@@ -27,7 +44,7 @@ class ConfigPayload(BaseModel):
     # NewsAPI (optional)
     newsapi_key: str | None = None
     newsapi_lang: str | None = None
-    newsapi_window_hours: int | None = None
+    newsapi_window_hours: int | None = Field(default=None, ge=1, le=168)
 
     # Discord (Pflicht)
     discord_webhook_url: str | None = None
@@ -36,18 +53,18 @@ class ConfigPayload(BaseModel):
     discord_status_update: str | None = None
 
     # Alert-Schwellwerte
-    alert_min_abs: int | None = None
-    alert_min_delta: int | None = None
-    alert_ratio: float | None = None
-    alert_min_price_move: float | None = None
-    alert_max_per_run: int | None = None
-    alert_cooldown_h: int | None = None
+    alert_min_abs: int | None = Field(default=None, ge=1)
+    alert_min_delta: int | None = Field(default=None, ge=0)
+    alert_ratio: float | None = Field(default=None, gt=0)
+    alert_min_price_move: float | None = Field(default=None, ge=0)
+    alert_max_per_run: int | None = Field(default=None, ge=1, le=25)
+    alert_cooldown_h: int | None = Field(default=None, ge=0)
 
     # Crawler
-    subreddits: str | None = None          # komma-separiert
-    crawl_interval_minutes: int | None = None
-    posts_limit: int | None = None
-    comments_limit: int | None = None
+    subreddits: str | None = None  # komma-separiert
+    crawl_interval_minutes: int | None = Field(default=None, ge=1)
+    posts_limit: int | None = Field(default=None, ge=1, le=1000)
+    comments_limit: int | None = Field(default=None, ge=0, le=500)
     log_level: str | None = None
     alphavantage_api_key: str | None = None
 
@@ -60,28 +77,25 @@ class ConfigPayload(BaseModel):
 
 
 @router.get("/config")
-async def get_config() -> dict:
+async def get_config() -> dict[str, Any]:
     """Gibt alle gespeicherten Settings zurück. Secrets werden maskiert."""
     settings = await db.get_all_settings()
     # Secrets maskieren (nicht komplett entfernen, damit UI weiß ob gesetzt)
-    for secret_key in (
-        "reddit_client_secret", "reddit_password",
-        "newsapi_key", "discord_bot_token", "alphavantage_api_key",
-    ):
+    for secret_key in SECRET_KEYS:
         if settings.get(secret_key):
-            settings[secret_key] = "••••••••"
+            settings[secret_key] = MASK
     return settings
 
 
 @router.put("/config")
-async def update_config(payload: ConfigPayload) -> dict:
+async def update_config(payload: ConfigPayload) -> dict[str, Any]:
     """Speichert geänderte Settings in der DB."""
     data = payload.model_dump(exclude_none=True)
     if not data:
         raise HTTPException(status_code=400, detail="Keine Werte zum Speichern")
 
     # Maskierte Platzhalter-Werte niemals überschreiben
-    data = {k: v for k, v in data.items() if str(v) != "••••••••"}
+    data = {k: v for k, v in data.items() if str(v) != MASK}
     if not data:
         return {"ok": True, "updated": []}
 
@@ -93,7 +107,7 @@ async def update_config(payload: ConfigPayload) -> dict:
 
 
 @router.get("/config/status")
-async def config_status() -> dict:
+async def config_status() -> dict[str, Any]:
     """Gibt zurück ob das System vollständig konfiguriert ist."""
     configured = await db.is_configured()
     return {"configured": configured}

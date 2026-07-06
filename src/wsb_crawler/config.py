@@ -78,7 +78,7 @@ class Settings:
     crawler: CrawlerSettings
 
 
-async def get_settings(db: "Database") -> Settings:
+async def get_settings(db: Database) -> Settings:
     """
     Liest alle Settings aus der DB und gibt ein Settings-Objekt zurück.
     Wirft RuntimeError wenn Pflichtfelder fehlen (→ Setup-Wizard nötig).
@@ -91,14 +91,30 @@ async def get_settings(db: "Database") -> Settings:
 
     # ENV-Variablen auf DB-Dict mergen: REDDIT_CLIENT_ID → reddit_client_id
     for key in set(s.keys()) | {
-        "reddit_client_id", "reddit_client_secret", "reddit_user_agent",
-        "reddit_username", "reddit_password",
-        "discord_webhook_url", "discord_bot_token", "discord_command_channel_id",
-        "discord_status_update", "newsapi_key", "newsapi_lang", "newsapi_window_hours",
-        "alert_min_abs", "alert_min_delta", "alert_ratio", "alert_min_price_move",
-        "alert_max_per_run", "alert_cooldown_h", "subreddits",
-        "crawl_interval_minutes", "posts_limit", "comments_limit",
-        "alphavantage_api_key", "log_level",
+        "reddit_client_id",
+        "reddit_client_secret",
+        "reddit_user_agent",
+        "reddit_username",
+        "reddit_password",
+        "discord_webhook_url",
+        "discord_bot_token",
+        "discord_command_channel_id",
+        "discord_status_update",
+        "newsapi_key",
+        "newsapi_lang",
+        "newsapi_window_hours",
+        "alert_min_abs",
+        "alert_min_delta",
+        "alert_ratio",
+        "alert_min_price_move",
+        "alert_max_per_run",
+        "alert_cooldown_h",
+        "subreddits",
+        "crawl_interval_minutes",
+        "posts_limit",
+        "comments_limit",
+        "alphavantage_api_key",
+        "log_level",
     }:
         env_val = os.getenv(key.upper(), "").strip()
         if env_val:

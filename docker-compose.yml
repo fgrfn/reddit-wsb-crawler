@@ -15,6 +15,7 @@ x-common: &common
   environment:
     - TZ=Europe/Berlin
     - WSB_PORT=${WSB_PORT:-80}  # Port ändern via: WSB_PORT=8080 docker compose up
+    - WSB_HOST=0.0.0.0          # Container-intern nötig fürs Port-Mapping
   volumes:
     - ./data:/app/data
     - ./logs:/app/logs
@@ -39,6 +40,9 @@ services:
     container_name: wsb-crawler
     restart: unless-stopped
     ports:
+      # Achtung: Das Dashboard hat keine Authentifizierung. So ist es im
+      # ganzen LAN erreichbar — wer nur lokal zugreifen will, nutzt:
+      #   - "127.0.0.1:${WSB_PORT:-80}:${WSB_PORT:-80}"
       - "${WSB_PORT:-80}:${WSB_PORT:-80}"  # Host:Container Port
     healthcheck:
       test: ["CMD", "python", "-c",

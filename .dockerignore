@@ -21,6 +21,8 @@ tests/
 # Docs
 docs/
 *.md
+# README.md wird fürs Packaging benötigt (pyproject: readme = "README.md")
+!README.md
 
 # IDE
 .idea/
