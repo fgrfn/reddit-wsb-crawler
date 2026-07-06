@@ -36,6 +36,26 @@ def _resolve_db_path() -> Path:
 
 DB_PATH = _resolve_db_path()
 
+# Mindest-Konfiguration, damit Scheduler und manuelle Crawls starten dürfen.
+# ENV-Variablen haben denselben Namen in uppercase, z.B. REDDIT_CLIENT_ID.
+REQUIRED_CONFIG_KEYS = ("reddit_client_id", "reddit_client_secret", "discord_webhook_url")
+
+
+async def is_configured(db: Database) -> bool:
+    """True, wenn Pflichtwerte in DB oder ENV vorhanden sind.
+
+    Wichtig für Docker/Unraid: get_settings() akzeptiert ENV-Overrides.
+    Der Konfigurationsstatus muss dieselbe Logik nutzen, sonst wartet der
+    Scheduler trotz gültiger ENV-Konfiguration endlos auf den Setup-Wizard.
+    """
+    settings = await db.get_all_settings()
+    for key in REQUIRED_CONFIG_KEYS:
+        db_val = settings.get(key, "").strip()
+        env_val = os.getenv(key.upper(), "").strip()
+        if not db_val and not env_val:
+            return False
+    return True
+
 
 @dataclass
 class RedditSettings:
