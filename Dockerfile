@@ -3,7 +3,7 @@
 #
 #  Stage 1 (builder): kompiliert Dependencies mit gcc
 #  Stage 2 (runtime): nur das fertige Wheel, kein Compiler
-#  Ergebnis: ~60% kleineres Image, kein Root-User
+#  Ergebnis: ~60% kleineres Image, Non-Root-App-Prozess
 # ═══════════════════════════════════════════════════════
 
 # ── Stage 1: Builder ────────────────────────────────────
@@ -34,7 +34,14 @@ LABEL version="${VERSION}"
 
 WORKDIR /app
 
-# Non-Root User (Security Best Practice)
+# gosu wird nur im EntryPoint genutzt, um nach dem Fixen der bind-mounted
+# data/logs-Verzeichnisse auf den Non-Root-User zu wechseln.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
+    && rm -rf /var/lib/apt/lists/*
+
+# Non-Root User (Security Best Practice). Der EntryPoint passt UID/GID bei
+# Bedarf per PUID/PGID an und korrigiert die Rechte von /app/data und /app/logs.
 RUN useradd -m -u 1000 -s /bin/bash crawler && \
     mkdir -p data logs && \
     chown -R crawler:crawler /app
@@ -42,21 +49,25 @@ RUN useradd -m -u 1000 -s /bin/bash crawler && \
 # Nur die fertig gebauten Packages vom Builder kopieren
 # (enthält wsb_crawler-Package inkl. HTML-Dashboard in api/static/)
 COPY --from=builder /install /usr/local
-
-# Als Non-Root User ausführen
-USER crawler
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Umgebungsvariablen
 # WSB_HOST=0.0.0.0 ist im Container nötig, damit das Port-Mapping funktioniert
 # (der App-Default ist aus Sicherheitsgründen 127.0.0.1)
 ENV PYTHONUNBUFFERED=1 \
     WSB_HOST=0.0.0.0 \
-    WSB_NO_BROWSER=1
+    WSB_NO_BROWSER=1 \
+    WSB_DB_PATH=/app/data/wsb_crawler.db \
+    PUID=1000 \
+    PGID=1000
 
 # Healthcheck: API antwortet? (Der frühere DB-Check übergab einen str statt
 # Path an Database() und schlug damit immer fehl.)
 HEALTHCHECK --interval=5m --timeout=10s --start-period=60s --retries=3 \
     CMD python -c "import urllib.request, os; urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"WSB_PORT\", \"80\")}/api/status', timeout=5)" || exit 1
 
-# Entry-Point
+# EntryPoint läuft kurz als root, setzt Rechte auf bind-mounted Volumes und
+# startet die App danach via gosu als crawler.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python", "-m", "wsb_crawler.main"]
