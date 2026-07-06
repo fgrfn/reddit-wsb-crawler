@@ -72,7 +72,7 @@ jobs:
 
       - name: Docker Runtime Smoke-Test
         run: |
-          docker run -d --name wsb-crawler-test -p 8080:80 wsb-crawler:test
+          docker run -d --name wsb-crawler-test -e WSB_PORT=8080 -p 8080:8080 wsb-crawler:test
           for i in {1..30}; do
             if curl -fsS http://localhost:8080/api/status >/tmp/status.json; then
               cat /tmp/status.json
