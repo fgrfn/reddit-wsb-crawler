@@ -13,7 +13,7 @@ from typing import cast
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, RedirectResponse
+from fastapi.responses import FileResponse, RedirectResponse, Response
 from loguru import logger
 
 from wsb_crawler.api.routers import config, dashboard, status
@@ -22,7 +22,7 @@ from wsb_crawler.storage.database import Database
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="WSB-Crawler Dashboard", version="2.0.0", docs_url="/api/docs")
+app = FastAPI(title="WSB-Crawler Dashboard", version="2.1.0", docs_url="/api/docs")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,16 +43,16 @@ app.include_router(status.router, prefix="/api")
 # Statisches HTML-Dashboard servieren (Single-File, kein Assets-Ordner nötig)
 if (STATIC_DIR / "index.html").exists():
 
-    @app.get("/", include_in_schema=False)
-    async def serve_root() -> FileResponse | RedirectResponse:
+    @app.get("/", include_in_schema=False, response_model=None)
+    async def serve_root() -> Response:
         """Startseite: beim Erststart direkt zum Setup weiterleiten."""
         db = cast(Database | None, getattr(app.state, "db", None))
         if db is not None and not await is_configured(db):
             return RedirectResponse(url="/setup", status_code=307)
         return FileResponse(STATIC_DIR / "index.html")
 
-    @app.get("/{full_path:path}", include_in_schema=False)
-    async def serve_spa(full_path: str) -> FileResponse:
+    @app.get("/{full_path:path}", include_in_schema=False, response_model=None)
+    async def serve_spa(full_path: str) -> Response:
         """Alle sonstigen nicht-API-Routen → index.html (SPA-Routing via Hash)."""
         return FileResponse(STATIC_DIR / "index.html")
 
