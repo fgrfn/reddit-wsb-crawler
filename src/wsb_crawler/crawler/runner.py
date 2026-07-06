@@ -14,7 +14,12 @@ from wsb_crawler.alerts.discord import send_alerts
 from wsb_crawler.analysis.detector import analyze_mentions
 from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.reddit import crawl_all_subreddits
-from wsb_crawler.runtime.progress import add_diagnostic, finish_run, start_run, update_run
+from wsb_crawler.runtime.progress import (
+    add_diagnostic,
+    finish_run,
+    start_run,
+    update_run,
+)
 from wsb_crawler.storage.database import Database
 
 # Verhindert dass Scheduler und manueller API-Trigger gleichzeitig crawlen
@@ -46,7 +51,11 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
         cfg.crawler.comments_limit,
     )
     if dry_run:
-        add_diagnostic("info", "Dry-Run aktiv: Discord-Alerts und Cooldowns werden nicht geschrieben.", source="crawl")
+        add_diagnostic(
+            "info",
+            "Dry-Run aktiv: Discord-Alerts und Cooldowns werden nicht geschrieben.",
+            source="crawl",
+        )
 
     try:
         update_run(
@@ -92,7 +101,9 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
                 progress=86,
             )
             if dry_run:
-                logger.info(f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet")
+                logger.info(
+                    f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet"
+                )
                 update_run(alerts_sent=0, progress=92)
             else:
                 sent_count = await send_alerts(alerts)
@@ -128,7 +139,9 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
 
         purged = await db.purge_old_mentions(days=MENTION_RETENTION_DAYS)
         if purged:
-            logger.debug(f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht")
+            logger.debug(
+                f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht"
+            )
 
         duration = result.duration_seconds or 0
         message = (
