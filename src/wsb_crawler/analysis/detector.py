@@ -16,6 +16,7 @@ from wsb_crawler.enrichment.news import get_news_bulk
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
 from wsb_crawler.models import Alert, AlertReason, SpikeResult
+from wsb_crawler.runtime.progress import update_run
 from wsb_crawler.storage.database import Database
 
 
@@ -44,16 +45,30 @@ async def analyze_mentions(
     alerts: list[Alert] = []
 
     if not mention_counts:
+        update_run(
+            phase="analysis",
+            phase_label="Spikes analysieren",
+            message="Keine Ticker-Nennungen für die Analyse gefunden.",
+            progress=70,
+            candidate_count=0,
+            active_candidate_count=0,
+        )
         return alerts
 
     # Vorfilter: jeder Alert-Typ erfordert mindestens min(min_abs, min_delta)
     # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls
     min_relevant = min(cfg.min_abs, cfg.min_delta)
+    relevant_items = [(ticker, current) for ticker, current in mention_counts.items() if current >= min_relevant]
     spike_results: list[SpikeResult] = []
 
-    for ticker, current in mention_counts.items():
-        if current < min_relevant:
-            continue
+    update_run(
+        phase="analysis",
+        phase_label="Spikes analysieren",
+        message=f"Prüfe {len(relevant_items)} relevante Ticker gegen die 30-Tage-Historie…",
+        progress=62,
+    )
+
+    for idx, (ticker, current) in enumerate(relevant_items, start=1):
         avg = await db.get_avg_mentions(ticker, days=30, exclude_run_id=run_id)
         is_new = not await db.is_known_ticker(ticker, exclude_run_id=run_id)
 
@@ -81,14 +96,32 @@ async def analyze_mentions(
             )
         )
 
+        if idx % 25 == 0:
+            update_run(
+                message=f"Spike-Analyse: {idx}/{len(relevant_items)} relevante Ticker geprüft…",
+                progress=62 + int((idx / max(1, len(relevant_items))) * 10),
+            )
+
     # Nur Kandidaten weiter anreichern
     candidates = [s for s in spike_results if s.reason is not None]
+    update_run(candidate_count=len(candidates))
 
     if not candidates:
         logger.debug("Keine Spike-Kandidaten in diesem Lauf")
+        update_run(
+            phase="analysis",
+            phase_label="Spikes analysieren",
+            message="Keine Spike-Kandidaten in diesem Lauf.",
+            progress=78,
+            active_candidate_count=0,
+        )
         return alerts
 
     logger.info(f"{len(candidates)} Spike-Kandidat(en) gefunden: {[c.ticker for c in candidates]}")
+    update_run(
+        message=f"{len(candidates)} Spike-Kandidat(en) gefunden. Prüfe Cooldowns…",
+        progress=74,
+    )
 
     # Cooldown-Check (filtered aus Kandidaten)
     active_candidates: list[SpikeResult] = []
@@ -98,8 +131,16 @@ async def analyze_mentions(
             continue
         active_candidates.append(spike)
 
+    update_run(active_candidate_count=len(active_candidates))
+
     if not active_candidates:
         logger.info("Alle Kandidaten im Cooldown")
+        update_run(
+            phase="analysis",
+            phase_label="Spikes analysieren",
+            message="Alle Kandidaten sind noch im Cooldown.",
+            progress=80,
+        )
         return alerts
 
     # Auf max_per_run begrenzen (nach Relevanz sortieren)
@@ -107,12 +148,23 @@ async def analyze_mentions(
     active_candidates = active_candidates[: cfg.max_per_run]
 
     tickers_to_enrich = [s.ticker for s in active_candidates]
+    update_run(
+        phase="enrich",
+        phase_label="Kurse & News",
+        message=f"Hole Kurse, Namen und News für {', '.join(tickers_to_enrich)}…",
+        progress=80,
+        active_candidate_count=len(active_candidates),
+    )
 
     # Kurs + Namen parallel holen, danach News mit Firmennamen
     # (die News-Suche findet mit "GameStop" deutlich mehr als nur mit "$GME")
     prices, names = await asyncio.gather(
         get_prices_bulk(tickers_to_enrich),
         resolve_names_bulk(tickers_to_enrich),
+    )
+    update_run(
+        message="Kurse und Firmennamen geladen. Hole passende News…",
+        progress=83,
     )
     news_map = await get_news_bulk(tickers_to_enrich, company_names=names)
 
@@ -139,4 +191,10 @@ async def analyze_mentions(
             f"{spike.current_mentions} Nennungen ({spike.ratio:.1f}x Avg)"
         )
 
+    update_run(
+        phase="enrich",
+        phase_label="Kurse & News",
+        message=f"{len(alerts)} Alert(s) vorbereitet.",
+        progress=85,
+    )
     return alerts
