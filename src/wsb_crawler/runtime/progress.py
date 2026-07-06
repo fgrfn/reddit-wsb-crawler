@@ -38,7 +38,8 @@ def start_run(run_id: str, subreddits: list[str], *, dry_run: bool = False) -> N
         "duration_s": 0.0,
         "subreddits": subreddits,
         "subreddit_progress": {
-            sub: {"posts": 0, "comments": 0, "done": False, "error": None} for sub in subreddits
+            sub: {"posts": 0, "comments": 0, "done": False, "error": None}
+            for sub in subreddits
         },
         "posts_scanned": 0,
         "comments_scanned": 0,
@@ -129,11 +130,20 @@ def update_subreddit(
     if _current_run is None:
         return
     progress = _current_run.setdefault("subreddit_progress", {})
-    progress[subreddit] = {"posts": posts, "comments": comments, "done": done, "error": error}
+    progress[subreddit] = {
+        "posts": posts,
+        "comments": comments,
+        "done": done,
+        "error": error,
+    }
     if error:
         add_diagnostic("error", error, source=f"r/{subreddit}")
-    _current_run["posts_scanned"] = sum(int(v.get("posts", 0)) for v in progress.values())
-    _current_run["comments_scanned"] = sum(int(v.get("comments", 0)) for v in progress.values())
+    _current_run["posts_scanned"] = sum(
+        int(v.get("posts", 0)) for v in progress.values()
+    )
+    _current_run["comments_scanned"] = sum(
+        int(v.get("comments", 0)) for v in progress.values()
+    )
     done_count = sum(1 for v in progress.values() if v.get("done"))
     total = max(1, len(progress))
     update_run(
