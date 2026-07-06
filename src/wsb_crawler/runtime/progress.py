@@ -96,7 +96,14 @@ def update_run(
     _current_run["duration_s"] = _duration_seconds(_current_run.get("started_at"))
 
 
-def update_subreddit(subreddit: str, *, posts: int, comments: int, done: bool = False, error: str | None = None) -> None:
+def update_subreddit(
+    subreddit: str,
+    *,
+    posts: int,
+    comments: int,
+    done: bool = False,
+    error: str | None = None,
+) -> None:
     """Aktualisiert den Fortschritt eines einzelnen Subreddits."""
     if _current_run is None:
         return
