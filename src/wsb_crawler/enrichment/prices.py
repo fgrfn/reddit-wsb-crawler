@@ -55,7 +55,9 @@ def _negative_cache_hit(ticker: str) -> bool:
     failed_at = _failed_price_cache.get(ticker)
     if failed_at is None:
         return False
-    if datetime.now(tz=UTC) - failed_at > timedelta(minutes=FAILED_PRICE_CACHE_TTL_MINUTES):
+    if datetime.now(tz=UTC) - failed_at > timedelta(
+        minutes=FAILED_PRICE_CACHE_TTL_MINUTES
+    ):
         _failed_price_cache.pop(ticker, None)
         return False
     return True
@@ -71,7 +73,9 @@ def _fetch_price_sync(ticker: str) -> PriceData:
     hist_1d = stock.history(period="1d", interval="1h")
     hist_7d = stock.history(period="7d", interval="1d")
 
-    current_price = _safe_float(info.get("last_price") or info.get("regular_market_price"))
+    current_price = _safe_float(
+        info.get("last_price") or info.get("regular_market_price")
+    )
 
     # Prozentuale Veränderungen berechnen
     change_1h = None
