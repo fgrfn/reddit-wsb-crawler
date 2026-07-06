@@ -24,7 +24,7 @@ from wsb_crawler.alerts.discord import send_heartbeat
 from wsb_crawler.alerts.discord import set_database as discord_set_db
 from wsb_crawler.api.routers.status import setup_ws_log_sink
 from wsb_crawler.api.server import run_server
-from wsb_crawler.config import DB_PATH, get_settings
+from wsb_crawler.config import DB_PATH, get_settings, is_configured
 from wsb_crawler.crawler.reddit import set_database as reddit_set_db
 from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.enrichment.news import set_database as news_set_db
@@ -60,7 +60,7 @@ def _setup_logging(log_level: str = "INFO") -> None:
 async def scheduler_loop(db: Database) -> None:
     """Wartet auf vollständige Konfiguration, dann regelmäßige Crawls."""
     # Warten bis Setup abgeschlossen
-    while not await db.is_configured():
+    while not await is_configured(db):
         logger.info("Warte auf Konfiguration via Dashboard...")
         await asyncio.sleep(5)
 
@@ -136,7 +136,7 @@ async def main_async() -> None:
         setup_ws_log_sink()
         logger.info(f"WSB-Crawler v{__version__} startet")
 
-        configured = await db.is_configured()
+        configured = await is_configured(db)
 
         # DB in alle Module injecten, die get_settings() benötigen
         reddit_set_db(db)
