@@ -8,11 +8,12 @@ Serviert das statische HTML-Dashboard (api/static/) unter / und die API unter /a
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from loguru import logger
 
 from wsb_crawler.api.routers import config, dashboard, status
@@ -37,12 +38,21 @@ app.include_router(config.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(status.router, prefix="/api")
 
+
 # Statisches HTML-Dashboard servieren (Single-File, kein Assets-Ordner nötig)
 if (STATIC_DIR / "index.html").exists():
 
+    @app.get("/", include_in_schema=False)
+    async def serve_root() -> FileResponse | RedirectResponse:
+        """Startseite: beim Erststart direkt zum Setup weiterleiten."""
+        db = cast(Database | None, getattr(app.state, "db", None))
+        if db is not None and not await db.is_configured():
+            return RedirectResponse(url="/setup", status_code=307)
+        return FileResponse(STATIC_DIR / "index.html")
+
     @app.get("/{full_path:path}", include_in_schema=False)
     async def serve_spa(full_path: str) -> FileResponse:
-        """Alle nicht-API-Routen → index.html (SPA-Routing via Hash)."""
+        """Alle sonstigen nicht-API-Routen → index.html (SPA-Routing via Hash)."""
         return FileResponse(STATIC_DIR / "index.html")
 
 
@@ -51,6 +61,7 @@ def set_database(db: Database) -> None:
     config.db = db
     dashboard.db = db
     status.db = db
+    app.state.db = db
 
 
 async def run_server(db: Database, host: str = "127.0.0.1", port: int = 80) -> None:
