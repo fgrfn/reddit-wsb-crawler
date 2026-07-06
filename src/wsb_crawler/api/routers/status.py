@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 from collections import deque
+from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
@@ -14,11 +15,13 @@ from wsb_crawler.api.routers.dashboard import is_crawl_running
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["status"])
-db: Database  # wird in server.py gesetzt
+db: Database = None  # type: ignore[assignment]  # wird in server.py::set_database gesetzt
 
 # Ring-Buffer für letzte 200 Log-Zeilen (für WebSocket-Clients die sich verbinden)
 _log_buffer: deque[str] = deque(maxlen=200)
 _ws_clients: list[WebSocket] = []
+# Starke Referenzen auf Broadcast-Tasks — sonst kann der GC laufende Tasks einsammeln
+_broadcast_tasks: set[asyncio.Task[None]] = set()
 
 
 def setup_ws_log_sink() -> None:
@@ -38,7 +41,7 @@ def setup_ws_log_sink() -> None:
         for ws in disconnected:
             _ws_clients.remove(ws)
 
-    def _sink(message: "logger.Message") -> None:  # type: ignore[name-defined]
+    def _sink(message: object) -> None:
         line = str(message).rstrip("\n")
         if not line:
             return
@@ -48,15 +51,19 @@ def setup_ws_log_sink() -> None:
 
         try:
             loop = asyncio.get_running_loop()
-            loop.create_task(_broadcast(line))
         except RuntimeError:
-            pass
+            # Log-Aufruf außerhalb des Event-Loops (z.B. aus to_thread) —
+            # Zeile bleibt im Buffer, Broadcast holt der nächste Reconnect nach
+            return
+        task = loop.create_task(_broadcast(line))
+        _broadcast_tasks.add(task)
+        task.add_done_callback(_broadcast_tasks.discard)
 
     logger.add(_sink, format="{time:HH:mm:ss} | {level: <8} | {message}", level="INFO")
 
 
 @router.get("/status")
-async def get_status() -> dict:
+async def get_status() -> dict[str, Any]:
     """Aktueller Crawler-Status."""
     run_status = await db.get_run_status()
     configured = await db.is_configured()

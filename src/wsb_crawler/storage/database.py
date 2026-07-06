@@ -10,11 +10,11 @@ Ersetzt die Pickle-Dateien aus v1. Vorteile:
 
 from __future__ import annotations
 
+import json
 import uuid
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import Any
 
 import aiosqlite
 from loguru import logger
@@ -26,6 +26,24 @@ from wsb_crawler.models import (
     TrendDirection,
     TrendEntry,
 )
+
+
+def _utcnow() -> datetime:
+    """Aktuelle Zeit als aware UTC-datetime (ersetzt deprecated datetime.utcnow)."""
+    return datetime.now(tz=UTC)
+
+
+def _parse_dt(value: str) -> datetime:
+    """Parst einen ISO-Timestamp aus der DB.
+
+    Alte DB-Einträge sind naive UTC-Strings, neue enthalten +00:00 —
+    beide werden einheitlich als aware UTC zurückgegeben.
+    """
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt
+
 
 # Schema-Version für spätere Migrationen
 SCHEMA_VERSION = 1
@@ -124,7 +142,7 @@ class Database:
             await self._conn.close()
             self._conn = None
 
-    async def __aenter__(self) -> "Database":
+    async def __aenter__(self) -> Database:
         await self.init()
         return self
 
@@ -147,7 +165,7 @@ class Database:
         if current < SCHEMA_VERSION:
             await self.conn.execute(
                 "INSERT OR IGNORE INTO schema_version VALUES (?, ?)",
-                (SCHEMA_VERSION, datetime.utcnow().isoformat()),
+                (SCHEMA_VERSION, _utcnow().isoformat()),
             )
             await self.conn.commit()
             logger.debug(f"Schema auf Version {SCHEMA_VERSION} aktualisiert")
@@ -156,12 +174,11 @@ class Database:
 
     async def start_run(self, subreddits: list[str]) -> str:
         """Neuen Crawl-Lauf registrieren, gibt run_id zurück."""
-        import json
         run_id = str(uuid.uuid4())
         await self.conn.execute(
             """INSERT INTO crawl_runs (id, started_at, subreddits)
                VALUES (?, ?, ?)""",
-            (run_id, datetime.utcnow().isoformat(), json.dumps(subreddits)),
+            (run_id, _utcnow().isoformat(), json.dumps(subreddits)),
         )
         await self.conn.commit()
         return run_id
@@ -178,7 +195,7 @@ class Database:
                SET finished_at=?, posts_scanned=?, comments_scanned=?, is_healthy=?
                WHERE id=?""",
             (
-                datetime.utcnow().isoformat(),
+                _utcnow().isoformat(),
                 posts_scanned,
                 comments_scanned,
                 1 if is_healthy else 0,
@@ -189,7 +206,7 @@ class Database:
 
     async def save_run_mentions(self, run_id: str, counts: dict[str, int]) -> None:
         """Speichert Ticker-Mention-Counts eines Laufs."""
-        now = datetime.utcnow().isoformat()
+        now = _utcnow().isoformat()
         await self.conn.executemany(
             "INSERT INTO ticker_mentions (run_id, ticker, mentions, recorded_at) VALUES (?, ?, ?, ?)",
             [(run_id, ticker, count, now) for ticker, count in counts.items()],
@@ -199,14 +216,14 @@ class Database:
     # ── Ticker History ───────────────────────────────────────────────────────
 
     async def get_ticker_history(self, ticker: str, days: int = 30) -> TickerHistory:
-        """Gibt die Mention-History der letzten N Tage zurück."""
-        since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        """Gibt die tagesaggregierte Mention-History der letzten N Tage zurück."""
+        since = (_utcnow() - timedelta(days=days)).isoformat()
         async with self.conn.execute(
-            """SELECT recorded_at, SUM(mentions) as total
+            """SELECT DATE(recorded_at) as day, SUM(mentions) as total
                FROM ticker_mentions
                WHERE ticker = ? AND recorded_at >= ?
                GROUP BY DATE(recorded_at)
-               ORDER BY recorded_at ASC""",
+               ORDER BY day ASC""",
             (ticker, since),
         ) as cur:
             rows = await cur.fetchall()
@@ -214,30 +231,41 @@ class Database:
         return TickerHistory(
             ticker=ticker,
             mention_counts=[
-                (datetime.fromisoformat(r["recorded_at"]), r["total"])
-                for r in rows
+                (datetime.fromisoformat(r["day"]).replace(tzinfo=UTC), r["total"]) for r in rows
             ],
         )
 
-    async def get_avg_mentions(self, ticker: str, days: int = 30) -> float:
-        """Durchschnittliche Nennungen der letzten N Tage (für Spike-Erkennung)."""
-        since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+    async def get_avg_mentions(
+        self, ticker: str, days: int = 30, exclude_run_id: str | None = None
+    ) -> float:
+        """Durchschnittliche Nennungen der letzten N Tage (für Spike-Erkennung).
+
+        exclude_run_id: Lauf der nicht mitzählen soll — der aktuelle Lauf darf
+        seinen eigenen Durchschnitt nicht verwässern, sonst erkennt der
+        Detector den Spike gegen sich selbst.
+        """
+        since = (_utcnow() - timedelta(days=days)).isoformat()
         async with self.conn.execute(
             """SELECT AVG(daily_total) as avg FROM (
                    SELECT SUM(mentions) as daily_total
                    FROM ticker_mentions
                    WHERE ticker = ? AND recorded_at >= ?
+                     AND run_id != COALESCE(?, '')
                    GROUP BY DATE(recorded_at)
                )""",
-            (ticker, since),
+            (ticker, since, exclude_run_id),
         ) as cur:
             row = await cur.fetchone()
             return float(row["avg"]) if row and row["avg"] else 0.0
 
-    async def is_known_ticker(self, ticker: str) -> bool:
-        """Prüft ob ein Ticker bereits in der DB bekannt ist."""
+    async def is_known_ticker(self, ticker: str, exclude_run_id: str | None = None) -> bool:
+        """Prüft ob ein Ticker bereits in der DB bekannt ist.
+
+        exclude_run_id: Lauf der nicht mitzählen soll (siehe get_avg_mentions).
+        """
         async with self.conn.execute(
-            "SELECT 1 FROM ticker_mentions WHERE ticker = ? LIMIT 1", (ticker,)
+            "SELECT 1 FROM ticker_mentions WHERE ticker = ? AND run_id != COALESCE(?, '') LIMIT 1",
+            (ticker, exclude_run_id),
         ) as cur:
             return await cur.fetchone() is not None
 
@@ -251,11 +279,11 @@ class Database:
             row = await cur.fetchone()
             if not row:
                 return False
-            return datetime.fromisoformat(row["cooldown_until"]) > datetime.utcnow()
+            return _parse_dt(row["cooldown_until"]) > _utcnow()
 
     async def set_cooldown(self, ticker: str, hours: int) -> None:
         """Setzt oder erneuert den Cooldown für einen Ticker."""
-        now = datetime.utcnow()
+        now = _utcnow()
         cooldown_until = (now + timedelta(hours=hours)).isoformat()
         await self.conn.execute(
             """INSERT INTO alert_cooldowns (ticker, last_alert_at, cooldown_until, alert_count)
@@ -294,7 +322,7 @@ class Database:
 
     async def get_top_tickers(self, days: int = 7, limit: int = 10) -> list[TrendEntry]:
         """Top-Ticker der letzten N Tage, sortiert nach Gesamtnennungen."""
-        since = (datetime.utcnow() - timedelta(days=days)).isoformat()
+        since = (_utcnow() - timedelta(days=days)).isoformat()
         async with self.conn.execute(
             """SELECT
                    ticker,
@@ -345,23 +373,22 @@ class Database:
             last_run = await cur.fetchone()
 
         async with self.conn.execute("SELECT COUNT(*) as c FROM crawl_runs") as cur:
-            total_runs = (await cur.fetchone())["c"]  # type: ignore[index]
+            total_runs = (await cur.fetchone())["c"]
 
         async with self.conn.execute("SELECT COUNT(*) as c FROM alert_history") as cur:
-            total_alerts = (await cur.fetchone())["c"]  # type: ignore[index]
+            total_alerts = (await cur.fetchone())["c"]
 
         async with self.conn.execute(
             "SELECT COUNT(DISTINCT ticker) as c FROM ticker_mentions"
         ) as cur:
-            tracked = (await cur.fetchone())["c"]  # type: ignore[index]
+            tracked = (await cur.fetchone())["c"]
 
         last_at = None
         duration = None
         if last_run:
-            # DateTime aus DB ist naive (ohne Timezone) → als UTC markieren
-            last_at = datetime.fromisoformat(last_run["started_at"]).replace(tzinfo=timezone.utc)
+            last_at = _parse_dt(last_run["started_at"])
             if last_run["finished_at"]:
-                finished = datetime.fromisoformat(last_run["finished_at"]).replace(tzinfo=timezone.utc)
+                finished = _parse_dt(last_run["finished_at"])
                 duration = (finished - last_at).total_seconds()
 
         return RunStatus(
@@ -378,9 +405,7 @@ class Database:
 
     async def get_setting(self, key: str) -> str | None:
         """Liest einen einzelnen Konfigurationswert aus der DB."""
-        async with self.conn.execute(
-            "SELECT value FROM settings WHERE key = ?", (key,)
-        ) as cur:
+        async with self.conn.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cur:
             row = await cur.fetchone()
             return row["value"] if row else None
 
@@ -390,7 +415,7 @@ class Database:
             """INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
                ON CONFLICT(key) DO UPDATE SET value = excluded.value,
                                               updated_at = excluded.updated_at""",
-            (key, value, datetime.utcnow().isoformat()),
+            (key, value, _utcnow().isoformat()),
         )
         await self.conn.commit()
 
@@ -413,8 +438,10 @@ class Database:
 
     async def get_alert_history(
         self, limit: int = 50, ticker: str | None = None
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Gibt Alert-History als Liste von dicts zurück (für API)."""
+        query: str
+        params: tuple[Any, ...]
         if ticker:
             query = """SELECT * FROM alert_history WHERE ticker = ?
                        ORDER BY sent_at DESC LIMIT ?"""
@@ -428,10 +455,26 @@ class Database:
 
         return [dict(r) for r in rows]
 
-    async def get_recent_runs(self, limit: int = 20) -> list[dict]:
+    async def get_recent_runs(self, limit: int = 20) -> list[dict[str, Any]]:
         """Gibt die letzten Crawl-Runs als Liste von dicts zurück (für API)."""
         async with self.conn.execute(
             "SELECT * FROM crawl_runs ORDER BY started_at DESC LIMIT ?", (limit,)
         ) as cur:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
+
+    # ── Aufräumen ────────────────────────────────────────────────────────────
+
+    async def purge_old_mentions(self, days: int = 90) -> int:
+        """Löscht Ticker-Mentions die älter als N Tage sind.
+
+        Die Tabelle wächst sonst unbegrenzt (jeder Lauf schreibt hunderte
+        Zeilen, inkl. False-Positive-Rauschen). Gibt die Anzahl gelöschter
+        Zeilen zurück.
+        """
+        cutoff = (_utcnow() - timedelta(days=days)).isoformat()
+        cur = await self.conn.execute(
+            "DELETE FROM ticker_mentions WHERE recorded_at < ?", (cutoff,)
+        )
+        await self.conn.commit()
+        return cur.rowcount or 0

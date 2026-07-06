@@ -45,12 +45,16 @@ COPY --from=builder /install /usr/local
 USER crawler
 
 # Umgebungsvariablen
-ENV PYTHONUNBUFFERED=1
-ENV LOG_LEVEL=INFO
+# WSB_HOST=0.0.0.0 ist im Container nötig, damit das Port-Mapping funktioniert
+# (der App-Default ist aus Sicherheitsgründen 127.0.0.1)
+ENV PYTHONUNBUFFERED=1 \
+    WSB_HOST=0.0.0.0 \
+    WSB_NO_BROWSER=1
 
-# Healthcheck: prüft ob die DB existiert und der Prozess läuft
+# Healthcheck: API antwortet? (Der frühere DB-Check übergab einen str statt
+# Path an Database() und schlug damit immer fehl.)
 HEALTHCHECK --interval=5m --timeout=10s --start-period=60s --retries=3 \
-    CMD python -c "from wsb_crawler.storage.database import Database; import asyncio; asyncio.run(Database('data/wsb_crawler.db').init())" || exit 1
+    CMD python -c "import urllib.request, os; urllib.request.urlopen(f'http://127.0.0.1:{os.getenv(\"WSB_PORT\", \"80\")}/api/status', timeout=5)" || exit 1
 
 # Entry-Point
 CMD ["python", "-m", "wsb_crawler.main"]

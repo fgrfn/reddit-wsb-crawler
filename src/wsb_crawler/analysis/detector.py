@@ -22,6 +22,7 @@ from wsb_crawler.storage.database import Database
 async def analyze_mentions(
     mention_counts: dict[str, int],
     db: Database,
+    run_id: str | None = None,
 ) -> list[Alert]:
     """
     Analysiert Ticker-Nennungen und gibt ausgelöste Alerts zurück.
@@ -33,6 +34,10 @@ async def analyze_mentions(
     4. Für Alert-Kandidaten: Kurs + News parallel holen
     5. Alerts erstellen
 
+    run_id: ID des aktuellen Laufs. Dessen Mentions sind beim Aufruf bereits
+    gespeichert und müssen aus History-Queries ausgeschlossen werden — sonst
+    ist jeder Ticker "bekannt" und NEW_TICKER-Alerts können nie auslösen.
+
     Gibt maximal alert_max_per_run Alerts zurück.
     """
     cfg = (await get_settings(db)).alerts
@@ -41,12 +46,16 @@ async def analyze_mentions(
     if not mention_counts:
         return alerts
 
-    # Kandidaten-Vorauswahl (ohne DB-Calls für Nicht-Kandidaten)
+    # Vorfilter: jeder Alert-Typ erfordert mindestens min(min_abs, min_delta)
+    # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls
+    min_relevant = min(cfg.min_abs, cfg.min_delta)
     spike_results: list[SpikeResult] = []
 
     for ticker, current in mention_counts.items():
-        avg = await db.get_avg_mentions(ticker, days=30)
-        is_new = not await db.is_known_ticker(ticker)
+        if current < min_relevant:
+            continue
+        avg = await db.get_avg_mentions(ticker, days=30, exclude_run_id=run_id)
+        is_new = not await db.is_known_ticker(ticker, exclude_run_id=run_id)
 
         ratio = current / avg if avg > 0 else float("inf")
         delta = current - int(avg)
@@ -99,12 +108,13 @@ async def analyze_mentions(
 
     tickers_to_enrich = [s.ticker for s in active_candidates]
 
-    # Kurs + News + Namen parallel holen
-    prices, news_map, names = await asyncio.gather(
+    # Kurs + Namen parallel holen, danach News mit Firmennamen
+    # (die News-Suche findet mit "GameStop" deutlich mehr als nur mit "$GME")
+    prices, names = await asyncio.gather(
         get_prices_bulk(tickers_to_enrich),
-        get_news_bulk(tickers_to_enrich),
         resolve_names_bulk(tickers_to_enrich),
     )
+    news_map = await get_news_bulk(tickers_to_enrich, company_names=names)
 
     for spike in active_candidates:
         t = spike.ticker

@@ -107,18 +107,20 @@ SQLite-Datei: `data/wsb_crawler.db`
 
 | Tabelle | Inhalt |
 |---|---|
-| `runs` | Crawl-Lauf-History (Start, Ende, Posts/Comments, Status) |
-| `mentions` | Ticker-Nennungen pro Lauf |
-| `alerts` | Gesendete Alerts (Ticker, Grund, Zeitstempel) |
-| `cooldowns` | Ticker-Cooldown bis wann kein Alert |
+| `crawl_runs` | Crawl-Lauf-History (Start, Ende, Posts/Comments, Status) |
+| `ticker_mentions` | Ticker-Nennungen pro Lauf (`run_id`, `ticker`, `mentions`, `recorded_at`) |
+| `alert_history` | Gesendete Alerts (Ticker, Grund, Zeitstempel) |
+| `alert_cooldowns` | Ticker-Cooldown bis wann kein Alert |
 | `settings` | Key/Value-Konfiguration (ersetzt .env) |
 
 Wichtige Methoden:
 - `is_configured()` — prüft ob reddit_client_id, reddit_client_secret, discord_webhook_url gesetzt sind
 - `get_setting(key)` / `set_setting(key, value)` — Einzel-Zugriff
 - `get_all_settings()` — Dict aller Einstellungen
+- `get_avg_mentions(ticker, days, exclude_run_id)` / `is_known_ticker(ticker, exclude_run_id)` — für Spike-Erkennung; `exclude_run_id` blendet den gerade gespeicherten Lauf aus
 - `get_alert_history(limit, ticker)` — für Dashboard/Alerts-Seite
 - `get_recent_runs(limit)` — für Dashboard-Statusanzeige
+- `purge_old_mentions(days=90)` — Retention-Cleanup, nach jedem Crawl aufgerufen
 
 ---
 
@@ -132,9 +134,11 @@ FastAPI-App mit drei Routern, alle unter `/api/`:
 | `dashboard.py` | `GET /api/tickers`, `GET /api/tickers/{ticker}/history`, `GET /api/alerts`, `GET /api/runs` |
 | `status.py` | `GET /api/status`, `WebSocket /ws/logs` |
 
-**Statische Dateien:** React-Build liegt in `src/wsb_crawler/api/static/` und wird unter `/` gemountet. Die Datei `index.html` wird als Fallback für alle nicht-API-Routen serviert (SPA-Routing).
+**Statische Dateien:** Das Single-File Vanilla-HTML-Dashboard liegt in `src/wsb_crawler/api/static/index.html` und wird unter `/` gemountet. Es wird als Fallback für alle nicht-API-Routen serviert (SPA-Routing per Hash). Kein Build-Step.
 
-**DB-Injektion:** `server.py::set_database(db)` setzt ein Modul-Level `_db` in jedem Router vor dem Start.
+**Secret-Maskierung:** `GET /api/config` maskiert `reddit_client_secret`, `reddit_password`, `newsapi_key`, `discord_bot_token`, `discord_webhook_url` und `alphavantage_api_key` mit `••••••••` (Liste in `config.py::SECRET_KEYS`). Die Webhook-URL zählt bewusst dazu — wer sie kennt, kann in den Channel posten.
+
+**DB-Injektion:** `server.py::set_database(db)` setzt das Modul-Level-Attribut `db` in jedem Router vor dem Start.
 
 **Log-WebSocket:** `status.py` installiert einen loguru-Sink, der alle Lognachrichten in eine `deque(maxlen=200)` schreibt und an alle verbundenen WebSocket-Clients broadcasted.
 
@@ -165,13 +169,15 @@ docker compose up -d
 
 **Port ändern:** Setze `WSB_PORT=8080` als Environment-Variable oder in `.env`-Datei.
 
+**Bind-Adresse:** Default `127.0.0.1` (kein Auth → nur localhost). `WSB_HOST=0.0.0.0` öffnet den Server fürs LAN (im Docker-Image gesetzt, da fürs Port-Mapping nötig). `WSB_NO_BROWSER=1` unterdrückt das automatische Browser-Öffnen (Docker/Headless).
+
 ---
 
 ## Bekannte Einschränkungen / TODO
 
-1. **`datetime.utcnow()` Deprecation:** In `models.py` verwenden `PriceData.fetched_at` und `Alert.triggered_at` noch `datetime.utcnow` als `default_factory`. Ab Python 3.12 erzeugt das DeprecationWarnings. Fix: `lambda: datetime.now(tz=timezone.utc)` — erfordert aber Überprüfung aller datetime-Vergleiche (naiv vs. aware) in DB-Code.
+1. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
 
-2. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
+2. **Testabdeckung der Entry-Points:** `main.py` und `alerts/bot.py` sind noch ungetestet (Integrations-/Discord-Client-Code). Coverage-Gate liegt bei 60 %.
 
 ---
 
@@ -181,5 +187,7 @@ docker compose up -d
 - **Logging:** Nur `loguru`. Kein `print()`, kein `logging.getLogger()`.
 - **Fehlerbehandlung:** Auf Top-Level (Scheduler, API-Handlers) abfangen und loggen. In tiefen Funktionen Exceptions durchreichen lassen.
 - **Typen:** Pydantic-Modelle für API-Request/Response-Bodies. Dataclasses für interne Konfiguration.
-- **Secrets in API-Responses:** Nie im Klartext. `config.py` Router maskiert alle `*_secret`, `*_token`, `*_key` Felder mit `••••••••`.
+- **Secrets in API-Responses:** Nie im Klartext. `config.py` maskiert die in `SECRET_KEYS` gelisteten Felder (inkl. `discord_webhook_url`) mit `••••••••`.
 - **Port:** Default 80, über `WSB_PORT` Environment-Variable änderbar. Port < 1024 benötigt root auf Linux/macOS.
+- **Bind:** Default `127.0.0.1`; `WSB_HOST=0.0.0.0` nur bewusst setzen (kein Auth).
+- **Datetime:** Immer aware UTC. In der DB-Schicht `_utcnow()`/`_parse_dt()` verwenden, in Modellen `_utcnow()`. Kein `datetime.utcnow()`.

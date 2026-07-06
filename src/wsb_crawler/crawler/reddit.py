@@ -8,26 +8,32 @@ sind awaitable, was paralleles Crawlen mehrerer Subreddits ermöglicht.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
-from typing import TYPE_CHECKING
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 import asyncpraw
 import asyncprawcore
 from loguru import logger
 
-from wsb_crawler.config import get_settings
+from wsb_crawler.config import RedditSettings, get_settings
 from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
 
 if TYPE_CHECKING:
     from wsb_crawler.storage.database import Database
 
-_db: "Database | None" = None
+_db: Database | None = None
 
 
-def set_database(db: "Database") -> None:
+def set_database(db: Database) -> None:
     global _db
     _db = db
+
+
+def _get_db() -> Database:
+    if _db is None:
+        raise RuntimeError("Datenbank nicht gesetzt — set_database() zuerst aufrufen")
+    return _db
 
 
 def _sanitize_credential(value: str, name: str) -> str:
@@ -51,8 +57,8 @@ def _sanitize_credential(value: str, name: str) -> str:
     return stripped
 
 
-def _make_reddit_client(cfg) -> asyncpraw.Reddit:
-    kwargs: dict = {
+def _make_reddit_client(cfg: RedditSettings) -> asyncpraw.Reddit:
+    kwargs: dict[str, Any] = {
         "client_id": _sanitize_credential(cfg.client_id, "reddit_client_id"),
         "client_secret": _sanitize_credential(cfg.client_secret, "reddit_client_secret"),
         "user_agent": _sanitize_credential(cfg.user_agent, "reddit_user_agent"),
@@ -86,55 +92,49 @@ async def _fetch_posts(
 
     subreddit = await reddit.subreddit(subreddit_name)
 
-    listing = subreddit.hot(limit=limit)
-    try:
-        async for submission in listing:
-            post = RedditPost(
-                id=submission.id,
-                subreddit=subreddit_name,
-                title=submission.title,
-                text=submission.selftext or "",
-                author=str(submission.author) if submission.author else "[deleted]",
-                score=submission.score,
-                upvote_ratio=submission.upvote_ratio,
-                created_utc=datetime.fromtimestamp(submission.created_utc, tz=timezone.utc),
-                url=f"https://reddit.com{submission.permalink}",
-                is_comment=False,
-            )
-            posts.append(post)
+    async for submission in subreddit.hot(limit=limit):
+        post = RedditPost(
+            id=submission.id,
+            subreddit=subreddit_name,
+            title=submission.title,
+            text=submission.selftext or "",
+            author=str(submission.author) if submission.author else "[deleted]",
+            score=submission.score,
+            upvote_ratio=submission.upvote_ratio,
+            created_utc=datetime.fromtimestamp(submission.created_utc, tz=UTC),
+            url=f"https://reddit.com{submission.permalink}",
+            is_comment=False,
+        )
+        posts.append(post)
 
-            # Top-Kommentare holen (nicht alle – zu viele API-Calls)
-            if comments_limit > 0:
-                submission.comment_sort = "top"
-                await submission.load()
-                submission.comments.replace_more(limit=0)  # MoreComments überspringen
+        # Top-Kommentare holen (nicht alle – zu viele API-Calls)
+        if comments_limit > 0:
+            submission.comment_sort = "top"
+            await submission.load()
+            # replace_more ist in asyncpraw eine Coroutine — ohne await bleiben
+            # MoreComments-Objekte im Baum und belegen Plätze im Limit-Slice
+            await submission.comments.replace_more(limit=0)
 
-                for comment in list(submission.comments)[:comments_limit]:
-                    if not hasattr(comment, "body"):
-                        continue
-                    comments.append(
-                        RedditPost(
-                            id=comment.id,
-                            subreddit=subreddit_name,
-                            title="",
-                            text=comment.body,
-                            author=str(comment.author) if comment.author else "[deleted]",
-                            score=comment.score,
-                            upvote_ratio=0.0,
-                            created_utc=datetime.fromtimestamp(
-                                comment.created_utc, tz=timezone.utc
-                            ),
-                            url=f"https://reddit.com{submission.permalink}{comment.id}/",
-                            is_comment=True,
-                            parent_id=submission.id,
-                        )
+            for comment in list(submission.comments)[:comments_limit]:
+                if not hasattr(comment, "body"):
+                    continue
+                comments.append(
+                    RedditPost(
+                        id=comment.id,
+                        subreddit=subreddit_name,
+                        title="",
+                        text=comment.body,
+                        author=str(comment.author) if comment.author else "[deleted]",
+                        score=comment.score,
+                        upvote_ratio=0.0,
+                        created_utc=datetime.fromtimestamp(comment.created_utc, tz=UTC),
+                        url=f"https://reddit.com{submission.permalink}{comment.id}/",
+                        is_comment=True,
+                        parent_id=submission.id,
                     )
-    except Exception:
-        raise
+                )
 
-    logger.debug(
-        f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen"
-    )
+    logger.debug(f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen")
     return posts, comments
 
 
@@ -145,9 +145,9 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     Gibt ein vollständiges CrawlResult zurück mit aggregierten
     Mention-Counts und allen Einzel-Mentions.
     """
-    cfg = await get_settings(_db)
+    cfg = await get_settings(_get_db())
     crawler_cfg = cfg.crawler
-    started_at = datetime.utcnow()
+    started_at = datetime.now(tz=UTC)
 
     all_posts: list[RedditPost] = []
     all_comments: list[RedditPost] = []
@@ -167,7 +167,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, result in enumerate(results):
-        if isinstance(result, Exception):
+        if isinstance(result, BaseException):
             sub = crawler_cfg.subreddits[i]
             if isinstance(result, asyncprawcore.exceptions.Forbidden):
                 logger.error(
@@ -204,6 +204,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
     return CrawlResult(
         run_id=run_id,
         started_at=started_at,
+        finished_at=datetime.now(tz=UTC),
         subreddits=cfg.crawler.subreddits,
         posts_scanned=len(all_posts),
         comments_scanned=len(all_comments),

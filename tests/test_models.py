@@ -2,9 +2,7 @@
 Tests für die Datenmodelle (models.py).
 """
 
-from datetime import datetime, timezone
-
-import pytest
+from datetime import UTC, datetime
 
 from wsb_crawler.models import (
     CrawlResult,
@@ -53,8 +51,8 @@ class TestPriceData:
 
 class TestCrawlResult:
     def _result(self) -> CrawlResult:
-        started = datetime(2024, 1, 1, 10, 0, 0, tzinfo=timezone.utc)
-        finished = datetime(2024, 1, 1, 10, 1, 30, tzinfo=timezone.utc)
+        started = datetime(2024, 1, 1, 10, 0, 0, tzinfo=UTC)
+        finished = datetime(2024, 1, 1, 10, 1, 30, tzinfo=UTC)
         return CrawlResult(
             run_id="test-run",
             started_at=started,
@@ -67,7 +65,7 @@ class TestCrawlResult:
         assert r.duration_seconds == 90.0
 
     def test_duration_none_when_not_finished(self):
-        r = CrawlResult(run_id="x", started_at=datetime.now(tz=timezone.utc))
+        r = CrawlResult(run_id="x", started_at=datetime.now(tz=UTC))
         assert r.duration_seconds is None
 
     def test_top_tickers_sorted(self):
@@ -80,7 +78,7 @@ class TestCrawlResult:
 
 class TestTickerHistory:
     def _history(self, counts: list[int]) -> TickerHistory:
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         return TickerHistory(
             ticker="GME",
             mention_counts=[(now, c) for c in counts],

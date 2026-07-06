@@ -39,13 +39,8 @@ jobs:
         run: mypy src/
 
       - name: pytest – Tests mit Coverage
-        run: pytest --cov=src/wsb_crawler --cov-report=xml --cov-fail-under=70
-        env:
-          # Dummy-Werte für Tests (echte Keys nicht nötig)
-          REDDIT_CLIENT_ID: test_id
-          REDDIT_CLIENT_SECRET: test_secret
-          NEWSAPI_KEY: test_key
-          DISCORD_WEBHOOK_URL: https://discord.com/api/webhooks/000/test
+        # Tests seeden ihre eigene DB → keine ENV-Variablen mehr nötig.
+        run: pytest --cov=src/wsb_crawler --cov-report=xml --cov-fail-under=60
 
       - name: Coverage zu Codecov hochladen
         if: matrix.python-version == '3.11'

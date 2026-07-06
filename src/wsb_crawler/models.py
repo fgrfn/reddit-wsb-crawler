@@ -8,29 +8,34 @@ Validierung gebraucht wird). Kein dict-Herumreichen mehr.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
+
+
+def _utcnow() -> datetime:
+    """Aware UTC-Zeitstempel (datetime.utcnow ist ab Python 3.12 deprecated)."""
+    return datetime.now(tz=UTC)
 
 
 # ── Enums ──────────────────────────────────────────────────────────────────
 
 
-class AlertReason(str, Enum):
+class AlertReason(StrEnum):
     """Warum wurde ein Alert ausgelöst?"""
 
-    NEW_TICKER = "new_ticker"          # Ticker noch nie gesehen, hohe abs. Nennungen
-    SPIKE = "spike"                    # Bekannter Ticker, plötzlicher Anstieg
-    PRICE_MOVE = "price_move"          # Signifikante Kursbewegung + Nennungen
+    NEW_TICKER = "new_ticker"  # Ticker noch nie gesehen, hohe abs. Nennungen
+    SPIKE = "spike"  # Bekannter Ticker, plötzlicher Anstieg
+    PRICE_MOVE = "price_move"  # Signifikante Kursbewegung + Nennungen
 
 
-class MarketStatus(str, Enum):
+class MarketStatus(StrEnum):
     PRE_MARKET = "pre_market"
     OPEN = "open"
     AFTER_HOURS = "after_hours"
     CLOSED = "closed"
 
 
-class TrendDirection(str, Enum):
+class TrendDirection(StrEnum):
     UP = "up"
     DOWN = "down"
     FLAT = "flat"
@@ -63,8 +68,8 @@ class TickerMention:
     ticker: str
     post_id: str
     subreddit: str
-    context: str          # ~100 Zeichen rund um den Ticker im Text
-    score: int            # Post-Score → gewichtet spätere Analyse
+    context: str  # ~100 Zeichen rund um den Ticker im Text
+    score: int  # Post-Score → gewichtet spätere Analyse
     created_utc: datetime
 
 
@@ -75,7 +80,7 @@ class TickerMention:
 class CrawlResult:
     """Aggregiertes Ergebnis eines einzelnen Crawl-Laufs."""
 
-    run_id: str                    # UUID, eindeutig pro Lauf
+    run_id: str  # UUID, eindeutig pro Lauf
     started_at: datetime
     finished_at: datetime | None = None
 
@@ -114,9 +119,9 @@ class PriceData:
     price: float | None
     currency: str = "USD"
 
-    change_1h: float | None = None    # % Veränderung letzte Stunde
-    change_24h: float | None = None   # % Veränderung letzte 24h
-    change_7d: float | None = None    # % Veränderung letzte 7 Tage
+    change_1h: float | None = None  # % Veränderung letzte Stunde
+    change_24h: float | None = None  # % Veränderung letzte 24h
+    change_7d: float | None = None  # % Veränderung letzte 7 Tage
 
     pre_market_price: float | None = None
     pre_market_change: float | None = None
@@ -128,7 +133,7 @@ class PriceData:
     volume: int | None = None
     market_cap: float | None = None
 
-    fetched_at: datetime = field(default_factory=datetime.utcnow)
+    fetched_at: datetime = field(default_factory=_utcnow)
 
     @property
     def primary_price(self) -> float | None:
@@ -161,7 +166,7 @@ class NewsArticle:
     source: str
     url: str
     published_at: datetime
-    sentiment: float | None = None    # -1.0 bis 1.0, optional
+    sentiment: float | None = None  # -1.0 bis 1.0, optional
 
 
 # ── Analyse ────────────────────────────────────────────────────────────────
@@ -172,7 +177,7 @@ class TickerHistory:
     """Historische Daten eines Tickers aus der DB."""
 
     ticker: str
-    mention_counts: list[tuple[datetime, int]]   # (timestamp, count)
+    mention_counts: list[tuple[datetime, int]]  # (timestamp, count)
 
     @property
     def avg_mentions(self) -> float:
@@ -202,11 +207,11 @@ class SpikeResult:
 
     ticker: str
     current_mentions: int
-    avg_mentions: float           # Historischer Durchschnitt (letzte 30 Tage)
-    ratio: float                  # current / avg
-    delta: int                    # current - avg (absolut)
-    is_new: bool                  # Ticker noch nie gesehen?
-    reason: AlertReason | None    # None = kein Alert
+    avg_mentions: float  # Historischer Durchschnitt (letzte 30 Tage)
+    ratio: float  # current / avg
+    delta: int  # current - avg (absolut)
+    is_new: bool  # Ticker noch nie gesehen?
+    reason: AlertReason | None  # None = kein Alert
     price_data: PriceData | None = None
     news: list[NewsArticle] = field(default_factory=list)
     history: TickerHistory | None = None
@@ -223,7 +228,7 @@ class Alert:
     reason: AlertReason
     spike: SpikeResult
 
-    triggered_at: datetime = field(default_factory=datetime.utcnow)
+    triggered_at: datetime = field(default_factory=_utcnow)
     sent: bool = False
     cooldown_until: datetime | None = None
 
@@ -243,7 +248,7 @@ class TrendEntry:
     peak_mentions: int
     trend_direction: TrendDirection
     current_price: float | None = None
-    price_change_period: float | None = None   # % Veränderung im Zeitraum
+    price_change_period: float | None = None  # % Veränderung im Zeitraum
 
 
 @dataclass

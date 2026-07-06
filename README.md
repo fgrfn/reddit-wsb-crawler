@@ -24,7 +24,7 @@ Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf u
 | Dashboard | keins | FastAPI + Vanilla HTML/CSS/JS (localhost:80) |
 | Setup | manuelle `.env` Bearbeitung | Setup-Wizard im Browser |
 | Docker | 2 Services, Profile-Flag | 1 Service, Port 80 |
-| Tests | test_logging.py | pytest + pytest-asyncio, >70% Coverage |
+| Tests | test_logging.py | pytest + pytest-asyncio, ~65% Coverage |
 | Dependencies | ungepinnt | vollständig gepinnt in pyproject.toml |
 
 ---
@@ -79,6 +79,8 @@ docker compose up -d
 ```
 
 > **Hinweis:** Port 80 erfordert unter Linux/macOS ggf. sudo. Alternativ Port ändern: `WSB_PORT=8080 docker compose up`
+>
+> **Sicherheit:** Das Dashboard hat **keine Authentifizierung**. Bei lokalem Start bindet es daher nur auf `127.0.0.1`. Für Zugriff aus dem LAN (z. B. NAS/Server) `WSB_HOST=0.0.0.0` setzen — dann ist es für alle im Netzwerk erreichbar (im Docker-Image ist das bereits gesetzt, weil das Port-Mapping es benötigt). In diesem Fall den Container besser nur an ein vertrauenswürdiges Interface mappen, z. B. `127.0.0.1:80:80`.
 
 ---
 

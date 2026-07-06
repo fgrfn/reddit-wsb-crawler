@@ -4,7 +4,6 @@ Tests für die Datenbankschicht (storage/database.py).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -28,9 +27,7 @@ class TestCrawlRuns:
 
         await db.finish_run(run_id, posts_scanned=100, comments_scanned=500)
 
-        async with db.conn.execute(
-            "SELECT * FROM crawl_runs WHERE id = ?", (run_id,)
-        ) as cur:
+        async with db.conn.execute("SELECT * FROM crawl_runs WHERE id = ?", (run_id,)) as cur:
             row = await cur.fetchone()
 
         assert row is not None
@@ -88,6 +85,38 @@ class TestTickerHistory:
 
         assert await db.is_known_ticker("GME")
         assert not await db.is_known_ticker("AMC")
+
+
+class TestRetention:
+    async def test_purge_old_mentions(self, db: Database):
+        """Mentions älter als N Tage werden gelöscht, neuere bleiben."""
+        old_run = await db.start_run(["wsb"])
+        await db.save_run_mentions(old_run, {"GME": 5})
+        # Alten Eintrag künstlich zurückdatieren
+        await db.conn.execute(
+            "UPDATE ticker_mentions SET recorded_at = '2000-01-01T00:00:00+00:00' WHERE run_id = ?",
+            (old_run,),
+        )
+        await db.conn.commit()
+
+        new_run = await db.start_run(["wsb"])
+        await db.save_run_mentions(new_run, {"AMC": 3})
+
+        deleted = await db.purge_old_mentions(days=90)
+
+        assert deleted == 1
+        assert not await db.is_known_ticker("GME")
+        assert await db.is_known_ticker("AMC")
+
+    async def test_get_avg_mentions_excludes_run(self, db: Database):
+        """exclude_run_id blendet den aktuellen Lauf aus der Durchschnittsberechnung aus."""
+        run_id = await db.start_run(["wsb"])
+        await db.save_run_mentions(run_id, {"GME": 50})
+
+        # Ohne Ausschluss zählt der Lauf mit → avg = 50
+        assert await db.get_avg_mentions("GME", days=30) == 50.0
+        # Mit Ausschluss bleibt keine History → avg = 0
+        assert await db.get_avg_mentions("GME", days=30, exclude_run_id=run_id) == 0.0
 
 
 class TestStatus:

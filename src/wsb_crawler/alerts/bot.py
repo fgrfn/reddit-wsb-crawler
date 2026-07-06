@@ -12,7 +12,6 @@ Wird nur gestartet wenn DISCORD_BOT_TOKEN gesetzt ist.
 
 from __future__ import annotations
 
-import asyncio
 from datetime import timedelta
 
 import discord
@@ -51,13 +50,13 @@ def _build_ascii_chart(
 
     max_val = max(values)
     bars = []
-    for i, (label, val) in enumerate(zip(labels, values)):
+    for _i, (label, val) in enumerate(zip(labels, values, strict=False)):
         bar_len = int(val / max_val * width)
         bar = "█" * bar_len
         bars.append(f"{label[:5]:>5} │{bar:<{width}} {val}")
 
     header = f"{'':>5} │{'Mentions':^{width}}"
-    sep = f"{'─'*5}┼{'─'*width}─"
+    sep = f"{'─' * 5}┼{'─' * width}─"
     return "\n".join([header, sep] + bars)
 
 
@@ -75,16 +74,16 @@ class WSBBot(discord.Client):
         logger.info(f"Discord Bot eingeloggt als: {self.user}")
 
 
-# Bot-Instanz (lazy init)
-_bot: WSBBot | None = None
-
-
 def get_bot() -> WSBBot:
-    global _bot
-    if _bot is None:
-        _bot = WSBBot()
-        _register_commands(_bot)
-    return _bot
+    """Erstellt eine frische Bot-Instanz.
+
+    Bewusst kein Singleton: Ein einmal geschlossener discord.Client kann
+    nicht erneut gestartet werden — der bot_supervisor braucht für jeden
+    (Neu-)Start eine neue Instanz.
+    """
+    bot = WSBBot()
+    _register_commands(bot)
+    return bot
 
 
 def _register_commands(bot: WSBBot) -> None:
@@ -110,9 +109,7 @@ def _register_commands(bot: WSBBot) -> None:
         ticker="Ticker-Symbol (z.B. GME)",
         days="Zeitraum in Tagen (Standard: 30)",
     )
-    async def chart_command(
-        interaction: discord.Interaction, ticker: str, days: int = 30
-    ) -> None:
+    async def chart_command(interaction: discord.Interaction, ticker: str, days: int = 30) -> None:
         await interaction.response.defer()
         ticker = ticker.upper().replace("$", "")
         try:
@@ -157,10 +154,7 @@ def _register_commands(bot: WSBBot) -> None:
             status = await db.get_run_status()
             cfg = await get_settings(db)
 
-            last_run = (
-                f"<t:{int(status.last_run_at.timestamp())}:R>"
-                if status.last_run_at else "—"
-            )
+            last_run = f"<t:{int(status.last_run_at.timestamp())}:R>" if status.last_run_at else "—"
             next_run = "—"
             if status.last_run_at:
                 next_run_at = status.last_run_at + timedelta(
@@ -170,7 +164,8 @@ def _register_commands(bot: WSBBot) -> None:
 
             duration = (
                 f"{status.last_run_duration_seconds:.0f}s"
-                if status.last_run_duration_seconds else "—"
+                if status.last_run_duration_seconds
+                else "—"
             )
 
             embed = discord.Embed(title="💓 Crawler Status", color=0x2B2D31)
@@ -180,7 +175,9 @@ def _register_commands(bot: WSBBot) -> None:
             embed.add_field(name="Alerts gesamt", value=str(status.total_alerts_sent), inline=True)
             embed.add_field(name="Ticker getrackt", value=str(status.tracked_tickers), inline=True)
             embed.add_field(name="Läufe gesamt", value=str(status.total_runs), inline=True)
-            embed.add_field(name="Status", value="🟢 Gesund" if status.is_healthy else "🔴 Fehler", inline=True)
+            embed.add_field(
+                name="Status", value="🟢 Gesund" if status.is_healthy else "🔴 Fehler", inline=True
+            )
 
             await interaction.followup.send(embed=embed)
 

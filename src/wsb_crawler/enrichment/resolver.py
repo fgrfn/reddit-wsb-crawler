@@ -43,4 +43,4 @@ async def resolve_name(ticker: str) -> str | None:
 async def resolve_names_bulk(tickers: list[str]) -> dict[str, str | None]:
     """Löst mehrere Ticker parallel auf."""
     results = await asyncio.gather(*[resolve_name(t) for t in tickers])
-    return dict(zip(tickers, results))
+    return dict(zip(tickers, results, strict=False))

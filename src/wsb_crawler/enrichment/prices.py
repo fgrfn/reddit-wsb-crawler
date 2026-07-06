@@ -9,7 +9,8 @@ geholt (asyncio.gather).
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from typing import Any
 
 import yfinance as yf
 from loguru import logger
@@ -19,7 +20,7 @@ from wsb_crawler.models import MarketStatus, PriceData
 from wsb_crawler.storage.cache import price_cache
 
 
-def _determine_market_status(info: dict) -> MarketStatus:
+def _determine_market_status(info: dict[str, Any]) -> MarketStatus:
     """Bestimmt den aktuellen Marktstatus aus yfinance-Info."""
     market_state = info.get("marketState", "CLOSED").upper()
     if market_state == "PRE":
@@ -34,7 +35,7 @@ def _determine_market_status(info: dict) -> MarketStatus:
 def _safe_float(value: object) -> float | None:
     try:
         f = float(value)  # type: ignore[arg-type]
-        return f if f == f else None   # NaN check
+        return f if f == f else None  # NaN check
     except (TypeError, ValueError):
         return None
 
@@ -72,6 +73,9 @@ def _fetch_price_sync(ticker: str) -> PriceData:
 
     market_status = _determine_market_status(info)
 
+    raw_volume = info.get("volume")
+    volume = int(raw_volume) if isinstance(raw_volume, (int, float)) and raw_volume else None
+
     return PriceData(
         ticker=ticker,
         company_name=info.get("shortName") or info.get("longName"),
@@ -85,17 +89,26 @@ def _fetch_price_sync(ticker: str) -> PriceData:
         after_hours_price=_safe_float(info.get("postMarketPrice")),
         after_hours_change=_safe_float(info.get("postMarketChangePercent")),
         market_status=market_status,
-        volume=int(info.get("volume", 0)) or None,
+        volume=volume,
         market_cap=_safe_float(info.get("marketCap")),
-        fetched_at=datetime.now(tz=timezone.utc),
+        fetched_at=datetime.now(tz=UTC),
     )
 
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
-    reraise=False,
+    reraise=True,
 )
+async def _fetch_price_with_retry(ticker: str) -> PriceData:
+    """Kurs mit bis zu 3 Versuchen holen.
+
+    Muss Exceptions durchreichen, damit tenacity überhaupt retryen kann —
+    der frühere Aufbau fing alles intern ab und machte den Retry wirkungslos.
+    """
+    return await asyncio.to_thread(_fetch_price_sync, ticker)
+
+
 async def get_price(ticker: str) -> PriceData | None:
     """
     Holt den aktuellen Kurs für einen Ticker.
@@ -109,7 +122,7 @@ async def get_price(ticker: str) -> PriceData | None:
         return cached
 
     try:
-        data = await asyncio.to_thread(_fetch_price_sync, ticker)
+        data: PriceData = await _fetch_price_with_retry(ticker)
         price_cache.set(ticker, data)
         logger.debug(f"Kurs geholt: {ticker} = {data.primary_price} {data.currency}")
         return data
@@ -124,4 +137,4 @@ async def get_prices_bulk(tickers: list[str]) -> dict[str, PriceData | None]:
     Gibt {ticker: PriceData | None} zurück.
     """
     results = await asyncio.gather(*[get_price(t) for t in tickers])
-    return dict(zip(tickers, results))
+    return dict(zip(tickers, results, strict=False))

@@ -8,15 +8,20 @@ Beim ersten Start ohne Konfiguration → Browser öffnet Setup-Wizard.
 from __future__ import annotations
 
 import asyncio
+import contextlib
+import datetime as dt
+import os
+import signal
 import sys
 import webbrowser
-from datetime import datetime, timezone
+from datetime import datetime
 
 from loguru import logger
 
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts import bot as discord_bot
-from wsb_crawler.alerts.discord import send_heartbeat, set_database as discord_set_db
+from wsb_crawler.alerts.discord import send_heartbeat
+from wsb_crawler.alerts.discord import set_database as discord_set_db
 from wsb_crawler.api.routers.status import setup_ws_log_sink
 from wsb_crawler.api.server import run_server
 from wsb_crawler.config import DB_PATH, get_settings
@@ -25,10 +30,13 @@ from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.enrichment.news import set_database as news_set_db
 from wsb_crawler.storage.database import Database
 
-import os
-
 PORT = int(os.getenv("WSB_PORT", "80"))
+# Default: nur localhost — das Dashboard hat keine Authentifizierung.
+# Für LAN-Zugriff (z.B. Docker/NAS) explizit WSB_HOST=0.0.0.0 setzen.
+HOST = os.getenv("WSB_HOST", "127.0.0.1")
 DASHBOARD_URL = f"http://localhost:{PORT}"
+
+BOT_RETRY_SECONDS = 60
 
 
 def _setup_logging(log_level: str = "INFO") -> None:
@@ -47,7 +55,6 @@ def _setup_logging(log_level: str = "INFO") -> None:
         level="DEBUG",
         format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{line} | {message}",
     )
-
 
 
 async def scheduler_loop(db: Database) -> None:
@@ -70,9 +77,7 @@ async def scheduler_loop(db: Database) -> None:
 
         try:
             status = await db.get_run_status()
-            import datetime as dt
-            from datetime import timezone
-            status.next_run_at = datetime.now(tz=timezone.utc) + dt.timedelta(seconds=interval)
+            status.next_run_at = datetime.now(tz=dt.UTC) + dt.timedelta(seconds=interval)
             await send_heartbeat(status)
         except Exception as e:
             logger.warning(f"Heartbeat fehlgeschlagen: {e}")
@@ -88,14 +93,49 @@ async def scheduler_loop(db: Database) -> None:
         await asyncio.sleep(interval)
 
 
-async def main_async() -> None:
-    _setup_logging()
-    # WebSocket-Log-Sink NACH logger.remove() registrieren — sonst wird er
-    # durch _setup_logging() entfernt und die Log-Seite im Dashboard bleibt leer.
-    setup_ws_log_sink()
-    logger.info(f"WSB-Crawler v{__version__} startet")
+async def bot_supervisor(db: Database) -> None:
+    """Startet den Discord-Bot sobald ein Token konfiguriert ist.
 
+    Läuft dauerhaft: greift auch, wenn der Token erst nach dem Start über
+    den Setup-Wizard oder die Config-Seite eingetragen wird, und startet
+    den Bot nach Verbindungsabbrüchen neu.
+    """
+    discord_bot.set_database(db)
+    while True:
+        token = (await db.get_setting("discord_bot_token") or "").strip()
+        token = os.getenv("DISCORD_BOT_TOKEN", "").strip() or token
+        if token:
+            logger.info("Discord-Bot wird gestartet...")
+            await discord_bot.start_bot(token)
+            logger.warning(f"Discord-Bot beendet — neuer Versuch in {BOT_RETRY_SECONDS}s")
+        await asyncio.sleep(BOT_RETRY_SECONDS)
+
+
+def _install_sigterm_handler(tasks: list[asyncio.Task[None]]) -> None:
+    """Sorgt dafür, dass docker stop / systemd stop sauber herunterfahren."""
+
+    def _cancel_all() -> None:
+        logger.info("SIGTERM empfangen — fahre herunter...")
+        for task in tasks:
+            task.cancel()
+
+    # Windows: add_signal_handler wirft NotImplementedError — dort reicht KeyboardInterrupt
+    with contextlib.suppress(NotImplementedError):
+        asyncio.get_running_loop().add_signal_handler(signal.SIGTERM, _cancel_all)
+
+
+async def main_async() -> None:
     async with Database(DB_PATH) as db:
+        # Log-Level: ENV hat Vorrang, dann DB-Setting, dann INFO
+        log_level = (
+            os.getenv("LOG_LEVEL", "").strip() or (await db.get_setting("log_level") or "INFO")
+        ).upper()
+        _setup_logging(log_level)
+        # WebSocket-Log-Sink NACH logger.remove() registrieren — sonst wird er
+        # durch _setup_logging() entfernt und die Log-Seite im Dashboard bleibt leer.
+        setup_ws_log_sink()
+        logger.info(f"WSB-Crawler v{__version__} startet")
+
         configured = await db.is_configured()
 
         # DB in alle Module injecten, die get_settings() benötigen
@@ -103,24 +143,18 @@ async def main_async() -> None:
         discord_set_db(db)
         news_set_db(db)
 
-        # Browser öffnen
+        # Browser öffnen (nicht in Docker/Headless — WSB_NO_BROWSER=1)
         url = DASHBOARD_URL if configured else f"{DASHBOARD_URL}/setup"
         logger.info(f"Dashboard: {url}")
-        webbrowser.open(url)
+        if os.getenv("WSB_NO_BROWSER", "") != "1":
+            webbrowser.open(url)
 
-        tasks: list[asyncio.Task] = [
-            asyncio.create_task(run_server(db, port=PORT)),
+        tasks: list[asyncio.Task[None]] = [
+            asyncio.create_task(run_server(db, host=HOST, port=PORT)),
             asyncio.create_task(scheduler_loop(db)),
+            asyncio.create_task(bot_supervisor(db)),
         ]
-
-        # Discord Bot (optional, nur wenn konfiguriert)
-        try:
-            cfg = await get_settings(db)
-            if cfg.discord.bot_token:
-                discord_bot.set_database(db)
-                tasks.append(asyncio.create_task(discord_bot.start_bot(cfg.discord.bot_token)))
-        except RuntimeError:
-            pass  # Noch nicht konfiguriert — wird nach Setup gestartet
+        _install_sigterm_handler(tasks)
 
         try:
             await asyncio.gather(*tasks)
