@@ -12,8 +12,11 @@ from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
 from wsb_crawler.__version__ import __version__
+from wsb_crawler.analysis.trends import get_top_tickers_cached
 from wsb_crawler.config import is_configured
 from wsb_crawler.crawler.runner import run_single_crawl
+from wsb_crawler.enrichment.prices import get_price
+from wsb_crawler.enrichment.resolver import resolve_name
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["dashboard"])
@@ -49,8 +52,8 @@ async def get_about() -> dict[str, str | None]:
 async def get_top_tickers(
     days: int = Query(default=7, ge=1, le=90),
 ) -> list[dict[str, Any]]:
-    """Top-Ticker der letzten N Tage."""
-    entries = await db.get_top_tickers(days=days, limit=20)
+    """Top-Ticker der letzten N Tage (Trend berechnet, Name/Kurs cache-only)."""
+    entries = await get_top_tickers_cached(db, days=days, limit=20)
     return [
         {
             "ticker": e.ticker,
@@ -59,6 +62,9 @@ async def get_top_tickers(
             "peak_mentions": e.peak_mentions,
             "peak_day": e.peak_day.isoformat() if e.peak_day else None,
             "trend": e.trend_direction.value,
+            "company_name": e.company_name,
+            "price": e.current_price,
+            "price_change": e.price_change_period,
         }
         for e in entries
     ]
@@ -76,9 +82,19 @@ async def get_ticker_detail(
     total_mentions = sum(count for _, count in history.mention_counts)
     peak = max((count for _, count in history.mention_counts), default=0)
     latest = history.mention_counts[-1][1] if history.mention_counts else 0
+
+    # Einzelner Ticker → frischer Kurs/Name ist unkritisch (kein Burst).
+    # get_price/resolve_name cachen selbst und fangen Fehler ab (→ None).
+    price = await get_price(symbol)
+    company_name = await resolve_name(symbol)
+
     return {
         "ticker": symbol,
         "days": days,
+        "company_name": company_name,
+        "price": price.primary_price if price else None,
+        "price_change": price.primary_change if price else None,
+        "currency": price.currency if price else None,
         "total_mentions": total_mentions,
         "latest_mentions": latest,
         "peak_mentions": peak,

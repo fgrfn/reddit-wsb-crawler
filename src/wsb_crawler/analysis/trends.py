@@ -14,6 +14,7 @@ from loguru import logger
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
 from wsb_crawler.models import TickerHistory, TrendDirection, TrendEntry
+from wsb_crawler.storage.cache import name_cache, price_cache
 from wsb_crawler.storage.database import Database
 
 
@@ -60,6 +61,41 @@ async def get_top_tickers(db: Database, days: int = 7, limit: int = 10) -> list[
         )
 
     logger.debug(f"Trend-Analyse: Top {len(enriched)} Ticker der letzten {days} Tage")
+    return enriched
+
+
+async def get_top_tickers_cached(db: Database, days: int = 7, limit: int = 20) -> list[TrendEntry]:
+    """
+    Wie ``get_top_tickers``, aber **netzwerkfrei** — gedacht für den gepollten
+    Web-Endpunkt ``/api/tickers``.
+
+    - Trend wird aus der DB-History berechnet (statt hartkodiert FLAT).
+    - Firmenname und Kurs werden **nur aus dem Cache** gelesen (nicht-blockierend):
+      warm für zuletzt angereicherte Ticker (z. B. Alerts), sonst ``None``.
+
+    So löst ein Dashboard-Refresh keine yfinance-Bursts aus (anders als die
+    voll anreichernde ``get_top_tickers`` für die seltenen Discord-Commands).
+    """
+    entries = await db.get_top_tickers(days=days, limit=limit)
+    enriched: list[TrendEntry] = []
+    for entry in entries:
+        history = await db.get_ticker_history(entry.ticker, days=days)
+        price = price_cache.get(entry.ticker)
+        enriched.append(
+            TrendEntry(
+                ticker=entry.ticker,
+                company_name=name_cache.get(entry.ticker),
+                total_mentions=entry.total_mentions,
+                avg_daily_mentions=entry.avg_daily_mentions,
+                peak_day=entry.peak_day,
+                peak_mentions=entry.peak_mentions,
+                trend_direction=_calculate_trend(history),
+                current_price=price.primary_price if price else None,
+                price_change_period=(price.change_7d if days >= 7 else price.change_24h)
+                if price
+                else None,
+            )
+        )
     return enriched
 
 
