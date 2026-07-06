@@ -101,9 +101,7 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
                 progress=86,
             )
             if dry_run:
-                logger.info(
-                    f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet"
-                )
+                logger.info(f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet")
                 update_run(alerts_sent=0, progress=92)
             else:
                 sent_count = await send_alerts(alerts)
@@ -139,9 +137,7 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
 
         purged = await db.purge_old_mentions(days=MENTION_RETENTION_DAYS)
         if purged:
-            logger.debug(
-                f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht"
-            )
+            logger.debug(f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht")
 
         duration = result.duration_seconds or 0
         message = (

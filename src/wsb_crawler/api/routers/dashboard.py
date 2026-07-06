@@ -86,8 +86,7 @@ async def get_ticker_detail(
         "trend": history.trend_direction.value,
         "alerts": alerts,
         "history": [
-            {"date": ts.isoformat(), "mentions": count}
-            for ts, count in history.mention_counts
+            {"date": ts.isoformat(), "mentions": count} for ts, count in history.mention_counts
         ],
     }
 
@@ -102,8 +101,7 @@ async def get_ticker_history(
     return {
         "ticker": history.ticker,
         "data": [
-            {"date": ts.isoformat(), "mentions": count}
-            for ts, count in history.mention_counts
+            {"date": ts.isoformat(), "mentions": count} for ts, count in history.mention_counts
         ],
         "avg": round(history.avg_mentions, 1),
         "trend": history.trend_direction.value,
