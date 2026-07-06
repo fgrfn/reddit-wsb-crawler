@@ -18,6 +18,7 @@ from loguru import logger
 from wsb_crawler.config import RedditSettings, get_settings
 from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
+from wsb_crawler.runtime.progress import update_run, update_subreddit
 
 if TYPE_CHECKING:
     from wsb_crawler.storage.database import Database
@@ -90,6 +91,9 @@ async def _fetch_posts(
     posts: list[RedditPost] = []
     comments: list[RedditPost] = []
 
+    update_subreddit(subreddit_name, posts=0, comments=0)
+    logger.info(f"r/{subreddit_name}: lade bis zu {limit} Posts mit je {comments_limit} Top-Kommentaren")
+
     subreddit = await reddit.subreddit(subreddit_name)
 
     async for submission in subreddit.hot(limit=limit):
@@ -134,7 +138,15 @@ async def _fetch_posts(
                     )
                 )
 
-    logger.debug(f"r/{subreddit_name}: {len(posts)} Posts, {len(comments)} Kommentare gelesen")
+        if len(posts) % 25 == 0:
+            update_subreddit(subreddit_name, posts=len(posts), comments=len(comments))
+            logger.info(
+                f"r/{subreddit_name}: Zwischenstand {len(posts)} Posts, "
+                f"{len(comments)} Kommentare"
+            )
+
+    update_subreddit(subreddit_name, posts=len(posts), comments=len(comments), done=True)
+    logger.info(f"r/{subreddit_name}: fertig — {len(posts)} Posts, {len(comments)} Kommentare")
     return posts, comments
 
 
@@ -167,8 +179,9 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
     for i, result in enumerate(results):
+        sub = crawler_cfg.subreddits[i]
         if isinstance(result, BaseException):
-            sub = crawler_cfg.subreddits[i]
+            update_subreddit(sub, posts=0, comments=0, done=True, error=str(result))
             if isinstance(result, asyncprawcore.exceptions.Forbidden):
                 logger.error(
                     "Reddit 403 bei r/{}: {}. Bitte Reddit-API-Config prüfen "
@@ -190,16 +203,38 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
 
     # Ticker aus allen Posts + Kommentaren extrahieren
     all_items = all_posts + all_comments
+    update_run(
+        phase="extract",
+        phase_label="Ticker erkennen",
+        message=f"Extrahiere Ticker aus {len(all_items)} Reddit-Beiträgen und Kommentaren…",
+        progress=42,
+        posts_scanned=len(all_posts),
+        comments_scanned=len(all_comments),
+    )
     all_mentions: list[TickerMention] = []
-    for item in all_items:
+    for idx, item in enumerate(all_items, start=1):
         all_mentions.extend(extract_tickers(item))
+        if idx % 2500 == 0:
+            update_run(
+                message=f"Ticker-Erkennung: {idx}/{len(all_items)} Texte verarbeitet…",
+                progress=42 + int((idx / max(1, len(all_items))) * 6),
+            )
 
     mention_counts = aggregate_mentions(all_mentions)
+    top_tickers = list(mention_counts.items())[:10]
+
+    update_run(
+        phase="extract",
+        phase_label="Ticker erkennen",
+        message=f"{len(mention_counts)} einzigartige Ticker erkannt.",
+        progress=49,
+        tickers_found=len(mention_counts),
+        top_tickers=top_tickers,
+    )
 
     logger.info(f"Ticker erkannt: {len(mention_counts)} einzigartige Ticker")
     if mention_counts:
-        top5 = list(mention_counts.items())[:5]
-        logger.debug(f"Top 5: {top5}")
+        logger.info(f"Top-Ticker: {top_tickers[:5]}")
 
     return CrawlResult(
         run_id=run_id,
