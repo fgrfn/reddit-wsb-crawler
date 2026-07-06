@@ -6,6 +6,7 @@ aber während eines langen Laufs kann /api/status dadurch Details liefern.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
@@ -17,7 +18,7 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
-def start_run(run_id: str, subreddits: list[str]) -> None:
+def start_run(run_id: str, subreddits: list[str], *, dry_run: bool = False) -> None:
     """Startet einen neuen Progress-Snapshot."""
     global _current_run
     now = _now_iso()
@@ -26,6 +27,7 @@ def start_run(run_id: str, subreddits: list[str]) -> None:
         "short_id": run_id[:8],
         "active": True,
         "success": None,
+        "dry_run": dry_run,
         "phase": "starting",
         "phase_label": "Start",
         "message": "Crawl wird vorbereitet…",
@@ -44,6 +46,8 @@ def start_run(run_id: str, subreddits: list[str]) -> None:
         "candidate_count": 0,
         "active_candidate_count": 0,
         "alerts_sent": 0,
+        "alert_preview": [],
+        "diagnostics": [],
         "top_tickers": [],
         "steps": [
             {"key": "starting", "label": "Start", "done": False},
@@ -96,6 +100,23 @@ def update_run(
     _current_run["duration_s"] = _duration_seconds(_current_run.get("started_at"))
 
 
+def add_diagnostic(level: str, message: str, *, source: str | None = None) -> None:
+    """Hängt eine Warnung/Fehlermeldung an den aktuellen Lauf an."""
+    if _current_run is None:
+        return
+    diagnostics = _current_run.setdefault("diagnostics", [])
+    diagnostics.append(
+        {
+            "at": _now_iso(),
+            "level": level.upper(),
+            "source": source,
+            "message": message,
+        }
+    )
+    del diagnostics[:-20]
+    update_run()
+
+
 def update_subreddit(
     subreddit: str,
     *,
@@ -109,6 +130,8 @@ def update_subreddit(
         return
     progress = _current_run.setdefault("subreddit_progress", {})
     progress[subreddit] = {"posts": posts, "comments": comments, "done": done, "error": error}
+    if error:
+        add_diagnostic("error", error, source=f"r/{subreddit}")
     _current_run["posts_scanned"] = sum(int(v.get("posts", 0)) for v in progress.values())
     _current_run["comments_scanned"] = sum(int(v.get("comments", 0)) for v in progress.values())
     done_count = sum(1 for v in progress.values() if v.get("done"))
@@ -128,6 +151,8 @@ def finish_run(*, success: bool, message: str, alerts_sent: int | None = None) -
         return
     if alerts_sent is not None:
         _current_run["alerts_sent"] = alerts_sent
+    if not success:
+        add_diagnostic("error", message, source="crawl")
     _current_run["active"] = False
     _current_run["success"] = success
     _current_run["finished_at"] = _now_iso()
@@ -139,7 +164,7 @@ def finish_run(*, success: bool, message: str, alerts_sent: int | None = None) -
     _current_run["message"] = message
     for step in _current_run.get("steps", []):
         step["done"] = success
-    _last_run = dict(_current_run)
+    _last_run = deepcopy(_current_run)
     _current_run = None
 
 
@@ -147,8 +172,8 @@ def snapshot() -> dict[str, Any] | None:
     """Gibt den aktuellen oder zuletzt abgeschlossenen Lauf zurück."""
     if _current_run is not None:
         update_run()
-        return dict(_current_run)
-    return dict(_last_run) if _last_run is not None else None
+        return deepcopy(_current_run)
+    return deepcopy(_last_run) if _last_run is not None else None
 
 
 def _duration_seconds(started_at: str | None) -> float:
