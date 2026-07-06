@@ -12,6 +12,8 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from wsb_crawler.api.routers.dashboard import is_crawl_running
+from wsb_crawler.config import is_configured
+from wsb_crawler.runtime.progress import snapshot as progress_snapshot
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["status"])
@@ -66,7 +68,7 @@ def setup_ws_log_sink() -> None:
 async def get_status() -> dict[str, Any]:
     """Aktueller Crawler-Status."""
     run_status = await db.get_run_status()
-    configured = await db.is_configured()
+    configured = await is_configured(db)
     return {
         "configured": configured,
         "last_run_at": run_status.last_run_at.isoformat() if run_status.last_run_at else None,
@@ -77,6 +79,7 @@ async def get_status() -> dict[str, Any]:
         "next_run_at": run_status.next_run_at.isoformat() if run_status.next_run_at else None,
         "is_healthy": run_status.is_healthy,
         "crawl_running": is_crawl_running(),
+        "current_run": progress_snapshot(),
     }
 
 

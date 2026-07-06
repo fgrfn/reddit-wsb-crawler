@@ -14,6 +14,7 @@ from wsb_crawler.alerts.discord import send_alerts
 from wsb_crawler.analysis.detector import analyze_mentions
 from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.reddit import crawl_all_subreddits
+from wsb_crawler.runtime.progress import finish_run, start_run, update_run
 from wsb_crawler.storage.database import Database
 
 # Verhindert dass Scheduler und manueller API-Trigger gleichzeitig crawlen
@@ -34,24 +35,76 @@ async def run_single_crawl(db: Database) -> None:
 async def _run_crawl(db: Database) -> None:
     cfg = await get_settings(db)
     run_id = await db.start_run(cfg.crawler.subreddits)
+    start_run(run_id, cfg.crawler.subreddits)
 
     logger.info(f"═══ Crawl gestartet [{run_id[:8]}] ═══")
+    logger.info(
+        "Crawl-Plan: {} Subreddits | {} Posts/Subreddit | {} Kommentare/Post",
+        len(cfg.crawler.subreddits),
+        cfg.crawler.posts_limit,
+        cfg.crawler.comments_limit,
+    )
 
     try:
+        update_run(
+            phase="reddit",
+            phase_label="Reddit lesen",
+            message="Posts und Top-Kommentare werden von Reddit geladen…",
+            progress=8,
+        )
         result = await crawl_all_subreddits(run_id=run_id)
+
+        update_run(
+            phase="save",
+            phase_label="Daten speichern",
+            message=f"Speichere Mentions für {len(result.mention_counts)} erkannte Ticker…",
+            progress=50,
+            posts_scanned=result.posts_scanned,
+            comments_scanned=result.comments_scanned,
+            tickers_found=len(result.mention_counts),
+            top_tickers=result.top_tickers[:10],
+        )
         await db.save_run_mentions(run_id, result.mention_counts)
+
         # run_id ausschließen: die gerade gespeicherten Mentions dürfen die
         # History-Queries nicht beeinflussen (sonst nie NEW_TICKER-Alerts)
+        update_run(
+            phase="analysis",
+            phase_label="Spikes analysieren",
+            message="Vergleiche aktuelle Nennungen mit der historischen 30-Tage-Basis…",
+            progress=60,
+        )
         alerts = await analyze_mentions(result.mention_counts, db, run_id=run_id)
 
         sent_count = 0
         if alerts:
+            update_run(
+                phase="alerts",
+                phase_label="Alerts senden",
+                message=f"Sende {len(alerts)} Alert(s) an Discord…",
+                progress=86,
+            )
             sent_count = await send_alerts(alerts)
+            update_run(alerts_sent=sent_count, message=f"{sent_count} Alert(s) gesendet…", progress=92)
             for alert in alerts:
                 if alert.sent:
                     await db.set_cooldown(alert.ticker, cfg.alerts.cooldown_h)
                     await db.save_alert(alert)
+        else:
+            update_run(
+                phase="alerts",
+                phase_label="Alerts senden",
+                message="Keine Alerts ausgelöst.",
+                progress=88,
+                alerts_sent=0,
+            )
 
+        update_run(
+            phase="cleanup",
+            phase_label="Aufräumen",
+            message="Lauf abschließen und alte Mentions bereinigen…",
+            progress=95,
+        )
         await db.finish_run(
             run_id,
             posts_scanned=result.posts_scanned,
@@ -63,6 +116,12 @@ async def _run_crawl(db: Database) -> None:
             logger.debug(f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht")
 
         duration = result.duration_seconds or 0
+        message = (
+            f"Crawl abgeschlossen: {result.posts_scanned} Posts, "
+            f"{result.comments_scanned} Kommentare, {len(result.mention_counts)} Ticker, "
+            f"{sent_count} Alerts"
+        )
+        finish_run(success=True, message=message, alerts_sent=sent_count)
         logger.info(
             f"═══ Crawl abgeschlossen [{run_id[:8]}] | "
             f"{result.posts_scanned} Posts | "
@@ -73,5 +132,6 @@ async def _run_crawl(db: Database) -> None:
 
     except Exception as e:
         logger.exception(f"Fehler im Crawl-Lauf: {e}")
+        finish_run(success=False, message=f"Crawl fehlgeschlagen: {e}")
         await db.finish_run(run_id, 0, 0, is_healthy=False)
         raise

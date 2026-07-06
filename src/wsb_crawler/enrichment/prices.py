@@ -17,6 +17,7 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from wsb_crawler.models import MarketStatus, PriceData
+from wsb_crawler.runtime.progress import update_run
 from wsb_crawler.storage.cache import price_cache
 
 # Yahoo/yfinance mag keine Burst-Anfragen. Selbst bei nur wenigen Alert-Kandidaten
@@ -137,7 +138,7 @@ async def get_price(ticker: str) -> PriceData | None:
     try:
         data: PriceData = await _fetch_price_with_retry(ticker)
         price_cache.set(ticker, data)
-        logger.debug(f"Kurs geholt: {ticker} = {data.primary_price} {data.currency}")
+        logger.info(f"Kurs geholt: {ticker} = {data.primary_price} {data.currency}")
         return data
     except Exception as e:
         _failed_price_cache.add(ticker)
@@ -152,6 +153,13 @@ async def get_prices_bulk(tickers: list[str]) -> dict[str, PriceData | None]:
     """
     unique_tickers = list(dict.fromkeys(tickers))
     results: dict[str, PriceData | None] = {}
-    for ticker in unique_tickers:
+    total = max(1, len(unique_tickers))
+    for idx, ticker in enumerate(unique_tickers, start=1):
+        update_run(
+            phase="enrich",
+            phase_label="Kurse & News",
+            message=f"Hole Kursdaten für {ticker} ({idx}/{total})…",
+            progress=80 + int((idx - 1) / total * 3),
+        )
         results[ticker] = await get_price(ticker)
     return {ticker: results.get(ticker) for ticker in tickers}
