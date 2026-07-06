@@ -89,7 +89,20 @@ class TestTickerExtraction:
         """Häufige Reddit-/Makro-Abkürzungen werden nicht als Ticker gezählt."""
         post = _make_post(text="USA USD BTC LMAO WEN BUY ROI DRAM RAM LFG LLM QNX")
         tickers = [m.ticker for m in extract_tickers(post)]
-        for word in ["USA", "USD", "BTC", "LMAO", "WEN", "BUY", "ROI", "DRAM", "RAM", "LFG", "LLM", "QNX"]:
+        for word in [
+            "USA",
+            "USD",
+            "BTC",
+            "LMAO",
+            "WEN",
+            "BUY",
+            "ROI",
+            "DRAM",
+            "RAM",
+            "LFG",
+            "LLM",
+            "QNX",
+        ]:
             assert word not in tickers
 
     def test_dedup_within_post(self):
@@ -201,4 +214,4 @@ class TestBlacklist:
     def test_valid_tickers_not_blacklisted(self):
         """Bekannte Ticker sind NICHT in der Blacklist."""
         for ticker in ["GME", "AMC", "TSLA", "NVDA", "AAPL"]:
-            assert ticker not in BLACKLIST, f"{ticker} sollte nicht in der Blacklist sein"
+            assert ticker not in BLACKLIST, f"{ticker} sollte nicht in BLACKLIST sein"
