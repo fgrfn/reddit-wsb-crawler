@@ -11,6 +11,7 @@ Ersetzt die Pickle-Dateien aus v1. Vorteile:
 from __future__ import annotations
 
 import json
+import sqlite3
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -130,8 +131,16 @@ class Database:
 
     async def init(self) -> None:
         """Verbindung öffnen + Schema anlegen."""
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = await aiosqlite.connect(self._path)
+        try:
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = await aiosqlite.connect(self._path)
+        except (OSError, sqlite3.OperationalError) as e:
+            raise RuntimeError(
+                f"Datenbank konnte nicht geöffnet werden: {self._path.resolve()} ({e}). "
+                "Der Prozess muss in ein beschreibbares Verzeichnis geschrieben werden können. "
+                "Starte aus einem beschreibbaren Verzeichnis oder setze WSB_DB_PATH auf einen "
+                "beschreibbaren absoluten Pfad (z.B. WSB_DB_PATH=~/.local/share/wsb-crawler/wsb.db)."
+            ) from e
         self._conn.row_factory = aiosqlite.Row
         await self._conn.executescript(CREATE_TABLES)
         await self._apply_schema_version()

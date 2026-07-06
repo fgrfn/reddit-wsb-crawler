@@ -19,6 +19,24 @@ async def db(tmp_path: Path) -> Database:
     await database.close()
 
 
+class TestDatabaseOpen:
+    async def test_clear_error_on_unwritable_path(self, tmp_path: Path):
+        """Nicht öffenbarer Pfad → klare RuntimeError mit WSB_DB_PATH-Hinweis
+        statt rohem sqlite3-Traceback."""
+        # Datei als vermeintliches Elternverzeichnis → mkdir/connect scheitert
+        afile = tmp_path / "afile"
+        afile.write_text("x")
+        with pytest.raises(RuntimeError, match="WSB_DB_PATH"):
+            await Database(afile / "data" / "wsb.db").init()
+
+    async def test_creates_nested_parent_dirs(self, tmp_path: Path):
+        """Verschachteltes Zielverzeichnis wird angelegt."""
+        database = Database(tmp_path / "a" / "b" / "wsb.db")
+        await database.init()
+        assert (tmp_path / "a" / "b" / "wsb.db").exists()
+        await database.close()
+
+
 class TestCrawlRuns:
     async def test_start_and_finish_run(self, db: Database):
         """Lauf kann gestartet und abgeschlossen werden."""
