@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import cast
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, RedirectResponse, Response
 from loguru import logger
+from starlette.middleware.base import RequestResponseEndpoint
 
+from wsb_crawler.api.auth import REALM, get_auth_token, request_is_authorized
 from wsb_crawler.api.routers import config, dashboard, status
 from wsb_crawler.config import is_configured
 from wsb_crawler.storage.database import Database
@@ -23,6 +25,24 @@ from wsb_crawler.storage.database import Database
 STATIC_DIR = Path(__file__).parent / "static"
 
 app = FastAPI(title="WSB-Crawler Dashboard", version="2.1.0", docs_url="/api/docs")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next: RequestResponseEndpoint) -> Response:
+    """Erzwingt HTTP-Basic-Auth, sobald WSB_AUTH_TOKEN gesetzt ist (sonst No-Op)."""
+    authorized = request_is_authorized(
+        client_host=request.client.host if request.client else None,
+        auth_header=request.headers.get("Authorization"),
+        method=request.method,
+        token=get_auth_token(),
+    )
+    if not authorized:
+        return Response(
+            status_code=401,
+            headers={"WWW-Authenticate": f'Basic realm="{REALM}"'},
+        )
+    return await call_next(request)
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -68,10 +88,17 @@ def set_database(db: Database) -> None:
 async def run_server(db: Database, host: str = "127.0.0.1", port: int = 80) -> None:
     """Startet den uvicorn Server als asyncio-Task.
 
-    Default-Bind ist localhost, weil das Dashboard keine Authentifizierung
-    hat. Für LAN-Zugriff (Docker/NAS) WSB_HOST=0.0.0.0 setzen.
+    Default-Bind ist localhost, weil das Dashboard ohne WSB_AUTH_TOKEN keine
+    Authentifizierung hat. Für LAN-Zugriff (Docker/NAS) WSB_HOST=0.0.0.0 setzen
+    und dringend WSB_AUTH_TOKEN vergeben.
     """
     set_database(db)
+    if host not in ("127.0.0.1", "::1", "localhost") and not get_auth_token():
+        logger.warning(
+            f"Dashboard lauscht auf {host} OHNE WSB_AUTH_TOKEN — die API "
+            "(inkl. Secret-Verwaltung) ist ungeschützt im Netzwerk erreichbar. "
+            "Setze WSB_AUTH_TOKEN oder binde auf 127.0.0.1."
+        )
     config_uvicorn = uvicorn.Config(
         app,
         host=host,
