@@ -16,8 +16,46 @@ from wsb_crawler.enrichment.news import get_news_bulk
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
 from wsb_crawler.models import Alert, AlertReason, SpikeResult
-from wsb_crawler.runtime.progress import update_run
+from wsb_crawler.runtime.progress import add_diagnostic, update_run
 from wsb_crawler.storage.database import Database
+
+# Implizite 3-Buchstaben-Ticker sind die häufigste Restquelle für False Positives.
+# Bekannte WSB-/Mega-Cap-Ticker dürfen normal durch. Unbekannte neue 3-Letter-
+# Kandidaten brauchen mehr absolute Erwähnungen, bevor ein Discord-Alert entsteht.
+HIGH_SIGNAL_SHORT_TICKERS = frozenset(
+    {
+        "AMD",
+        "AMC",
+        "ARM",
+        "BBAI",
+        "CRM",
+        "GME",
+        "IBM",
+        "IONQ",
+        "MARA",
+        "NIO",
+        "PLTR",
+        "QQQ",
+        "RIVN",
+        "SMCI",
+        "SOFI",
+        "SPY",
+        "TLRY",
+        "TSM",
+        "XOM",
+    }
+)
+
+
+def _quality_allows_alert(spike: SpikeResult, *, min_abs: int) -> bool:
+    """Filtert besonders riskante neue Kurz-Ticker vor dem Alert-Versand."""
+    if spike.reason != AlertReason.NEW_TICKER:
+        return True
+    if len(spike.ticker) != 3:
+        return True
+    if spike.ticker in HIGH_SIGNAL_SHORT_TICKERS:
+        return True
+    return spike.current_mentions >= max(min_abs * 2, 50)
 
 
 def _confidence_score(spike: SpikeResult) -> int:
@@ -141,8 +179,15 @@ async def analyze_mentions(
                 progress=62 + int((idx / max(1, len(relevant_items))) * 10),
             )
 
-    # Nur Kandidaten weiter anreichern
-    candidates = [s for s in spike_results if s.reason is not None]
+    raw_candidates = [s for s in spike_results if s.reason is not None]
+    candidates = [s for s in raw_candidates if _quality_allows_alert(s, min_abs=cfg.min_abs)]
+    filtered_count = len(raw_candidates) - len(candidates)
+    if filtered_count:
+        add_diagnostic(
+            "info",
+            f"{filtered_count} unsichere neue Kurz-Ticker vor Alert-Versand gefiltert.",
+            source="ticker-quality",
+        )
     update_run(candidate_count=len(candidates))
 
     if not candidates:
