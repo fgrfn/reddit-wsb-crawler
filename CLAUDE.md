@@ -88,7 +88,7 @@ send_alerts()
 **Keine `.env`-Datei.** Alle Einstellungen liegen in der SQLite-DB in der Tabelle `settings` (key/value).
 
 `config.py` stellt bereit:
-- `DB_PATH: Path` — hardcoded `data/wsb_crawler.db`
+- `DB_PATH: Path` — Default `data/wsb_crawler.db` (CWD-relativ, für Docker/systemd); per `WSB_DB_PATH` auf einen absoluten Pfad übersteuerbar (nötig bei systemweiter Installation / Start aus nicht beschreibbarem Verzeichnis)
 - `async get_settings(db: Database) -> Settings` — liest alle Werte aus DB, wirft `RuntimeError` wenn Pflichtfelder fehlen
 
 Die `Settings`-Dataclass enthält:

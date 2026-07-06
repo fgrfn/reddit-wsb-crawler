@@ -20,8 +20,21 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from wsb_crawler.storage.database import Database
 
-# Datenbank-Pfad — einziger Wert der noch "hardcoded" ist
-DB_PATH = Path("data/wsb_crawler.db")
+
+# Datenbank-Pfad.
+# Default ist CWD-relativ (data/…), damit Docker-Volume-Mounts und der
+# systemd-Service mit WorkingDirectory=Repo weiter funktionieren. Wer das
+# Paket systemweit installiert und aus einem beliebigen (evtl. nicht
+# beschreibbaren) Verzeichnis startet, setzt WSB_DB_PATH auf einen
+# beschreibbaren absoluten Pfad.
+def _resolve_db_path() -> Path:
+    override = os.getenv("WSB_DB_PATH", "").strip()
+    if override:
+        return Path(override).expanduser()
+    return Path("data/wsb_crawler.db")
+
+
+DB_PATH = _resolve_db_path()
 
 
 @dataclass

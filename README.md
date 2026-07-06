@@ -89,6 +89,8 @@ docker compose up -d
 Alle Einstellungen werden über das Web-Dashboard unter **http://localhost** gesetzt — keine `.env`-Datei nötig.
 
 > **Port ändern:** Setze die Umgebungsvariable `WSB_PORT=8080` vor dem Start, falls Port 80 nicht verfügbar ist.
+>
+> **Datenbank-Pfad:** Standardmäßig wird die DB unter `data/wsb_crawler.db` **relativ zum Arbeitsverzeichnis** angelegt. Das passt für Docker und den systemd-Service (die im Repo-Verzeichnis laufen). Wer das Paket systemweit installiert und aus einem beliebigen — evtl. nicht beschreibbaren — Verzeichnis startet, setzt einen absoluten Pfad: `WSB_DB_PATH=~/.local/share/wsb-crawler/wsb.db`. Andernfalls kann es zu `unable to open database file` kommen.
 
 ### Erster Start — Setup-Wizard
 
