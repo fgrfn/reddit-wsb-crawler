@@ -16,6 +16,11 @@ x-common: &common
     - TZ=Europe/Berlin
     - WSB_PORT=${WSB_PORT:-80}  # Port ändern via: WSB_PORT=8080 docker compose up
     - WSB_HOST=0.0.0.0          # Container-intern nötig fürs Port-Mapping
+    - WSB_DB_PATH=/app/data/wsb_crawler.db
+    # UID/GID des App-Users im Container. Bei Unraid oft sinnvoll:
+    #   PUID=99 PGID=100 docker compose up -d
+    - PUID=${PUID:-1000}
+    - PGID=${PGID:-1000}
   volumes:
     - ./data:/app/data
     - ./logs:/app/logs

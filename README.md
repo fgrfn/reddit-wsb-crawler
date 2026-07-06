@@ -80,6 +80,12 @@ docker compose up -d
 
 > **Hinweis:** Port 80 erfordert unter Linux/macOS ggf. sudo. Alternativ Port ändern: `WSB_PORT=8080 docker compose up`
 >
+> **Docker-Volumes:** Die SQLite-Datenbank liegt im Container unter `/app/data/wsb_crawler.db` und wird per `./data:/app/data` persistent gespeichert. Der Container startet kurz als root, korrigiert die Besitzerrechte von `/app/data` und `/app/logs`, und führt die App danach als Non-Root-User `crawler` aus. Standard ist `PUID=1000` / `PGID=1000`. Auf Unraid ist häufig `PUID=99 PGID=100` passend:
+>
+> ```bash
+> PUID=99 PGID=100 docker compose up -d
+> ```
+>
 > **Sicherheit:** Das Dashboard hat **keine Authentifizierung**. Bei lokalem Start bindet es daher nur auf `127.0.0.1`. Für Zugriff aus dem LAN (z. B. NAS/Server) `WSB_HOST=0.0.0.0` setzen — dann ist es für alle im Netzwerk erreichbar (im Docker-Image ist das bereits gesetzt, weil das Port-Mapping es benötigt). In diesem Fall den Container besser nur an ein vertrauenswürdiges Interface mappen, z. B. `127.0.0.1:80:80`.
 
 ---
@@ -90,7 +96,7 @@ Alle Einstellungen werden über das Web-Dashboard unter **http://localhost** ges
 
 > **Port ändern:** Setze die Umgebungsvariable `WSB_PORT=8080` vor dem Start, falls Port 80 nicht verfügbar ist.
 >
-> **Datenbank-Pfad:** Standardmäßig wird die DB unter `data/wsb_crawler.db` **relativ zum Arbeitsverzeichnis** angelegt. Das passt für Docker und den systemd-Service (die im Repo-Verzeichnis laufen). Wer das Paket systemweit installiert und aus einem beliebigen — evtl. nicht beschreibbaren — Verzeichnis startet, setzt einen absoluten Pfad: `WSB_DB_PATH=~/.local/share/wsb-crawler/wsb.db`. Andernfalls kann es zu `unable to open database file` kommen.
+> **Datenbank-Pfad:** Standardmäßig wird die DB unter `data/wsb_crawler.db` **relativ zum Arbeitsverzeichnis** angelegt. Im Docker-Image ist explizit `WSB_DB_PATH=/app/data/wsb_crawler.db` gesetzt. Wer das Paket systemweit installiert und aus einem beliebigen — evtl. nicht beschreibbaren — Verzeichnis startet, setzt einen absoluten Pfad: `WSB_DB_PATH=~/.local/share/wsb-crawler/wsb.db`. Andernfalls kann es zu `unable to open database file` kommen.
 
 ### Erster Start — Setup-Wizard
 
@@ -218,44 +224,3 @@ feature/xyz ← Feature-Branches → PR nach dev
 ---
 
 ## Projektstruktur
-
-```
-reddit-wsb-crawler/
-├── setup.py                    # Installations- & Autostart-Script
-├── pyproject.toml
-├── docker-compose.yml
-└── src/wsb_crawler/
-    ├── config.py               # Dataclasses + async get_settings(db)
-    ├── models.py               # Typisierte Datenstrukturen
-    ├── main.py                 # Entry Point: API-Server + Scheduler
-    ├── api/
-    │   ├── server.py           # FastAPI-App, statische Dateien
-    │   ├── static/
-    │   │   └── index.html      # Single-File Vanilla HTML/CSS/JS Dashboard
-    │   └── routers/
-    │       ├── config.py       # GET/PUT /api/config
-    │       ├── dashboard.py    # /api/tickers, /api/alerts, /api/runs
-    │       └── status.py       # /api/status, WebSocket /ws/logs
-    ├── crawler/
-    │   ├── reddit.py           # Async Reddit-Crawling (asyncpraw)
-    │   └── ticker.py           # Regex-Erkennung + Blacklist
-    ├── enrichment/
-    │   ├── prices.py           # Kursdaten (yfinance)
-    │   ├── news.py             # Headlines (NewsAPI)
-    │   └── resolver.py         # Ticker → Firmenname
-    ├── analysis/
-    │   ├── detector.py         # Spike-Erkennung
-    │   └── trends.py           # Trend-Analyse
-    ├── alerts/
-    │   ├── discord.py          # Rich Embeds + Heartbeat
-    │   └── bot.py              # Discord Slash-Commands
-    └── storage/
-        ├── database.py         # SQLite via aiosqlite (inkl. settings-Tabelle)
-        └── cache.py            # In-Memory TTL-Cache
-```
-
----
-
-## License
-
-MIT — siehe [LICENSE](LICENSE)
