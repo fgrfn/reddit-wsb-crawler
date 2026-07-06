@@ -28,9 +28,13 @@ RUN pip install --no-cache-dir --prefix=/install .
 FROM python:3.13-slim AS runtime
 
 ARG VERSION=2.1.0
+ARG BUILD_COMMIT=""
+ARG BUILD_DATE=""
 LABEL maintainer="WSB-Crawler"
 LABEL description="Reddit WSB Crawler v2 with Discord alerts and slash commands"
 LABEL version="${VERSION}"
+LABEL org.opencontainers.image.revision="${BUILD_COMMIT}"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
 
 WORKDIR /app
 
@@ -59,6 +63,8 @@ ENV PYTHONUNBUFFERED=1 \
     WSB_HOST=0.0.0.0 \
     WSB_NO_BROWSER=1 \
     WSB_DB_PATH=/app/data/wsb_crawler.db \
+    WSB_BUILD_COMMIT=${BUILD_COMMIT} \
+    WSB_BUILD_DATE=${BUILD_DATE} \
     PUID=1000 \
     PGID=1000
 

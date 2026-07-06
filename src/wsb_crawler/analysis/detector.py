@@ -16,8 +16,84 @@ from wsb_crawler.enrichment.news import get_news_bulk
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
 from wsb_crawler.models import Alert, AlertReason, SpikeResult
-from wsb_crawler.runtime.progress import update_run
+from wsb_crawler.runtime.progress import add_diagnostic, update_run
 from wsb_crawler.storage.database import Database
+
+# Implizite 3-Buchstaben-Ticker sind die häufigste Restquelle für False Positives.
+# Bekannte WSB-/Mega-Cap-Ticker dürfen normal durch. Unbekannte neue 3-Letter-
+# Kandidaten brauchen mehr absolute Erwähnungen, bevor ein Discord-Alert entsteht.
+HIGH_SIGNAL_SHORT_TICKERS = frozenset(
+    {
+        "AMD",
+        "AMC",
+        "ARM",
+        "BBAI",
+        "CRM",
+        "GME",
+        "IBM",
+        "IONQ",
+        "MARA",
+        "NIO",
+        "PLTR",
+        "QQQ",
+        "RIVN",
+        "SMCI",
+        "SOFI",
+        "SPY",
+        "TLRY",
+        "TSM",
+        "XOM",
+    }
+)
+
+
+def _quality_allows_alert(spike: SpikeResult, *, min_abs: int) -> bool:
+    """Filtert besonders riskante neue Kurz-Ticker vor dem Alert-Versand."""
+    if spike.reason != AlertReason.NEW_TICKER:
+        return True
+    if len(spike.ticker) != 3:
+        return True
+    if spike.ticker in HIGH_SIGNAL_SHORT_TICKERS:
+        return True
+    return spike.current_mentions >= max(min_abs * 2, 50)
+
+
+def _confidence_score(spike: SpikeResult) -> int:
+    """Ein einfacher Erklärbarkeits-Score für Alert-Vorschau und Dashboard."""
+    score = 30
+    score += min(30, spike.current_mentions)
+    if spike.is_new:
+        score += 10
+    if spike.ratio == float("inf"):
+        score += 20
+    else:
+        score += min(20, int(spike.ratio * 4))
+    if spike.price_data and spike.price_data.primary_change is not None:
+        score += min(10, int(abs(spike.price_data.primary_change)))
+    if spike.news:
+        score += min(10, len(spike.news) * 2)
+    return max(0, min(100, score))
+
+
+def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
+    return [
+        {
+            "ticker": alert.ticker,
+            "reason": alert.reason.value,
+            "mentions": alert.spike.current_mentions,
+            "avg_mentions": round(alert.spike.avg_mentions, 2),
+            "ratio": None if alert.spike.ratio == float("inf") else round(alert.spike.ratio, 2),
+            "delta": alert.spike.delta,
+            "is_new": alert.spike.is_new,
+            "price": alert.spike.price_data.primary_price if alert.spike.price_data else None,
+            "price_change": alert.spike.price_data.primary_change
+            if alert.spike.price_data
+            else None,
+            "news_count": len(alert.spike.news),
+            "confidence": _confidence_score(alert.spike),
+        }
+        for alert in alerts
+    ]
 
 
 async def analyze_mentions(
@@ -52,6 +128,7 @@ async def analyze_mentions(
             progress=70,
             candidate_count=0,
             active_candidate_count=0,
+            alert_preview=[],
         )
         return alerts
 
@@ -104,8 +181,15 @@ async def analyze_mentions(
                 progress=62 + int((idx / max(1, len(relevant_items))) * 10),
             )
 
-    # Nur Kandidaten weiter anreichern
-    candidates = [s for s in spike_results if s.reason is not None]
+    raw_candidates = [s for s in spike_results if s.reason is not None]
+    candidates = [s for s in raw_candidates if _quality_allows_alert(s, min_abs=cfg.min_abs)]
+    filtered_count = len(raw_candidates) - len(candidates)
+    if filtered_count:
+        add_diagnostic(
+            "info",
+            f"{filtered_count} unsichere neue Kurz-Ticker vor Alert-Versand gefiltert.",
+            source="ticker-quality",
+        )
     update_run(candidate_count=len(candidates))
 
     if not candidates:
@@ -116,6 +200,7 @@ async def analyze_mentions(
             message="Keine Spike-Kandidaten in diesem Lauf.",
             progress=78,
             active_candidate_count=0,
+            alert_preview=[],
         )
         return alerts
 
@@ -142,6 +227,7 @@ async def analyze_mentions(
             phase_label="Spikes analysieren",
             message="Alle Kandidaten sind noch im Cooldown.",
             progress=80,
+            alert_preview=[],
         )
         return alerts
 
@@ -198,5 +284,6 @@ async def analyze_mentions(
         phase_label="Kurse & News",
         message=f"{len(alerts)} Alert(s) vorbereitet.",
         progress=85,
+        alert_preview=_alert_preview(alerts),
     )
     return alerts

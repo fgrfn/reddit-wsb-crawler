@@ -11,11 +11,18 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 - In-memory Runtime-Progress-Tracker für lange Crawl-Läufe.
 - Detailliertere INFO-Logs während Reddit-Crawling, Ticker-Extraktion, Spike-Analyse, Preis-/News-Enrichment und Alert-Versand.
 - Docker Healthcheck gegen `/api/status`.
+- Dashboard-Version und Build-Metadaten über `/api/about`.
+- Dry-Run-Modus für manuell gestartete Crawls ohne Discord-Versand oder Cooldown-Schreibzugriffe.
+- Alert-Vorschau mit Confidence Score, Mention-Daten, Preisänderung und News-Anzahl im Live-Run-Status.
+- Diagnosebereich im Dashboard für Warnungen und Fehler während eines Crawls.
+- Ticker-Detailseite mit Mention-Verlauf und Alert-Historie.
 
 ### Changed
 
 - Ticker-Erkennung reduziert False Positives durch strengere Behandlung impliziter Großbuchstaben-Ticker ohne `$`.
 - yfinance/Yahoo-Enrichment wird gedrosselt, dedupliziert und nutzt einen negativen Runtime-Cache für fehlgeschlagene Kursabfragen.
+- Fehlgeschlagene yfinance-Kursabfragen laufen jetzt nach TTL aus, statt bis zum Container-Neustart blockiert zu bleiben.
+- Neue, unsichere Drei-Buchstaben-Ticker werden vor Discord-Alerts zusätzlich qualitätsgeprüft.
 - Konfigurationsstatus berücksichtigt jetzt sowohl SQLite-Settings als auch Docker/Unraid-ENV-Overrides.
 - Docker-Start korrigiert Besitzrechte von `/app/data` und `/app/logs` und unterstützt `PUID`/`PGID`.
 - README für Release-Betrieb auf `main`, Version `2.1.0`, Docker/Unraid und Live-Dashboard aktualisiert.
@@ -28,6 +35,7 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 - Manuelle Crawls konnten trotz unvollständiger Konfiguration gestartet werden.
 - Wiederholte Yahoo/yfinance `429 Too Many Requests` durch Burst-Anfragen und doppelte Kursabfragen.
 - Häufige False-Positive-Alerts aus normalen Wörtern/Abkürzungen wie `USA`, `USD`, `WEN`, `LMAO`, `ROI`, `RAM`, `DRAM`.
+- FastAPI-Start-Crash durch Response-Type-Inferenz bei SPA-Routen.
 
 ### Notes
 

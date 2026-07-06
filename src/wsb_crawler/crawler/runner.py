@@ -14,7 +14,12 @@ from wsb_crawler.alerts.discord import send_alerts
 from wsb_crawler.analysis.detector import analyze_mentions
 from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.reddit import crawl_all_subreddits
-from wsb_crawler.runtime.progress import finish_run, start_run, update_run
+from wsb_crawler.runtime.progress import (
+    add_diagnostic,
+    finish_run,
+    start_run,
+    update_run,
+)
 from wsb_crawler.storage.database import Database
 
 # Verhindert dass Scheduler und manueller API-Trigger gleichzeitig crawlen
@@ -23,27 +28,34 @@ _crawl_lock = asyncio.Lock()
 MENTION_RETENTION_DAYS = 90
 
 
-async def run_single_crawl(db: Database) -> None:
+async def run_single_crawl(db: Database, *, dry_run: bool = False) -> None:
     if _crawl_lock.locked():
         logger.warning("Crawl übersprungen — es läuft bereits ein anderer Crawl")
         return
 
     async with _crawl_lock:
-        await _run_crawl(db)
+        await _run_crawl(db, dry_run=dry_run)
 
 
-async def _run_crawl(db: Database) -> None:
+async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
     cfg = await get_settings(db)
     run_id = await db.start_run(cfg.crawler.subreddits)
-    start_run(run_id, cfg.crawler.subreddits)
+    start_run(run_id, cfg.crawler.subreddits, dry_run=dry_run)
 
-    logger.info(f"═══ Crawl gestartet [{run_id[:8]}] ═══")
+    mode = "Dry-Run" if dry_run else "Live"
+    logger.info(f"═══ Crawl gestartet [{run_id[:8]}] | {mode} ═══")
     logger.info(
         "Crawl-Plan: {} Subreddits | {} Posts/Subreddit | {} Kommentare/Post",
         len(cfg.crawler.subreddits),
         cfg.crawler.posts_limit,
         cfg.crawler.comments_limit,
     )
+    if dry_run:
+        add_diagnostic(
+            "info",
+            "Dry-Run aktiv: Discord-Alerts und Cooldowns werden nicht geschrieben.",
+            source="crawl",
+        )
 
     try:
         update_run(
@@ -81,19 +93,27 @@ async def _run_crawl(db: Database) -> None:
             update_run(
                 phase="alerts",
                 phase_label="Alerts senden",
-                message=f"Sende {len(alerts)} Alert(s) an Discord…",
+                message=(
+                    f"Dry-Run: {len(alerts)} Alert(s) würden gesendet."
+                    if dry_run
+                    else f"Sende {len(alerts)} Alert(s) an Discord…"
+                ),
                 progress=86,
             )
-            sent_count = await send_alerts(alerts)
-            update_run(
-                alerts_sent=sent_count,
-                message=f"{sent_count} Alert(s) gesendet…",
-                progress=92,
-            )
-            for alert in alerts:
-                if alert.sent:
-                    await db.set_cooldown(alert.ticker, cfg.alerts.cooldown_h)
-                    await db.save_alert(alert)
+            if dry_run:
+                logger.info(f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet")
+                update_run(alerts_sent=0, progress=92)
+            else:
+                sent_count = await send_alerts(alerts)
+                update_run(
+                    alerts_sent=sent_count,
+                    message=f"{sent_count} Alert(s) gesendet…",
+                    progress=92,
+                )
+                for alert in alerts:
+                    if alert.sent:
+                        await db.set_cooldown(alert.ticker, cfg.alerts.cooldown_h)
+                        await db.save_alert(alert)
         else:
             update_run(
                 phase="alerts",
@@ -125,6 +145,8 @@ async def _run_crawl(db: Database) -> None:
             f"{result.comments_scanned} Kommentare, {len(result.mention_counts)} Ticker, "
             f"{sent_count} Alerts"
         )
+        if dry_run:
+            message += f" (Dry-Run, {len(alerts)} Alert-Vorschau)"
         finish_run(success=True, message=message, alerts_sent=sent_count)
         logger.info(
             f"═══ Crawl abgeschlossen [{run_id[:8]}] | "

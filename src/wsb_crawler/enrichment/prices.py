@@ -9,7 +9,7 @@ QuoteSummary-Anfragen schnell mit 429 Too Many Requests.
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import yfinance as yf
@@ -17,7 +17,7 @@ from loguru import logger
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from wsb_crawler.models import MarketStatus, PriceData
-from wsb_crawler.runtime.progress import update_run
+from wsb_crawler.runtime.progress import add_diagnostic, update_run
 from wsb_crawler.storage.cache import price_cache
 
 # Yahoo/yfinance mag keine Burst-Anfragen. Selbst bei nur wenigen Alert-Kandidaten
@@ -26,7 +26,8 @@ from wsb_crawler.storage.cache import price_cache
 # retried werden.
 YFINANCE_MAX_ATTEMPTS = 2
 YFINANCE_REQUEST_DELAY_SECONDS = 1.5
-_failed_price_cache: set[str] = set()
+FAILED_PRICE_CACHE_TTL_MINUTES = 30
+_failed_price_cache: dict[str, datetime] = {}
 _price_lock = asyncio.Lock()
 
 
@@ -48,6 +49,16 @@ def _safe_float(value: object) -> float | None:
         return f if f == f else None  # NaN check
     except (TypeError, ValueError):
         return None
+
+
+def _negative_cache_hit(ticker: str) -> bool:
+    failed_at = _failed_price_cache.get(ticker)
+    if failed_at is None:
+        return False
+    if datetime.now(tz=UTC) - failed_at > timedelta(minutes=FAILED_PRICE_CACHE_TTL_MINUTES):
+        _failed_price_cache.pop(ticker, None)
+        return False
+    return True
 
 
 def _fetch_price_sync(ticker: str) -> PriceData:
@@ -131,18 +142,21 @@ async def get_price(ticker: str) -> PriceData | None:
         logger.debug(f"Cache-Hit für Kurs: {ticker}")
         return cached
 
-    if ticker in _failed_price_cache:
+    if _negative_cache_hit(ticker):
         logger.debug(f"Negativer Cache-Hit für Kurs: {ticker}")
         return None
 
     try:
         data: PriceData = await _fetch_price_with_retry(ticker)
         price_cache.set(ticker, data)
+        _failed_price_cache.pop(ticker, None)
         logger.info(f"Kurs geholt: {ticker} = {data.primary_price} {data.currency}")
         return data
     except Exception as e:
-        _failed_price_cache.add(ticker)
-        logger.warning(f"Konnte Kurs für {ticker} nicht holen: {e}")
+        _failed_price_cache[ticker] = datetime.now(tz=UTC)
+        message = f"Konnte Kurs für {ticker} nicht holen: {e}"
+        logger.warning(message)
+        add_diagnostic("warning", message, source="yfinance")
         return None
 
 
