@@ -1,31 +1,24 @@
 # WSB-Crawler v2
 
-[![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=dev)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
-[![Version](https://img.shields.io/badge/version-2.0.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
+[![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
+[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 Automatisches Frühwarnsystem für Reddit-Aktien-Hypes — async, mit Web-Dashboard, SQLite-History und Discord-Alerts.
 
-Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf ungewöhnliche Häufungen von Ticker-Nennungen und sendet bei Schwellwert-Überschreitung sofort Discord-Alerts. Konfiguration, Monitoring und Historie sind über ein modernes Browser-Dashboard erreichbar — keine `.env`-Dateien nötig.
+Der Crawler überwacht konfigurierbare Subreddits, z. B. `wallstreetbets` und `wallstreetbetsGER`, auf ungewöhnliche Häufungen von Ticker-Nennungen. Bei Schwellwert-Überschreitung sendet er Discord-Alerts. Konfiguration, Live-Fortschritt, Logs, Historie und Ticker-Auswertungen laufen über ein Browser-Dashboard.
 
 ---
 
-## Was ist neu in v2?
+## Highlights in v2.1.0
 
-| Feature | v1 | v2 |
-|---|---|---|
-| Reddit-Crawling | sync (praw) | async (asyncpraw) |
-| API-Calls | sequentiell | parallel (asyncio.gather) |
-| State | Pickle-Dateien | SQLite (querybar) |
-| Config | `.env`-Datei | Web-Dashboard (SQLite-backed) |
-| Logging | colorama + pyfiglet + halo | loguru + Live-Log im Browser |
-| Discord | nur Webhooks | Webhooks + Slash-Commands (/top, /chart, /status) |
-| Dashboard | keins | FastAPI + Vanilla HTML/CSS/JS (localhost:80) |
-| Setup | manuelle `.env` Bearbeitung | Setup-Wizard im Browser |
-| Docker | 2 Services, Profile-Flag | 1 Service, Port 80 |
-| Tests | test_logging.py | pytest + pytest-asyncio, ~65% Coverage |
-| Dependencies | ungepinnt | vollständig gepinnt in pyproject.toml |
+- Live-Run-Status im Dashboard: aktuelle Phase, Fortschritt, Laufzeit, Posts, Kommentare, Ticker, Kandidaten, Alerts und Subreddit-Fortschritt.
+- Detailliertere Logs während langer Crawls: Reddit-Lesen, Ticker-Erkennung, Spike-Analyse, Kurs-/News-Enrichment und Alert-Versand.
+- Weniger False Positives bei Ticker-Erkennung: reine Großbuchstaben-Wörter und häufige Reddit-/Makro-Abkürzungen werden strenger gefiltert.
+- yfinance/Yahoo-Enrichment wird gedrosselt und dedupliziert, um `429 Too Many Requests` deutlich zu reduzieren.
+- Docker-Volume-Rechte für `/app/data` und `/app/logs` werden beim Start korrigiert, inklusive `PUID`/`PGID` für Unraid.
+- Konsistenter Konfigurationsstatus: DB-Settings und Docker/Unraid-ENV-Variablen werden gleichermaßen berücksichtigt.
 
 ---
 
@@ -37,163 +30,128 @@ Der Crawler überwacht konfigurierbare Subreddits (z. B. r/wallstreetbets) auf u
 - Reddit-App: [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps)
 - Discord Webhook-URL
 
-### Setup-Script (empfohlen)
-
-Das Setup-Script installiert alle Abhängigkeiten und richtet optional einen Autostart-Service ein:
+### Docker
 
 ```bash
-git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
+git clone https://github.com/fgrfn/reddit-wsb-crawler.git
 cd reddit-wsb-crawler
 
-python setup.py
+docker compose up -d --build
+# Dashboard: http://localhost
 ```
 
-Das Script fragt interaktiv, ob ein Autostart-Service eingerichtet werden soll (Windows Task Scheduler / Linux systemd / macOS launchd).
+> **Hinweis:** Port 80 erfordert unter Linux/macOS ggf. root-Rechte. Alternativ Port ändern:
+>
+> ```bash
+> WSB_PORT=8080 docker compose up -d --build
+> ```
 
-### Manuell (lokal)
+### Unraid-Hinweise
+
+- Docker-Netzwerk bevorzugt: **Bridge**, nicht Host, wenn du Port-Mapping nutzen willst.
+- Bei Unraid sind häufig `PUID=99` und `PGID=100` passend:
 
 ```bash
-# 1. Repository klonen
-git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
+PUID=99 PGID=100 docker compose up -d --build
+```
+
+Die SQLite-Datenbank liegt im Container unter `/app/data/wsb_crawler.db` und wird per `./data:/app/data` persistent gespeichert. Der Container startet kurz als root, korrigiert die Besitzerrechte von `/app/data` und `/app/logs`, und führt die App danach als Non-Root-User `crawler` aus.
+
+### Manuell lokal
+
+```bash
+git clone https://github.com/fgrfn/reddit-wsb-crawler.git
 cd reddit-wsb-crawler
 
-# 2. Python-Abhängigkeiten installieren
 python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -e ".[dev]"
 
-# 3. Starten
 wsb-crawler
 ```
 
 Der Browser öffnet sich automatisch. Beim ersten Start wird der Setup-Wizard angezeigt.
 
-### Docker
-
-```bash
-git clone -b dev https://github.com/fgrfn/reddit-wsb-crawler.git
-cd reddit-wsb-crawler
-
-docker compose up -d
-# Dashboard: http://localhost
-```
-
-> **Hinweis:** Port 80 erfordert unter Linux/macOS ggf. sudo. Alternativ Port ändern: `WSB_PORT=8080 docker compose up`
->
-> **Docker-Volumes:** Die SQLite-Datenbank liegt im Container unter `/app/data/wsb_crawler.db` und wird per `./data:/app/data` persistent gespeichert. Der Container startet kurz als root, korrigiert die Besitzerrechte von `/app/data` und `/app/logs`, und führt die App danach als Non-Root-User `crawler` aus. Standard ist `PUID=1000` / `PGID=1000`. Auf Unraid ist häufig `PUID=99 PGID=100` passend:
->
-> ```bash
-> PUID=99 PGID=100 docker compose up -d
-> ```
->
-> **Sicherheit:** Das Dashboard hat **keine Authentifizierung**. Bei lokalem Start bindet es daher nur auf `127.0.0.1`. Für Zugriff aus dem LAN (z. B. NAS/Server) `WSB_HOST=0.0.0.0` setzen — dann ist es für alle im Netzwerk erreichbar (im Docker-Image ist das bereits gesetzt, weil das Port-Mapping es benötigt). In diesem Fall den Container besser nur an ein vertrauenswürdiges Interface mappen, z. B. `127.0.0.1:80:80`.
-
 ---
 
 ## Konfiguration
 
-Alle Einstellungen werden über das Web-Dashboard unter **http://localhost** gesetzt — keine `.env`-Datei nötig.
-
-> **Port ändern:** Setze die Umgebungsvariable `WSB_PORT=8080` vor dem Start, falls Port 80 nicht verfügbar ist.
->
-> **Datenbank-Pfad:** Standardmäßig wird die DB unter `data/wsb_crawler.db` **relativ zum Arbeitsverzeichnis** angelegt. Im Docker-Image ist explizit `WSB_DB_PATH=/app/data/wsb_crawler.db` gesetzt. Wer das Paket systemweit installiert und aus einem beliebigen — evtl. nicht beschreibbaren — Verzeichnis startet, setzt einen absoluten Pfad: `WSB_DB_PATH=~/.local/share/wsb-crawler/wsb.db`. Andernfalls kann es zu `unable to open database file` kommen.
-
-### Erster Start — Setup-Wizard
-
-Beim ersten Start (keine Konfiguration in der DB) öffnet sich automatisch der Setup-Wizard unter `http://localhost/setup`.
-
-**Schritt 1 — Reddit API**
-
-| Feld | Beschreibung | Link |
-|---|---|---|
-| Client ID | Reddit App Client ID | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
-| Client Secret | Reddit App Secret | [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) |
-| User Agent | Frei wählbar, z. B. `wsb-crawler/2.0` | — |
-
-**Schritt 2 — Discord**
+Alle Einstellungen können über das Web-Dashboard gesetzt werden. Pflichtfelder für den ersten Start:
 
 | Feld | Beschreibung |
 |---|---|
-| Webhook URL | Discord → Servereinstellungen → Integrationen → Webhooks |
-| Bot Token | Optional — aktiviert Slash-Commands |
-| Channel ID | Optional — Kanal für Slash-Commands |
+| Reddit Client ID | Reddit-App Client ID |
+| Reddit Client Secret | Reddit-App Secret |
+| Discord Webhook URL | Discord Webhook für Alerts |
 
-**Schritt 3 — Crawler**
+Optional können Werte auch per Environment gesetzt werden. ENV-Variablen haben Vorrang vor DB-Werten, z. B.:
 
-| Feld | Standard | Beschreibung |
-|---|---|---|
-| Subreddits | `wallstreetbets` | Kommagetrennte Liste |
-| Intervall | `30` Min | Crawl-Häufigkeit |
-| Alert-Schwellwerte | s. u. | Wann ein Alert ausgelöst wird |
+```bash
+REDDIT_CLIENT_ID=...
+REDDIT_CLIENT_SECRET=...
+DISCORD_WEBHOOK_URL=...
+WSB_DB_PATH=/app/data/wsb_crawler.db
+WSB_PORT=8080
+```
 
-### Alert-Schwellwerte
+> **Sicherheit:** Das Dashboard hat keine Authentifizierung. Bei lokalem Start bindet es standardmäßig nur auf `127.0.0.1`. Im Docker-Image ist `WSB_HOST=0.0.0.0` gesetzt, damit Port-Mapping funktioniert. Betreibe das Dashboard nur in vertrauenswürdigen Netzen oder hinter einem geschützten Reverse Proxy.
+
+---
+
+## Dashboard
+
+| Seite | Inhalt |
+|---|---|
+| Dashboard | Live-Run-Status, Fortschritt, Top-Ticker, letzte Alerts und letzte Runs |
+| Alerts | Alert-Historie mit Ticker-Filter |
+| Konfiguration | Alle Einstellungen bearbeiten und speichern |
+| Logs | Live-Logstream via WebSocket |
+
+Während eines laufenden Crawls zeigt das Dashboard die aktuellen Schritte:
+
+```text
+Reddit lesen → Ticker erkennen → Daten speichern → Spikes analysieren → Kurse & News → Alerts senden → Aufräumen
+```
+
+Dazu kommen Live-Zähler für Posts, Kommentare, erkannte Ticker, Spike-Kandidaten und gesendete Alerts.
+
+---
+
+## Alert-Schwellwerte
 
 | Einstellung | Standard | Beschreibung |
-|---|---|---|
-| Min. Nennungen (neu) | 20 | Mindest-Nennungen für unbekannte Ticker |
-| Min. Anstieg (abs.) | 10 | Absoluter Anstieg ggü. letztem Lauf |
-| Anstiegsfaktor | 2.0 | Faktor ggü. historischem Durchschnitt |
-| Min. Kursbewegung | 5 % | Mindest-Kursveränderung |
+|---|---:|---|
+| Min. Nennungen neuer Ticker | 20 | Mindest-Nennungen für unbekannte Ticker |
+| Min. Anstieg absolut | 10 | Absoluter Anstieg gegenüber historischer Basis |
+| Anstiegsfaktor | 2.0 | Faktor gegenüber historischem Durchschnitt |
+| Min. Kursbewegung | 5 % | Mindest-Kursveränderung für Price-Move-Alerts |
 | Max. Alerts pro Lauf | 3 | Begrenzung pro Crawl |
 | Cooldown | 4 h | Wartezeit pro Ticker zwischen Alerts |
+
+---
+
+## Discord Slash-Commands
+
+Erfordert einen konfigurierten Discord Bot Token. Der Webhook allein reicht für normale Alerts.
+
+| Command | Beschreibung |
+|---|---|
+| `/top [days]` | Top-10-Ticker der letzten N Tage, Standard: 7 |
+| `/chart <ticker> [days]` | Mention-Verlauf als ASCII-Chart, Standard: 30 Tage |
+| `/status` | Letzter Crawl, Laufzeit, Alerts gesamt |
 
 ---
 
 ## Updates einspielen
 
 ```bash
+# Docker
+git pull
+docker compose up -d --build
+
+# Lokale Installation
 bash update.sh
 ```
-
-Das Script zieht die neuesten Commits, aktualisiert Python-Abhängigkeiten im Venv und startet den Service neu.
-
----
-
-
-
-Das Dashboard ist unter **http://localhost** erreichbar (nur lokal, keine Authentifizierung nötig).
-
-| Seite | Inhalt |
-|---|---|
-| Dashboard | Crawler-Status, Top-Ticker-Chart, Mention-Tabelle |
-| Alerts | Alert-Historie mit Ticker-Filter |
-| Konfiguration | Alle Einstellungen bearbeiten und speichern |
-| Logs | Live-Logstream via WebSocket |
-
----
-
-## Port-Konfiguration
-
-**Standard:** Port 80 (http://localhost)
-
-**Port ändern:**
-
-```bash
-# Lokal / Setup-Script
-WSB_PORT=8080 wsb-crawler
-WSB_PORT=8080 python setup.py
-
-# Docker
-WSB_PORT=8080 docker compose up -d
-
-# Persistent (Docker)
-echo "WSB_PORT=8080" > .env
-docker compose up -d
-```
-
-> **Hinweis:** Port < 1024 erfordert unter Linux/macOS root-Rechte (`sudo`).
-
----
-
-## Discord Slash-Commands
-
-Erfordert einen konfigurierten Discord Bot Token (optional).
-
-| Command | Beschreibung |
-|---|---|
-| `/top [days]` | Top-10-Ticker der letzten N Tage (Standard: 7) |
-| `/chart <ticker> [days]` | Mention-Verlauf als ASCII-Chart (Standard: 30 Tage) |
-| `/status` | Letzter Crawl, Laufzeit, Alerts gesamt |
 
 ---
 
@@ -215,12 +173,23 @@ mypy src/
 
 ### Branch-Strategie
 
-```
-main        ← Stable Releases (Tags)
+```text
+main        ← Stable Releases + Tags
 dev         ← aktive Entwicklung
-feature/xyz ← Feature-Branches → PR nach dev
+feature/xyz ← Feature-Branches → PR nach dev/main
 ```
 
 ---
 
 ## Projektstruktur
+
+```text
+src/wsb_crawler/
+  api/          FastAPI-Router + statisches Dashboard
+  alerts/       Discord Webhooks und Bot-Commands
+  analysis/     Spike-/Alert-Erkennung
+  crawler/      Reddit-Crawler und Ticker-Extraktion
+  enrichment/   Kurs-, News- und Namens-Enrichment
+  runtime/      In-memory Live-Run-Status
+  storage/      SQLite-Datenbank und Cache
+```
