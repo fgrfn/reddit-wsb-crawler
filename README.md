@@ -92,9 +92,12 @@ REDDIT_CLIENT_SECRET=...
 DISCORD_WEBHOOK_URL=...
 WSB_DB_PATH=/app/data/wsb_crawler.db
 WSB_PORT=8080
+WSB_AUTH_TOKEN=ein-langes-geheimnis   # optional, siehe unten
 ```
 
-> **Sicherheit:** Das Dashboard hat keine Authentifizierung. Bei lokalem Start bindet es standardmäßig nur auf `127.0.0.1`. Im Docker-Image ist `WSB_HOST=0.0.0.0` gesetzt, damit Port-Mapping funktioniert. Betreibe das Dashboard nur in vertrauenswürdigen Netzen oder hinter einem geschützten Reverse Proxy.
+> **Sicherheit:** Ohne `WSB_AUTH_TOKEN` hat das Dashboard keine Authentifizierung. Bei lokalem Start bindet es standardmäßig nur auf `127.0.0.1`, und `docker compose` published den Port ebenfalls nur auf `127.0.0.1` (nur der Docker-Host erreicht das Dashboard).
+>
+> **Für LAN-/Remote-Zugriff** (z. B. NAS): setze `WSB_AUTH_TOKEN=<geheim>` und öffne das Port-Mapping in `docker-compose.yml`. Ist ein Token gesetzt, verlangt der Server für alle nicht-lokalen Zugriffe HTTP-Basic-Auth (Benutzername beliebig, Passwort = Token); Loopback-Zugriffe (u. a. der Docker-Healthcheck) bleiben ohne Token erlaubt. Bindet der Server auf `0.0.0.0` **ohne** Token, wird beim Start eine deutliche Warnung geloggt.
 
 ---
 

@@ -169,7 +169,9 @@ docker compose up -d
 
 **Port ändern:** Setze `WSB_PORT=8080` als Environment-Variable oder in `.env`-Datei.
 
-**Bind-Adresse:** Default `127.0.0.1` (kein Auth → nur localhost). `WSB_HOST=0.0.0.0` öffnet den Server fürs LAN (im Docker-Image gesetzt, da fürs Port-Mapping nötig). `WSB_NO_BROWSER=1` unterdrückt das automatische Browser-Öffnen (Docker/Headless).
+**Bind-Adresse:** Default `127.0.0.1`. `WSB_HOST=0.0.0.0` öffnet den Server fürs LAN (im Docker-Image gesetzt, da fürs Port-Mapping nötig — das Compose-Mapping bindet aber per Default auf `127.0.0.1`). `WSB_NO_BROWSER=1` unterdrückt das automatische Browser-Öffnen (Docker/Headless).
+
+**Authentifizierung (optional):** `WSB_AUTH_TOKEN` aktiviert HTTP-Basic-Auth (`api/auth.py`). Ist das Token gesetzt, verlangt die Middleware in `server.py` für alle nicht-lokalen Requests ein passendes Passwort; Loopback-Clients (127.0.0.1/::1, u. a. Docker-Healthcheck) und `OPTIONS`-Preflights werden durchgelassen. Ohne Token verhält sich der Server wie bisher (offen). Bind auf `0.0.0.0` ohne Token → Startup-Warnung. Die Autorisierungs-Entscheidung liegt seiteneffektfrei in `auth.request_is_authorized()` (unit-getestet in `tests/test_auth.py`).
 
 ---
 
