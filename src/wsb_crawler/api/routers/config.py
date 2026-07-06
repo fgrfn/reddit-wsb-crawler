@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
+from wsb_crawler.config import is_configured
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["config"])
@@ -109,5 +110,5 @@ async def update_config(payload: ConfigPayload) -> dict[str, Any]:
 @router.get("/config/status")
 async def config_status() -> dict[str, Any]:
     """Gibt zurück ob das System vollständig konfiguriert ist."""
-    configured = await db.is_configured()
+    configured = await is_configured(db)
     return {"configured": configured}
