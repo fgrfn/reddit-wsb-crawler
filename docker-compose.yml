@@ -11,6 +11,8 @@ x-common: &common
     dockerfile: Dockerfile
     args:
       VERSION: "2.1.0"
+      BUILD_COMMIT: ${BUILD_COMMIT:-local}
+      BUILD_DATE: ${BUILD_DATE:-}
   image: wsb-crawler:2.1.0
   environment:
     - TZ=Europe/Berlin
