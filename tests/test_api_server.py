@@ -2,8 +2,20 @@
 
 from __future__ import annotations
 
+from fastapi.testclient import TestClient
+
 
 def test_fastapi_app_imports() -> None:
     from wsb_crawler.api.server import app
 
     assert app.title == "WSB-Crawler Dashboard"
+
+
+def test_about_endpoint_exposes_version() -> None:
+    from wsb_crawler.api.server import app
+
+    client = TestClient(app)
+    response = client.get("/api/about")
+
+    assert response.status_code == 200
+    assert response.json()["version"] == "2.1.0"
