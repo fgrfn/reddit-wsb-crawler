@@ -66,5 +66,22 @@ jobs:
           context: .
           push: false
           tags: wsb-crawler:test
+          load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Docker Runtime Smoke-Test
+        run: |
+          docker run -d --name wsb-crawler-test -e WSB_PORT=8080 -p 8080:8080 wsb-crawler:test
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/api/status >/tmp/status.json; then
+              cat /tmp/status.json
+              docker logs wsb-crawler-test
+              docker rm -f wsb-crawler-test
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs wsb-crawler-test
+          docker rm -f wsb-crawler-test
+          exit 1

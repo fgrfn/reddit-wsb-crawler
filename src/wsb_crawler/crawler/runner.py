@@ -85,7 +85,11 @@ async def _run_crawl(db: Database) -> None:
                 progress=86,
             )
             sent_count = await send_alerts(alerts)
-            update_run(alerts_sent=sent_count, message=f"{sent_count} Alert(s) gesendet…", progress=92)
+            update_run(
+                alerts_sent=sent_count,
+                message=f"{sent_count} Alert(s) gesendet…",
+                progress=92,
+            )
             for alert in alerts:
                 if alert.sent:
                     await db.set_cooldown(alert.ticker, cfg.alerts.cooldown_h)
