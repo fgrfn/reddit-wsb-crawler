@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from loguru import logger
 
 from wsb_crawler.api.routers import config, dashboard, status
+from wsb_crawler.config import is_configured
 from wsb_crawler.storage.database import Database
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -46,7 +47,7 @@ if (STATIC_DIR / "index.html").exists():
     async def serve_root() -> FileResponse | RedirectResponse:
         """Startseite: beim Erststart direkt zum Setup weiterleiten."""
         db = cast(Database | None, getattr(app.state, "db", None))
-        if db is not None and not await db.is_configured():
+        if db is not None and not await is_configured(db):
             return RedirectResponse(url="/setup", status_code=307)
         return FileResponse(STATIC_DIR / "index.html")
 
