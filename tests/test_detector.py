@@ -191,6 +191,47 @@ class TestSpikeDetection:
         alerts = await analyze_mentions({}, db)
         assert alerts == []
 
+    async def test_high_engagement_signal_wins_ranking(self, db: Database):
+        """Bei Gleichstand (gleiche Nennungen/ratio) gewinnt hohes Engagement."""
+        from wsb_crawler.analysis.detector import analyze_mentions
+        from wsb_crawler.models import TickerSignal
+
+        counts = {f"TICK{i}": 30 for i in range(10)}
+        # Alle schwach, außer TICK9 mit viralem Engagement + klarem Sentiment.
+        signals = {
+            t: TickerSignal(
+                ticker=t, mention_count=30, total_score=30, max_score=1, bull_hits=0, bear_hits=0
+            )
+            for t in counts
+        }
+        signals["TICK9"] = TickerSignal(
+            ticker="TICK9",
+            mention_count=30,
+            total_score=150_000,
+            max_score=9000,
+            bull_hits=20,
+            bear_hits=0,
+        )
+
+        with (
+            patch(
+                "wsb_crawler.analysis.detector.get_prices_bulk",
+                new=AsyncMock(return_value={t: None for t in counts}),
+            ),
+            patch(
+                "wsb_crawler.analysis.detector.get_news_bulk",
+                new=AsyncMock(return_value={t: [] for t in counts}),
+            ),
+            patch(
+                "wsb_crawler.analysis.detector.resolve_names_bulk",
+                new=AsyncMock(return_value={t: None for t in counts}),
+            ),
+        ):
+            alerts = await analyze_mentions(counts, db, signals=signals)
+
+        assert len(alerts) <= 3
+        assert "TICK9" in {a.ticker for a in alerts}
+
 
 class TestCooldownLogic:
     async def test_cooldown_set_and_active(self, db: Database):

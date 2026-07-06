@@ -15,7 +15,7 @@ from wsb_crawler.config import get_settings
 from wsb_crawler.enrichment.news import get_news_bulk
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
-from wsb_crawler.models import Alert, AlertReason, SpikeResult
+from wsb_crawler.models import Alert, AlertReason, SpikeResult, TickerSignal
 from wsb_crawler.runtime.progress import add_diagnostic, update_run
 from wsb_crawler.storage.database import Database
 
@@ -59,20 +59,42 @@ def _quality_allows_alert(spike: SpikeResult, *, min_abs: int) -> bool:
 
 
 def _confidence_score(spike: SpikeResult) -> int:
-    """Ein einfacher Erklärbarkeits-Score für Alert-Vorschau und Dashboard."""
-    score = 30
-    score += min(30, spike.current_mentions)
+    """
+    Erklärbarkeits-Score (0..100) für Alert-Vorschau und Dashboard.
+
+    Bündelt Volumen, Spike-Stärke, Engagement (Post-Scores), Sentiment-Klarheit,
+    Kursbewegung und News-Deckung zu einem Wert.
+    """
+    score = 20  # Basis
+    score += min(25, spike.current_mentions)  # Volumen
     if spike.is_new:
-        score += 10
+        score += 8
     if spike.ratio == float("inf"):
-        score += 20
+        score += 20  # Spike-Stärke
     else:
-        score += min(20, int(spike.ratio * 4))
+        score += min(18, int(spike.ratio * 4))
+    if spike.signal:
+        score += int(15 * spike.signal.engagement_weight)  # Upvote-Engagement
+        score += min(8, int(abs(spike.signal.sentiment) * 8))  # klare Richtung
     if spike.price_data and spike.price_data.primary_change is not None:
-        score += min(10, int(abs(spike.price_data.primary_change)))
+        score += min(8, int(abs(spike.price_data.primary_change)))
     if spike.news:
-        score += min(10, len(spike.news) * 2)
+        score += min(8, len(spike.news) * 2)
     return max(0, min(100, score))
+
+
+def _candidate_rank(spike: SpikeResult) -> float:
+    """
+    Relevanz für die Auswahl bei mehr Kandidaten als max_per_run.
+
+    Primär die Spike-Stärke (ratio), zusätzlich hochgewichtet nach Engagement
+    und Volumen — so gewinnt eine Nennung in viralen Posts gegen eine gleich
+    starke ratio in Randbeiträgen. Läuft vor der Enrichment (kein Kurs/News).
+    """
+    ratio = 100.0 if spike.ratio == float("inf") else min(spike.ratio, 100.0)
+    engagement = spike.signal.engagement_weight if spike.signal else 0.0
+    sentiment = abs(spike.signal.sentiment) if spike.signal else 0.0
+    return ratio + engagement * 10 + sentiment * 5 + min(spike.current_mentions, 50) * 0.2
 
 
 def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
@@ -91,6 +113,11 @@ def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
             else None,
             "news_count": len(alert.spike.news),
             "confidence": _confidence_score(alert.spike),
+            "sentiment": round(alert.spike.signal.sentiment, 2) if alert.spike.signal else 0.0,
+            "sentiment_label": (
+                alert.spike.signal.sentiment_label if alert.spike.signal else "neutral"
+            ),
+            "avg_score": round(alert.spike.signal.avg_score, 1) if alert.spike.signal else 0.0,
         }
         for alert in alerts
     ]
@@ -100,6 +127,7 @@ async def analyze_mentions(
     mention_counts: dict[str, int],
     db: Database,
     run_id: str | None = None,
+    signals: dict[str, TickerSignal] | None = None,
 ) -> list[Alert]:
     """
     Analysiert Ticker-Nennungen und gibt ausgelöste Alerts zurück.
@@ -119,6 +147,7 @@ async def analyze_mentions(
     """
     cfg = (await get_settings(db)).alerts
     alerts: list[Alert] = []
+    signals = signals or {}
 
     if not mention_counts:
         update_run(
@@ -172,6 +201,7 @@ async def analyze_mentions(
                 delta=delta,
                 is_new=is_new,
                 reason=reason,
+                signal=signals.get(ticker),
             )
         )
 
@@ -231,8 +261,9 @@ async def analyze_mentions(
         )
         return alerts
 
-    # Auf max_per_run begrenzen (nach Relevanz sortieren)
-    active_candidates.sort(key=lambda s: s.ratio, reverse=True)
+    # Auf max_per_run begrenzen (nach Relevanz sortieren: Spike-Stärke +
+    # Engagement + Volumen, damit virale Nennungen bei Gleichstand gewinnen)
+    active_candidates.sort(key=_candidate_rank, reverse=True)
     active_candidates = active_candidates[: cfg.max_per_run]
 
     tickers_to_enrich = [s.ticker for s in active_candidates]

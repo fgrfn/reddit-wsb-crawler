@@ -15,6 +15,7 @@ import asyncpraw
 import asyncprawcore
 from loguru import logger
 
+from wsb_crawler.analysis.signals import compute_signals
 from wsb_crawler.config import RedditSettings, get_settings
 from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
@@ -224,6 +225,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
             )
 
     mention_counts = aggregate_mentions(all_mentions)
+    mention_signals = compute_signals(all_mentions)
     top_tickers = list(mention_counts.items())[:10]
 
     update_run(
@@ -247,5 +249,6 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
         posts_scanned=len(all_posts),
         comments_scanned=len(all_comments),
         mention_counts=mention_counts,
+        mention_signals=mention_signals,
         mentions=all_mentions,
     )

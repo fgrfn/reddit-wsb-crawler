@@ -96,6 +96,16 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
         mention_text += f"\n+{spike.delta} mehr als normal"
     fields.append({"name": "📊 Erwähnungen", "value": mention_text, "inline": True})
 
+    # Stimmung + Engagement (aus Post-Scores und Kontext-Sentiment)
+    if spike.signal:
+        sig = spike.signal
+        mood = {"bullish": "🐂 Bullish", "bearish": "🐻 Bearish", "neutral": "➖ Neutral"}[
+            sig.sentiment_label
+        ]
+        signal_text = f"{mood} ({sig.sentiment:+.2f})"
+        signal_text += f"\n∅ Score {sig.avg_score:.0f} · Peak {sig.max_score}"
+        fields.append({"name": "🧭 Stimmung", "value": signal_text, "inline": True})
+
     # Kurs-Block
     if price:
         market_label = MARKET_LABEL.get(price.market_status, "—")
