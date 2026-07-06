@@ -46,7 +46,9 @@ async def get_about() -> dict[str, str | None]:
 
 
 @router.get("/tickers")
-async def get_top_tickers(days: int = Query(default=7, ge=1, le=90)) -> list[dict[str, Any]]:
+async def get_top_tickers(
+    days: int = Query(default=7, ge=1, le=90),
+) -> list[dict[str, Any]]:
     """Top-Ticker der letzten N Tage."""
     entries = await db.get_top_tickers(days=days, limit=20)
     return [
@@ -84,7 +86,8 @@ async def get_ticker_detail(
         "trend": history.trend_direction.value,
         "alerts": alerts,
         "history": [
-            {"date": ts.isoformat(), "mentions": count} for ts, count in history.mention_counts
+            {"date": ts.isoformat(), "mentions": count}
+            for ts, count in history.mention_counts
         ],
     }
 
@@ -99,7 +102,8 @@ async def get_ticker_history(
     return {
         "ticker": history.ticker,
         "data": [
-            {"date": ts.isoformat(), "mentions": count} for ts, count in history.mention_counts
+            {"date": ts.isoformat(), "mentions": count}
+            for ts, count in history.mention_counts
         ],
         "avg": round(history.avg_mentions, 1),
         "trend": history.trend_direction.value,
@@ -117,7 +121,9 @@ async def get_alerts(
 
 
 @router.get("/runs")
-async def get_runs(limit: int = Query(default=20, ge=1, le=100)) -> list[dict[str, Any]]:
+async def get_runs(
+    limit: int = Query(default=20, ge=1, le=100),
+) -> list[dict[str, Any]]:
     """Letzte Crawl-Runs mit Statistiken."""
     rows = await db.get_recent_runs(limit=limit)
     return rows
