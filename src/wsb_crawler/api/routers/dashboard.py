@@ -5,11 +5,13 @@ Dashboard-Router: Daten für Charts, Ticker-Übersicht und Alert-History.
 from __future__ import annotations
 
 import asyncio
+import os
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
+from wsb_crawler.__version__ import __version__
 from wsb_crawler.config import is_configured
 from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.storage.database import Database
@@ -31,6 +33,16 @@ def _log_crawl_outcome(task: asyncio.Task[None]) -> None:
     exc = task.exception()
     if exc is not None:
         logger.error(f"Manuell gestarteter Crawl fehlgeschlagen: {exc}")
+
+
+@router.get("/about")
+async def get_about() -> dict[str, str | None]:
+    """Build-/Versionsinfo für Dashboard und Smoke-Tests."""
+    return {
+        "version": __version__,
+        "build_commit": os.getenv("WSB_BUILD_COMMIT") or os.getenv("GIT_COMMIT"),
+        "build_date": os.getenv("WSB_BUILD_DATE"),
+    }
 
 
 @router.get("/tickers")
@@ -106,7 +118,7 @@ async def get_alerts(
 
 @router.get("/runs")
 async def get_runs(limit: int = Query(default=20, ge=1, le=100)) -> list[dict[str, Any]]:
-    """Letzte Crawl-Runs mit berechneten Statistiken."""
+    """Letzte Crawl-Runs mit Statistiken."""
     rows = await db.get_recent_runs(limit=limit)
     return rows
 
