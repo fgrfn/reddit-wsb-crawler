@@ -81,7 +81,7 @@
   // ── State ──────────────────────────────────────────────────────────────
   const state = {
     screen:'dashboard', ticker:null, runId:null, days:14, tdDays:30, step:1, schedMode:'interval',
-    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, stoppingCrawl:false, logs:[],
+    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, stoppingCrawl:false, currentRun:null, logs:[],
     configValues:{}, configSecretSet:new Set(), configLoaded:false, configNextRunAt:null,
     cronPreviewTimer:null,
   };
@@ -203,6 +203,13 @@
         <div style="margin-left:auto;display:flex;gap:16px;flex-wrap:wrap;">${subHtml}</div>
       </div></div>`;
   }
+  function runProgressFallback(){
+    return `<div class="card" id="dashboardRunFallback">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;"><span style="width:9px;height:9px;border-radius:50%;background:var(--accent);animation:wsbPulse 1.4s ease-in-out infinite;"></span><span class="disp" style="font-size:15px;">Crawl läuft</span></div>
+      <div style="font-size:13px;color:var(--text-2);">Live-Status wird wieder verbunden …</div>
+      <div style="height:8px;border-radius:999px;background:var(--bg-inset);overflow:hidden;margin-top:14px;"><div style="height:100%;width:100%;border-radius:999px;background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 8px,var(--accent-2) 8px,var(--accent-2) 16px);background-size:40px 40px;animation:wsbFlow 1s linear infinite;"></div></div>
+    </div>`;
+  }
   function alertPreview(run){
     const items = (run && run.alert_preview) || [];
     if(!items.length) return '';
@@ -237,6 +244,9 @@
     if(state.screen!=='dashboard' || !status) return;
     const wasRunning = state.dashboardRunning;
     state.dashboardRunning = Boolean(status.crawl_running);
+    if(status.current_run) state.currentRun = status.current_run;
+    if(!status.crawl_running) state.currentRun = null;
+    const run = status.current_run || (status.crawl_running ? state.currentRun : null);
 
     const sub = document.getElementById('dashboardLiveState');
     if(sub) sub.textContent = dashboardLiveText(status, wsState);
@@ -257,7 +267,6 @@
 
     const tile = document.getElementById('dashboardCandidateTile');
     if(tile){
-      const run = status.current_run;
       const val = tile.querySelector('.tile-val');
       const subTxt = tile.querySelector('.tile-sub');
       if(val) val.innerHTML = run ? `${run.active_candidate_count||0}<span style="font-size:15px;opacity:.7;">/${run.candidate_count||0}</span>` : '0';
@@ -265,9 +274,9 @@
     }
 
     const progress = document.getElementById('dashboardProgress');
-    if(progress) progress.innerHTML = runProgress(status.current_run);
+    if(progress) progress.innerHTML = run ? runProgress(run) : (status.crawl_running ? runProgressFallback() : '');
     const preview = document.getElementById('dashboardAlertPreview');
-    if(preview) preview.innerHTML = alertPreview(status.current_run);
+    if(preview) preview.innerHTML = alertPreview(run);
 
     const aside = document.querySelector('aside');
     if(aside) aside.outerHTML = sidebar(status);
@@ -285,6 +294,7 @@
     const proto = location.protocol==='https:'?'wss':'ws';
     const ws = new WebSocket(`${proto}://${location.host}/api/ws/status`);
     state.dashboardWs = ws;
+    api('/status').then(s=>updateDashboardLive(s, 'verbinde')).catch(()=>{});
     ws.onmessage = e=>{
       try { updateDashboardLive(JSON.parse(e.data), 'verbunden'); }
       catch(err){ console.warn('Status-WebSocket payload ungültig', err); }
@@ -333,7 +343,9 @@
       api('/status'), api(`/tickers?days=${state.days}`), api('/alerts?limit=5'), api('/runs?limit=4'), api(`/mentions/daily?days=${state.days}`)
     ]);
     state.dashboardRunning = Boolean(status.crawl_running);
-    const run = status.current_run;
+    if(status.current_run) state.currentRun = status.current_run;
+    if(!status.crawl_running) state.currentRun = null;
+    const run = status.current_run || (status.crawl_running ? state.currentRun : null);
     const max = Math.max(1, ...tickers.map(t=>Number(t.total_mentions||0)));
     const cand = run ? `${run.active_candidate_count||0}<span style="font-size:15px;opacity:.7;">/${run.candidate_count||0}</span>` : '0';
     const chartVals = (daily.data||[]).map(d=>Number(d.mentions||0));
@@ -356,7 +368,7 @@
         </div>
       </div>
       <div class="tiles">${tiles.map(([l,v,s,acc,id])=>`<div class="tile ${acc?'tile-accent':''}" ${id?`id="${id}"`:''}><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>
-      <div id="dashboardProgress">${runProgress(run)}</div>
+      <div id="dashboardProgress">${run ? runProgress(run) : (status.crawl_running ? runProgressFallback() : '')}</div>
       <div id="dashboardAlertPreview">${alertPreview(run)}</div>
       <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;">
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
