@@ -82,6 +82,17 @@ class DiscordSettings:
 
 
 @dataclass
+class TelegramSettings:
+    bot_token: str | None = None
+    chat_id: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        """True, wenn Bot-Token und Chat-ID gesetzt sind."""
+        return bool(self.bot_token and self.chat_id)
+
+
+@dataclass
 class AlertSettings:
     min_abs: int = 20
     min_delta: int = 10
@@ -111,6 +122,7 @@ class Settings:
     discord: DiscordSettings
     alerts: AlertSettings
     crawler: CrawlerSettings
+    telegram: TelegramSettings = field(default_factory=TelegramSettings)
 
 
 async def get_settings(db: Database) -> Settings:
@@ -135,6 +147,8 @@ async def get_settings(db: Database) -> Settings:
         "discord_bot_token",
         "discord_command_channel_id",
         "discord_status_update",
+        "telegram_bot_token",
+        "telegram_chat_id",
         "newsapi_key",
         "newsapi_lang",
         "newsapi_window_hours",
@@ -192,6 +206,10 @@ async def get_settings(db: Database) -> Settings:
             if s.get("discord_command_channel_id")
             else None,
             status_update=s.get("discord_status_update", "true").lower() == "true",
+        ),
+        telegram=TelegramSettings(
+            bot_token=opt("telegram_bot_token"),
+            chat_id=opt("telegram_chat_id"),
         ),
         alerts=AlertSettings(
             min_abs=int(opt("alert_min_abs") or "20"),
