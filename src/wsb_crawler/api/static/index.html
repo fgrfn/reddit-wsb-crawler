@@ -241,8 +241,10 @@
 
     const liveBtn = document.getElementById('liveCrawlBtn');
     const dryBtn = document.getElementById('dryRunBtn');
+    const stopBtn = document.getElementById('stopCrawlBtn');
     if(liveBtn) liveBtn.disabled = Boolean(status.crawl_running);
     if(dryBtn) dryBtn.disabled = Boolean(status.crawl_running);
+    if(stopBtn) stopBtn.style.display = status.crawl_running ? '' : 'none';
 
     const tile = document.getElementById('dashboardCandidateTile');
     if(tile){
@@ -302,6 +304,15 @@
       toast('Fehler: '+e.message, true);
     }
   }
+  async function stopCrawl(){
+    try {
+      await api('/crawl/stop', {method:'POST'});
+      toast('Crawl wird gestoppt.');
+      render();
+    } catch(e){
+      toast('Fehler: '+e.message, true);
+    }
+  }
   async function renderDashboard(){
     const [status, tickers, alerts, runs, daily] = await Promise.all([
       api('/status'), api(`/tickers?days=${state.days}`), api('/alerts?limit=5'), api('/runs?limit=4'), api(`/mentions/daily?days=${state.days}`)
@@ -327,6 +338,7 @@
           <button class="btn" onclick="render()">Aktualisieren</button>
           <button class="btn btn-primary" id="liveCrawlBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(false)">Live-Lauf</button>
           <button class="btn" id="dryRunBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(true)">Dry-Run</button>
+          <button class="btn" id="stopCrawlBtn" style="${status.crawl_running?'':'display:none;'}color:var(--danger);" onclick="stopCrawl()">Stoppen</button>
         </div>
       </div>
       <div class="tiles">${tiles.map(([l,v,s,acc,id])=>`<div class="tile ${acc?'tile-accent':''}" ${id?`id="${id}"`:''}><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>

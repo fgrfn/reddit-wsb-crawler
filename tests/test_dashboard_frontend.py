@@ -30,3 +30,12 @@ def test_config_fields_render_help_texts() -> None:
     assert "Komma-separiert, z.B. wallstreetbets, wallstreetbetsGER." in html
     assert "Mindestanzahl, ab der ein neuer Ticker als Kandidat gilt." in html
     assert "${f.h?`<span class=\"hint\">${esc(f.h)}</span>`:''}" in html
+
+
+def test_dashboard_exposes_stop_crawl_action() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "async function stopCrawl()" in html
+    assert "api('/crawl/stop', {method:'POST'})" in html
+    assert 'id="stopCrawlBtn"' in html
+    assert "Stoppen" in html

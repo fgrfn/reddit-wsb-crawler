@@ -24,17 +24,44 @@ from wsb_crawler.storage.database import Database
 
 # Verhindert dass Scheduler und manueller API-Trigger gleichzeitig crawlen
 _crawl_lock = asyncio.Lock()
+_current_crawl_task: asyncio.Task[None] | None = None
+_stop_requested = False
 
 MENTION_RETENTION_DAYS = 90
 
 
+def is_crawl_running() -> bool:
+    return _current_crawl_task is not None and not _current_crawl_task.done()
+
+
+def stop_current_crawl() -> bool:
+    global _stop_requested
+    if not is_crawl_running() or _current_crawl_task is None:
+        return False
+    _stop_requested = True
+    _current_crawl_task.cancel()
+    return True
+
+
 async def run_single_crawl(db: Database, *, dry_run: bool = False) -> None:
+    global _current_crawl_task, _stop_requested
     if _crawl_lock.locked():
         logger.warning("Crawl übersprungen — es läuft bereits ein anderer Crawl")
         return
 
     async with _crawl_lock:
-        await _run_crawl(db, dry_run=dry_run)
+        _stop_requested = False
+        _current_crawl_task = asyncio.create_task(_run_crawl(db, dry_run=dry_run))
+        try:
+            await _current_crawl_task
+        except asyncio.CancelledError:
+            if _stop_requested:
+                logger.info("Crawl wurde manuell gestoppt")
+                return
+            raise
+        finally:
+            _current_crawl_task = None
+            _stop_requested = False
 
 
 async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
@@ -158,6 +185,11 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
             f"{duration:.1f}s ═══"
         )
 
+    except asyncio.CancelledError:
+        logger.warning("Crawl-Lauf wurde gestoppt")
+        finish_run(success=False, message="Crawl gestoppt.", alerts_sent=0)
+        await db.finish_run(run_id, 0, 0, is_healthy=True)
+        raise
     except Exception as e:
         logger.exception(f"Fehler im Crawl-Lauf: {e}")
         finish_run(success=False, message=f"Crawl fehlgeschlagen: {e}")
