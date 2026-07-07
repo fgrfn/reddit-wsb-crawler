@@ -112,7 +112,7 @@ def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
             if alert.spike.price_data
             else None,
             "news_count": len(alert.spike.news),
-            "confidence": _confidence_score(alert.spike),
+            "confidence": alert.spike.confidence or _confidence_score(alert.spike),
             "sentiment": round(alert.spike.signal.sentiment, 2) if alert.spike.signal else 0.0,
             "sentiment_label": (
                 alert.spike.signal.sentiment_label if alert.spike.signal else "neutral"
@@ -302,6 +302,7 @@ async def analyze_mentions(
         ):
             spike.reason = AlertReason.PRICE_MOVE
 
+        spike.confidence = _confidence_score(spike)
         alert = Alert(ticker=t, reason=spike.reason, spike=spike)  # type: ignore[arg-type]
         alerts.append(alert)
 
