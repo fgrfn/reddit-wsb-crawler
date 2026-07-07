@@ -95,6 +95,8 @@ class AlertSettings:
 class CrawlerSettings:
     subreddits: list[str] = field(default_factory=lambda: ["wallstreetbets", "wallstreetbetsGER"])
     crawl_interval_minutes: int = 30
+    schedule_mode: str = "interval"  # "interval" oder "cron"
+    cron_expression: str = ""  # 5-Feld-Cron, nur bei schedule_mode == "cron"
     posts_limit: int = 500
     comments_limit: int = 100
     alphavantage_api_key: str | None = None
@@ -144,6 +146,8 @@ async def get_settings(db: Database) -> Settings:
         "alert_cooldown_h",
         "subreddits",
         "crawl_interval_minutes",
+        "schedule_mode",
+        "cron_expression",
         "posts_limit",
         "comments_limit",
         "alphavantage_api_key",
@@ -200,6 +204,8 @@ async def get_settings(db: Database) -> Settings:
         crawler=CrawlerSettings(
             subreddits=subreddits,
             crawl_interval_minutes=int(opt("crawl_interval_minutes") or "30"),
+            schedule_mode=(opt("schedule_mode") or "interval").lower(),
+            cron_expression=opt("cron_expression") or "",
             posts_limit=int(opt("posts_limit") or "500"),
             comments_limit=int(opt("comments_limit") or "100"),
             alphavantage_api_key=opt("alphavantage_api_key"),
