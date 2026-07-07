@@ -1,0 +1,135 @@
+name: Manual Docker Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker tag to build, for example manual-test or 3.0.1-hotfix"
+        required: true
+        default: "manual-test"
+      push_image:
+        description: "Push image to GitHub Container Registry (GHCR)"
+        required: true
+        type: boolean
+        default: true
+      platforms:
+        description: "Target platform(s)"
+        required: true
+        type: choice
+        default: "linux/amd64,linux/arm64"
+        options:
+          - "linux/amd64"
+          - "linux/arm64"
+          - "linux/amd64,linux/arm64"
+      run_smoke_test:
+        description: "Run the built container and check /api/status before publishing"
+        required: true
+        type: boolean
+        default: true
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  manual-docker-build:
+    name: Build Docker image manually
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag
+        run: |
+          TAG="${{ inputs.image_tag }}"
+          if ! [[ "$TAG" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]]; then
+            echo "::error::Invalid Docker tag: $TAG"
+            echo "Use letters, numbers, dots, underscores or dashes. Max length: 128."
+            exit 1
+          fi
+
+      - name: Normalize image name
+        id: image
+        run: |
+          IMAGE="${REGISTRY}/$(echo "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')"
+          echo "name=${IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "tagged=${IMAGE}:${{ inputs.image_tag }}" >> "$GITHUB_OUTPUT"
+          echo "sha=${IMAGE}:manual-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+      - name: Build metadata
+        id: build
+        run: |
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
+      - name: QEMU einrichten
+        if: contains(inputs.platforms, 'arm64')
+        uses: docker/setup-qemu-action@v3
+
+      - name: Docker Buildx einrichten
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker Runtime Smoke-Test
+        if: inputs.run_smoke_test
+        run: |
+          docker build \
+            --build-arg VERSION="${{ inputs.image_tag }}" \
+            --build-arg BUILD_COMMIT="${GITHUB_SHA}" \
+            --build-arg BUILD_DATE="${{ steps.build.outputs.date }}" \
+            -t wsb-crawler:manual-smoke .
+
+          docker run -d --name wsb-crawler-test -e WSB_PORT=8080 -p 8080:8080 wsb-crawler:manual-smoke
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8080/api/status >/tmp/status.json; then
+              cat /tmp/status.json
+              docker logs wsb-crawler-test
+              docker rm -f wsb-crawler-test
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs wsb-crawler-test
+          docker rm -f wsb-crawler-test
+          exit 1
+
+      - name: Bei GHCR einloggen
+        if: inputs.push_image
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ inputs.push_image }}
+          platforms: ${{ inputs.platforms }}
+          tags: |
+            ${{ steps.image.outputs.tagged }}
+            ${{ steps.image.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          build-args: |
+            VERSION=${{ inputs.image_tag }}
+            BUILD_COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.build.outputs.date }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "## Manual Docker Build"
+            echo ""
+            echo "- Image: \`${{ steps.image.outputs.tagged }}\`"
+            echo "- SHA tag: \`${{ steps.image.outputs.sha }}\`"
+            echo "- Platforms: \`${{ inputs.platforms }}\`"
+            echo "- Pushed to GHCR: \`${{ inputs.push_image }}\`"
+            echo "- Smoke test: \`${{ inputs.run_smoke_test }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
