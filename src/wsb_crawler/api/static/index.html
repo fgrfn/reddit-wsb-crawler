@@ -81,7 +81,7 @@
   // ── State ──────────────────────────────────────────────────────────────
   const state = {
     screen:'dashboard', ticker:null, runId:null, days:14, tdDays:30, step:1, schedMode:'interval',
-    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, stoppingCrawl:false, currentRun:null, logs:[],
+    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, stoppingCrawl:false, currentRun:null, logs:[], logsAutoScroll:true,
     configValues:{}, configSecretSet:new Set(), configLoaded:false, configNextRunAt:null,
     cronPreviewTimer:null,
   };
@@ -154,12 +154,18 @@
   function sidebar(status){
     const healthy = status ? status.is_healthy : true;
     const next = status && status.next_run_at ? clock(status.next_run_at) : '—';
+    const run = (status && status.current_run) || (status && status.crawl_running ? state.currentRun : null);
+    const runLine = status && status.crawl_running ? `RUNNING · ${run ? (run.progress||0)+'% · '+esc(run.phase_label||run.phase||'läuft') : 'Status verbindet'}` : '';
     return `<aside>
       <div class="brand"><div class="brand-badge">W</div><div style="line-height:1.15;">
         <div class="disp" style="font-size:15px;letter-spacing:-.01em;">WSB-Crawler</div>
         <div class="mono" style="font-size:10.5px;color:var(--text-4);">v${esc(state.about.version||'3.0.0')}</div></div></div>
       ${NAV.map(([id,label])=>`<div class="nav-link ${state.screen===id?'active':''}" onclick="navigate('${id}')"><span class="nav-dot"></span>${label}</div>`).join('')}
       <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;">
+        ${status&&status.crawl_running?`<div onclick="navigate('dashboard')" style="padding:12px;border-radius:12px;background:var(--accent-soft);border:1px solid var(--accent);cursor:pointer;">
+          <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--accent);"><span style="width:7px;height:7px;border-radius:50%;background:var(--accent);animation:wsbPulse 1.4s infinite;"></span>${runLine}</div>
+          <div style="font-size:11.5px;color:var(--text-3);margin-top:4px;">${run?esc(run.message||'Crawler arbeitet …'):'Live-Status wird geladen …'}</div>
+        </div>`:''}
         <div style="padding:12px;border-radius:12px;background:var(--bg-app);border:1px solid var(--border);">
           <div style="display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:var(--${healthy?'success':'danger'});"><span style="width:7px;height:7px;border-radius:50%;background:var(--${healthy?'success':'danger'});box-shadow:0 0 0 3px var(--accent-soft);"></span>${healthy?'System gesund':'Letzter Lauf fehlerhaft'}</div>
           <div style="font-size:11.5px;color:var(--text-4);margin-top:4px;">Nächster Lauf ${next}</div>
@@ -210,6 +216,23 @@
       <div style="height:8px;border-radius:999px;background:var(--bg-inset);overflow:hidden;margin-top:14px;"><div style="height:100%;width:100%;border-radius:999px;background:repeating-linear-gradient(45deg,var(--accent),var(--accent) 8px,var(--accent-2) 8px,var(--accent-2) 16px);background-size:40px 40px;animation:wsbFlow 1s linear infinite;"></div></div>
     </div>`;
   }
+  function activeRunSticky(run, status){
+    if(!status || !status.crawl_running) return '';
+    const pct = run ? (run.progress||0) : 0;
+    const label = run ? esc(run.phase_label||run.phase||'läuft') : 'Status verbindet';
+    const msg = run ? esc(run.message||'Crawler arbeitet …') : 'Live-Status wird geladen …';
+    return `<div id="activeRunSticky" class="card" style="position:sticky;top:0;z-index:5;margin-bottom:14px;padding:12px 14px;border-color:var(--accent);box-shadow:0 10px 24px rgba(80,68,229,.12);">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <span style="width:9px;height:9px;border-radius:50%;background:var(--accent);animation:wsbPulse 1.4s infinite;"></span>
+        <span class="disp" style="font-size:14px;">RUNNING</span>
+        <span class="mono" style="font-size:12px;color:var(--text-3);">${pct}% · ${label}</span>
+        <span style="font-size:12px;color:var(--text-2);min-width:180px;flex:1;">${msg}</span>
+        <span class="mono" style="font-size:12px;color:var(--text-3);">${run?fmtNum(run.posts_scanned)+' Posts · '+fmtNum(run.comments_scanned)+' Komm.':''}</span>
+        <button class="btn" style="color:var(--danger);" onclick="stopCrawl()">${state.stoppingCrawl?'STOPPING...':'Stoppen'}</button>
+      </div>
+      <div style="height:4px;border-radius:999px;background:var(--bg-inset);overflow:hidden;margin-top:10px;"><div style="height:100%;width:${pct||2}%;background:var(--accent);border-radius:999px;"></div></div>
+    </div>`;
+  }
   function alertPreview(run){
     const items = (run && run.alert_preview) || [];
     if(!items.length) return '';
@@ -241,12 +264,16 @@
     return `Aktualisiert ${updated} · ${mode}${status && status.crawl_running ? ' · Crawl läuft' : ''}`;
   }
   function updateDashboardLive(status, wsState='verbunden'){
-    if(state.screen!=='dashboard' || !status) return;
+    if(!status) return;
     const wasRunning = state.dashboardRunning;
     state.dashboardRunning = Boolean(status.crawl_running);
     if(status.current_run) state.currentRun = status.current_run;
     if(!status.crawl_running) state.currentRun = null;
     const run = status.current_run || (status.crawl_running ? state.currentRun : null);
+
+    const aside = document.querySelector('aside');
+    if(aside) aside.outerHTML = sidebar(status);
+    if(state.screen!=='dashboard') return;
 
     const sub = document.getElementById('dashboardLiveState');
     if(sub) sub.textContent = dashboardLiveText(status, wsState);
@@ -278,9 +305,6 @@
     const preview = document.getElementById('dashboardAlertPreview');
     if(preview) preview.innerHTML = alertPreview(run);
 
-    const aside = document.querySelector('aside');
-    if(aside) aside.outerHTML = sidebar(status);
-
     if(wasRunning && !status.crawl_running){
       state.stoppingCrawl = false;
       setTimeout(()=>{ if(state.screen==='dashboard') render(); }, 300);
@@ -303,7 +327,7 @@
       if(state.dashboardWs===ws) state.dashboardWs=null;
       const sub = document.getElementById('dashboardLiveState');
       if(sub) sub.textContent = `Aktualisiert — · WebSocket getrennt${state.dashboardRunning ? ' · Crawl läuft' : ''}`;
-      if(state.screen==='dashboard') state.dashboardReconnectTimer=setTimeout(connectDashboardWs, 2000);
+      if(state.screen!=='setup') state.dashboardReconnectTimer=setTimeout(connectDashboardWs, 2000);
     };
   }
   function disconnectDashboardWs(){
@@ -367,6 +391,7 @@
           <button class="btn" id="stopCrawlBtn" ${state.stoppingCrawl?'disabled':''} style="${status.crawl_running?'':'display:none;'}color:var(--danger);" onclick="stopCrawl()">${state.stoppingCrawl?'STOPPING...':'Stoppen'}</button>
         </div>
       </div>
+      ${activeRunSticky(run,status)}
       <div class="tiles">${tiles.map(([l,v,s,acc,id])=>`<div class="tile ${acc?'tile-accent':''}" ${id?`id="${id}"`:''}><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>
       <div id="dashboardProgress">${run ? runProgress(run) : (status.crawl_running ? runProgressFallback() : '')}</div>
       <div id="dashboardAlertPreview">${alertPreview(run)}</div>
@@ -536,9 +561,13 @@
       state.configNextRunAt = status.next_run_at || null;
       state.configLoaded = true;
     }
-    const sec = s => `<div class="card" style="padding:20px;"><div class="disp" style="font-size:15px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:${s.dot.startsWith('#')?s.dot:'var('+s.dot+')'};"></span>${s.title}</span>${s.optional?'<span style="font-size:11px;font-weight:600;color:var(--text-3);background:var(--bg-inset);padding:4px 9px;border-radius:999px;">optional</span>':''}</div><div style="${s.grid?'display:grid;grid-template-columns:1fr 1fr;gap:10px;':'display:flex;flex-direction:column;gap:13px;'}">${s.fields.map(cfgInput).join('')}</div></div>`;
+    const sec = s => {
+      const extra = s.title==='Discord' ? `<div style="margin-top:14px;display:flex;align-items:center;gap:10px;"><button class="btn" onclick="testDiscordWebhook()">Test senden</button><span class="hint" id="discordTestState">Sendet eine Testnachricht an den gespeicherten Webhook.</span></div>` : '';
+      return `<div class="card" style="padding:20px;"><div class="disp" style="font-size:15px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;"><span style="display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:${s.dot.startsWith('#')?s.dot:'var('+s.dot+')'};"></span>${s.title}</span>${s.optional?'<span style="font-size:11px;font-weight:600;color:var(--text-3);background:var(--bg-inset);padding:4px 9px;border-radius:999px;">optional</span>':''}</div><div style="${s.grid?'display:grid;grid-template-columns:1fr 1fr;gap:10px;':'display:flex;flex-direction:column;gap:13px;'}">${s.fields.map(cfgInput).join('')}</div>${extra}</div>`;
+    };
     return `
       <div class="head-row"><div><div class="page-title">Konfiguration</div><div class="page-sub">Secrets sind maskiert · leeres Feld behält den Wert</div></div><button class="btn btn-primary" onclick="saveConfig()">Speichern</button></div>
+      <div id="configValidation" class="card" style="display:none;border-color:var(--danger);color:var(--danger);padding:13px 16px;"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${sec(CFG_SECTIONS[0])}${sec(CFG_SECTIONS[1])}${sec(CFG_SECTIONS[2])}${schedCard()}${sec(CFG_SECTIONS[3])}</div>`;
   }
   function setSched(m){ state.schedMode=m; syncConfigInputs(); render(); }
@@ -560,11 +589,51 @@
       box.textContent = 'Ungültiger Cron-Ausdruck: '+e.message;
     }
   }
+  function showConfigValidation(errors){
+    const box = document.getElementById('configValidation');
+    if(!box) return;
+    if(!errors.length){ box.style.display='none'; box.innerHTML=''; return; }
+    box.style.display='block';
+    box.innerHTML = `<b>Bitte vor dem Speichern prüfen:</b><ul style="margin:8px 0 0 18px;padding:0;">${errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`;
+  }
+  function validateConfigBeforeSave(payload){
+    const errors = [];
+    const value = key => String(payload[key] ?? state.configValues[key] ?? '').trim();
+    const hasSecret = key => Boolean(payload[key]) || state.configSecretSet.has(key);
+    if(!value('reddit_client_id')) errors.push('Reddit Client ID fehlt.');
+    if(!hasSecret('reddit_client_secret')) errors.push('Reddit Client Secret fehlt.');
+    if(!hasSecret('discord_webhook_url')) errors.push('Discord Webhook URL fehlt.');
+    if(payload.discord_webhook_url && !String(payload.discord_webhook_url).startsWith('https://discord.com/api/webhooks/')) errors.push('Discord Webhook URL muss mit https://discord.com/api/webhooks/ beginnen.');
+    if(!value('subreddits')) errors.push('Mindestens ein Subreddit ist erforderlich.');
+    [['crawl_interval_minutes',1,10080],['posts_limit',1,1000],['comments_limit',0,500],['alert_min_abs',1,999999],['alert_min_delta',0,999999],['alert_ratio',0.01,999],['alert_max_per_run',1,25],['alert_cooldown_h',0,8760]].forEach(([key,min,max])=>{
+      const raw = value(key);
+      if(raw){ const n=Number(raw); if(!Number.isFinite(n) || n < min || n > max) errors.push(`${key} muss zwischen ${min} und ${max} liegen.`); }
+    });
+    if(state.schedMode==='cron'){
+      const expr = value('cron_expression');
+      if(expr.split(/\s+/).filter(Boolean).length !== 5) errors.push('Cron-Ausdruck muss genau 5 Felder haben.');
+    }
+    showConfigValidation(errors);
+    return errors.length === 0;
+  }
+  async function testDiscordWebhook(){
+    const stateEl = document.getElementById('discordTestState');
+    if(stateEl) stateEl.textContent = 'Sende Testnachricht …';
+    try {
+      await api('/config/discord/test', {method:'POST'});
+      if(stateEl) stateEl.textContent = 'Testnachricht gesendet.';
+      toast('Discord-Testnachricht gesendet.');
+    } catch(e){
+      if(stateEl) stateEl.textContent = 'Fehler: '+e.message;
+      toast('Discord-Test fehlgeschlagen: '+e.message, true);
+    }
+  }
   async function saveConfig(){
     syncConfigInputs();
     const payload = {};
     document.querySelectorAll('[data-cfg]').forEach(el=>{ const k=el.getAttribute('data-cfg'); const v=el.value.trim(); if(v && v!=='••••••••') payload[k]=v; });
     payload.schedule_mode = state.schedMode;
+    if(!validateConfigBeforeSave(payload)) return;
     try { await api('/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}); toast('Konfiguration gespeichert.'); state.configLoaded=false; }
     catch(e){ toast('Fehler: '+e.message, true); }
   }
@@ -576,7 +645,7 @@
   }
   function renderLogs(){
     return `
-      <div class="head-row"><div><div class="page-title">Live-Logs</div><div class="page-sub" style="display:flex;align-items:center;gap:7px;"><span id="wsDot" style="width:7px;height:7px;border-radius:50%;background:var(--text-5);"></span><span id="wsState">Verbinde …</span> · Auto-Scroll</div></div><button class="btn" onclick="state.logs=[];render()">Leeren</button></div>
+      <div class="head-row"><div><div class="page-title">Live-Logs</div><div class="page-sub" style="display:flex;align-items:center;gap:7px;"><span id="wsDot" style="width:7px;height:7px;border-radius:50%;background:var(--text-5);"></span><span id="wsState">Verbinde …</span></div></div><div style="display:flex;align-items:center;gap:10px;"><label class="btn" style="display:flex;align-items:center;gap:7px;cursor:pointer;"><input type="checkbox" ${state.logsAutoScroll?'checked':''} onchange="state.logsAutoScroll=this.checked" /> Auto-Scroll</label><button class="btn" onclick="state.logs=[];render()">Leeren</button></div></div>
       <div class="card" id="logBox" style="background:var(--bg-console);font-family:var(--font-mono);font-size:12.5px;line-height:1.9;height:calc(100vh - 150px);overflow:auto;">${state.logs.length?state.logs.map(logLineHtml).join(''):'<div style="color:var(--text-5);">Warte auf Log-Einträge …</div>'}</div>`;
   }
   function connectWs(){
@@ -590,7 +659,7 @@
       if(e.data==='__LOGS_CLEAR__'){ state.logs=[]; return; }
       state.logs = [...state.logs.slice(-500), e.data];
       const box = document.getElementById('logBox');
-      if(box){ if(box.firstChild && box.firstChild.textContent && box.firstChild.textContent.startsWith('Warte')) box.innerHTML=''; box.insertAdjacentHTML('beforeend', logLineHtml(e.data)); box.scrollTop=box.scrollHeight; }
+      if(box){ if(box.firstChild && box.firstChild.textContent && box.firstChild.textContent.startsWith('Warte')) box.innerHTML=''; box.insertAdjacentHTML('beforeend', logLineHtml(e.data)); if(state.logsAutoScroll) box.scrollTop=box.scrollHeight; }
     };
   }
   function disconnectWs(){ if(state.logWs){ state.logWs.close(); state.logWs=null; } }
@@ -638,8 +707,7 @@
   async function render(){
     const app = document.getElementById('app');
     if(state.screen!=='logs') disconnectWs();
-    if(state.screen!=='dashboard') disconnectDashboardWs();
-    if(state.screen==='setup'){ app.innerHTML=renderSetup(); return; }
+    if(state.screen==='setup'){ disconnectDashboardWs(); app.innerHTML=renderSetup(); return; }
     let status=null;
     try { status = await api('/status'); } catch(e){}
     if(status && !status.configured && state.screen!=='config'){ state.screen='setup'; app.innerHTML=renderSetup(); return; }
@@ -655,7 +723,7 @@
     } catch(e){ body=`<div class="head-row"><div class="page-title">Fehler</div></div><div class="card" style="color:var(--danger);">${esc(e.message)}<div style="margin-top:12px;"><button class="btn" onclick="render()">Erneut laden</button></div></div>`; }
     app.innerHTML = sidebar(status) + `<main>${body}</main>`;
     if(state.screen==='logs') setTimeout(connectWs, 60);
-    if(state.screen==='dashboard') setTimeout(connectDashboardWs, 60);
+    setTimeout(connectDashboardWs, 60);
     if(state.screen==='config' && state.schedMode==='cron'){
       setTimeout(()=>previewCronExpression(document.getElementById('cronExpressionInput')?.value || ''), 60);
     }
