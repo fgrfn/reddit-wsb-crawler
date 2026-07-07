@@ -12,7 +12,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from wsb_crawler.config import is_configured
+from wsb_crawler.__version__ import __version__
+from wsb_crawler.alerts.discord import _send_webhook
+from wsb_crawler.config import get_settings, is_configured
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["config"])
@@ -138,3 +140,28 @@ async def config_status() -> dict[str, Any]:
     """Gibt zurück ob das System vollständig konfiguriert ist."""
     configured = await is_configured(db)
     return {"configured": configured}
+
+
+@router.post("/config/discord/test")
+async def test_discord_webhook() -> dict[str, Any]:
+    """Sendet eine Testnachricht an den gespeicherten Discord-Webhook."""
+    if not await is_configured(db):
+        raise HTTPException(status_code=400, detail="Konfiguration unvollständig")
+
+    cfg = await get_settings(db)
+    payload = {
+        "username": "WSB-Crawler",
+        "embeds": [
+            {
+                "title": "WSB-Crawler Test",
+                "description": "Discord-Benachrichtigung funktioniert.",
+                "color": 0x57F287,
+                "footer": {"text": f"WSB-Crawler v{__version__} • Testnachricht"},
+            }
+        ],
+    }
+    if not await _send_webhook(payload, cfg.discord.webhook_url):
+        raise HTTPException(
+            status_code=502, detail="Discord-Testnachricht konnte nicht gesendet werden"
+        )
+    return {"ok": True}

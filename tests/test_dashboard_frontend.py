@@ -84,6 +84,24 @@ def test_dashboard_keeps_running_snapshot_across_reconnects() -> None:
     assert "api('/status').then(s=>updateDashboardLive(s, 'verbinde'))" in html
 
 
+def test_sidebar_shows_live_run_status() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "RUNNING ·" in html
+    assert "Status verbindet" in html
+    assert "navigate('dashboard')" in html
+    assert "if(state.screen!=='dashboard') return;" in html
+
+
+def test_dashboard_has_active_run_sticky() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "function activeRunSticky(run, status)" in html
+    assert 'id="activeRunSticky"' in html
+    assert "position:sticky" in html
+    assert "${activeRunSticky(run,status)}" in html
+
+
 def test_alert_history_table_headers_have_hints() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
@@ -102,6 +120,26 @@ def test_config_shows_cron_next_run_preview() -> None:
     assert "/cron/preview?count=3" in html
     assert "Nächste 3 Läufe:" in html
     assert "Promise.all([api('/config'), api('/status')])" in html
+
+
+def test_config_validates_before_save_and_tests_discord() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert 'id="configValidation"' in html
+    assert "function validateConfigBeforeSave(payload)" in html
+    assert "if(!validateConfigBeforeSave(payload)) return;" in html
+    assert "function testDiscordWebhook()" in html
+    assert "api('/config/discord/test', {method:'POST'})" in html
+    assert "Test senden" in html
+
+
+def test_logs_have_autoscroll_toggle() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "logsAutoScroll:true" in html
+    assert "Auto-Scroll" in html
+    assert "state.logsAutoScroll=this.checked" in html
+    assert "if(state.logsAutoScroll) box.scrollTop=box.scrollHeight;" in html
 
 
 def test_alert_history_has_rich_filters() -> None:

@@ -8,6 +8,7 @@ die Modul-Level-DB wie server.py::set_database es tut.
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import ValidationError
@@ -58,6 +59,24 @@ class TestConfigMasking:
         await db.set_setting("reddit_client_secret", "y")
         await db.set_setting("discord_webhook_url", "https://discord.com/api/webhooks/1/z")
         assert (await config_router.config_status())["configured"] is True
+
+    async def test_discord_test_sends_saved_webhook(self, db: Database):
+        await db.set_setting("reddit_client_id", "x")
+        await db.set_setting("reddit_client_secret", "y")
+        await db.set_setting("discord_webhook_url", "https://discord.com/api/webhooks/1/z")
+
+        with patch(
+            "wsb_crawler.api.routers.config._send_webhook",
+            new=AsyncMock(return_value=True),
+        ) as send:
+            result = await config_router.test_discord_webhook()
+
+        assert result == {"ok": True}
+        send.assert_awaited_once()
+
+    async def test_discord_test_requires_configuration(self, db: Database):
+        with pytest.raises(config_router.HTTPException):
+            await config_router.test_discord_webhook()
 
 
 class TestConfigValidation:
