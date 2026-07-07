@@ -1,5 +1,5 @@
 """
-Status-Router: aktueller Crawler-Zustand und Live-Log via WebSocket.
+Status-Router: aktueller Crawler-Zustand und Live-Streams via WebSocket.
 """
 
 from __future__ import annotations
@@ -67,6 +67,11 @@ def setup_ws_log_sink() -> None:
 @router.get("/status")
 async def get_status() -> dict[str, Any]:
     """Aktueller Crawler-Status."""
+    return await _status_payload()
+
+
+async def _status_payload() -> dict[str, Any]:
+    """Build the status payload shared by HTTP and WebSocket clients."""
     run_status = await db.get_run_status()
     configured = await is_configured(db)
     return {
@@ -102,3 +107,25 @@ async def websocket_logs(websocket: WebSocket) -> None:
     finally:
         if websocket in _ws_clients:
             _ws_clients.remove(websocket)
+
+
+@router.websocket("/ws/status")
+async def websocket_status(websocket: WebSocket) -> None:
+    """WebSocket-Endpoint fuer den Live-Dashboard-Status."""
+    await websocket.accept()
+    last_payload: dict[str, Any] | None = None
+    last_sent_at = 0.0
+    try:
+        while True:
+            payload = await _status_payload()
+            now = asyncio.get_running_loop().time()
+            if payload != last_payload or now - last_sent_at >= 30:
+                await websocket.send_json(payload)
+                last_payload = payload
+                last_sent_at = now
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        # Browser disconnects can surface as send errors depending on timing.
+        logger.debug("Dashboard-Status-WebSocket getrennt")
