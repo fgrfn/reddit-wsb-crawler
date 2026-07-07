@@ -12,10 +12,11 @@ def test_fastapi_app_imports() -> None:
 
 
 def test_about_endpoint_exposes_version() -> None:
+    from wsb_crawler.__version__ import __version__
     from wsb_crawler.api.server import app
 
     client = TestClient(app)
     response = client.get("/api/about")
 
     assert response.status_code == 200
-    assert response.json()["version"] == "2.1.0"
+    assert response.json()["version"] == __version__

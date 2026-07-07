@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, RedirectResponse, Response
 from loguru import logger
 from starlette.middleware.base import RequestResponseEndpoint
 
+from wsb_crawler.__version__ import __version__
 from wsb_crawler.api.auth import REALM, get_auth_token, request_is_authorized
 from wsb_crawler.api.routers import config, dashboard, status
 from wsb_crawler.config import is_configured
@@ -24,7 +25,7 @@ from wsb_crawler.storage.database import Database
 
 STATIC_DIR = Path(__file__).parent / "static"
 
-app = FastAPI(title="WSB-Crawler Dashboard", version="2.1.0", docs_url="/api/docs")
+app = FastAPI(title="WSB-Crawler Dashboard", version=__version__, docs_url="/api/docs")
 
 
 @app.middleware("http")

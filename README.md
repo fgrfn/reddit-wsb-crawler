@@ -1,18 +1,24 @@
 # WSB-Crawler v2
 
 [![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
-[![Version](https://img.shields.io/badge/version-2.1.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
+[![Version](https://img.shields.io/badge/version-3.0.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-Automatisches Frühwarnsystem für Reddit-Aktien-Hypes — async, mit Web-Dashboard, SQLite-History und Discord-Alerts.
+Automatisches Frühwarnsystem für Reddit-Aktien-Hypes — async, mit neu gestaltetem Web-Dashboard, SQLite-History sowie Discord- und Telegram-Alerts.
 
-Der Crawler überwacht konfigurierbare Subreddits, z. B. `wallstreetbets` und `wallstreetbetsGER`, auf ungewöhnliche Häufungen von Ticker-Nennungen. Bei Schwellwert-Überschreitung sendet er Discord-Alerts. Konfiguration, Live-Fortschritt, Logs, Historie und Ticker-Auswertungen laufen über ein Browser-Dashboard.
+Der Crawler überwacht konfigurierbare Subreddits, z. B. `wallstreetbets` und `wallstreetbetsGER`, auf ungewöhnliche Häufungen von Ticker-Nennungen. Bei Schwellwert-Überschreitung sendet er Alerts an Discord und/oder Telegram. Konfiguration, Live-Fortschritt, Logs, Historie und Ticker-Auswertungen laufen über ein Browser-Dashboard.
 
 ---
 
-## Highlights in v2.1.0
+## Highlights in v3.0.0
 
+- Komplett neu gestaltetes Dashboard (Light-Theme, sechs Screens) — weiterhin Single-File ohne Build-Step.
+- **Telegram** als optionaler Alert-Kanal parallel zu Discord.
+- **Cron-Zeitsteuerung**: feste Uhrzeiten (5-Feld-Cron) alternativ zum festen Intervall.
+- Signalqualität: Alerts werden nach Engagement (Upvote-Scores) und Bull/Bear-Sentiment gewichtet; Confidence + Sentiment werden in der Historie persistiert.
+- Optionaler Zugriffsschutz (`WSB_AUTH_TOKEN`) und sichere Docker-Defaults (Bind auf `127.0.0.1`).
+- Ticker-Endpunkte angereichert mit Firmenname, aktuellem Kurs und echtem Trend.
 - Live-Run-Status im Dashboard: aktuelle Phase, Fortschritt, Laufzeit, Posts, Kommentare, Ticker, Kandidaten, Alerts und Subreddit-Fortschritt.
 - Detailliertere Logs während langer Crawls: Reddit-Lesen, Ticker-Erkennung, Spike-Analyse, Kurs-/News-Enrichment und Alert-Versand.
 - Weniger False Positives bei Ticker-Erkennung: reine Großbuchstaben-Wörter und häufige Reddit-/Makro-Abkürzungen werden strenger gefiltert.
