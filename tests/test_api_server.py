@@ -20,3 +20,9 @@ def test_about_endpoint_exposes_version() -> None:
 
     assert response.status_code == 200
     assert response.json()["version"] == __version__
+
+
+def test_status_websocket_route_is_registered() -> None:
+    from wsb_crawler.api.server import app
+
+    assert any(getattr(route, "path", None) == "/api/ws/status" for route in app.routes)

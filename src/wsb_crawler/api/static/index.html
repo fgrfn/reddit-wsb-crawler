@@ -81,7 +81,7 @@
   // ── State ──────────────────────────────────────────────────────────────
   const state = {
     screen:'dashboard', ticker:null, days:14, tdDays:30, step:1, schedMode:'interval',
-    configured:null, about:{}, ws:null, logs:[], refreshTimer:null,
+    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, logs:[],
     configValues:{}, configSecretSet:new Set(), configLoaded:false,
   };
   const REASONS = {
@@ -225,36 +225,113 @@
       <div style="flex:1;height:22px;border-radius:7px;background:var(--bg-inset);overflow:hidden;"><div style="height:100%;width:${w}%;background:${barVar(t.trend)};border-radius:7px;"></div></div>
       <span class="mono" style="font-size:13px;font-weight:600;width:38px;text-align:right;">${fmtNum(t.total_mentions)}</span></div>`;
   }
+  function dashboardLiveText(status, wsState='verbunden'){
+    const run = status && status.current_run;
+    const updated = relTime(run && run.updated_at);
+    const mode = wsState === 'verbunden' ? 'WebSocket live' : wsState === 'verbinde' ? 'WebSocket verbindet' : 'WebSocket getrennt';
+    return `Aktualisiert ${updated} · ${mode}${status && status.crawl_running ? ' · Crawl läuft' : ''}`;
+  }
+  function updateDashboardLive(status, wsState='verbunden'){
+    if(state.screen!=='dashboard' || !status) return;
+    const wasRunning = state.dashboardRunning;
+    state.dashboardRunning = Boolean(status.crawl_running);
+
+    const sub = document.getElementById('dashboardLiveState');
+    if(sub) sub.textContent = dashboardLiveText(status, wsState);
+
+    const liveBtn = document.getElementById('liveCrawlBtn');
+    const dryBtn = document.getElementById('dryRunBtn');
+    if(liveBtn) liveBtn.disabled = Boolean(status.crawl_running);
+    if(dryBtn) dryBtn.disabled = Boolean(status.crawl_running);
+
+    const tile = document.getElementById('dashboardCandidateTile');
+    if(tile){
+      const run = status.current_run;
+      const val = tile.querySelector('.tile-val');
+      const subTxt = tile.querySelector('.tile-sub');
+      if(val) val.innerHTML = run ? `${run.active_candidate_count||0}<span style="font-size:15px;opacity:.7;">/${run.candidate_count||0}</span>` : '0';
+      if(subTxt) subTxt.textContent = status.crawl_running ? 'im aktuellen Lauf' : 'kein aktiver Lauf';
+    }
+
+    const progress = document.getElementById('dashboardProgress');
+    if(progress) progress.innerHTML = runProgress(status.current_run);
+    const preview = document.getElementById('dashboardAlertPreview');
+    if(preview) preview.innerHTML = alertPreview(status.current_run);
+
+    const aside = document.querySelector('aside');
+    if(aside) aside.outerHTML = sidebar(status);
+
+    if(wasRunning && !status.crawl_running){
+      setTimeout(()=>{ if(state.screen==='dashboard') render(); }, 300);
+    }
+  }
+  function connectDashboardWs(){
+    if(state.dashboardWs && state.dashboardWs.readyState<=1) return;
+    clearTimeout(state.dashboardReconnectTimer);
+    const sub = document.getElementById('dashboardLiveState');
+    if(sub) sub.textContent = `Aktualisiert — · WebSocket verbindet${state.dashboardRunning ? ' · Crawl läuft' : ''}`;
+    const proto = location.protocol==='https:'?'wss':'ws';
+    const ws = new WebSocket(`${proto}://${location.host}/api/ws/status`);
+    state.dashboardWs = ws;
+    ws.onmessage = e=>{
+      try { updateDashboardLive(JSON.parse(e.data), 'verbunden'); }
+      catch(err){ console.warn('Status-WebSocket payload ungültig', err); }
+    };
+    ws.onclose = ()=>{
+      if(state.dashboardWs===ws) state.dashboardWs=null;
+      const sub = document.getElementById('dashboardLiveState');
+      if(sub) sub.textContent = `Aktualisiert — · WebSocket getrennt${state.dashboardRunning ? ' · Crawl läuft' : ''}`;
+      if(state.screen==='dashboard') state.dashboardReconnectTimer=setTimeout(connectDashboardWs, 2000);
+    };
+  }
+  function disconnectDashboardWs(){
+    clearTimeout(state.dashboardReconnectTimer);
+    if(state.dashboardWs){
+      const ws = state.dashboardWs;
+      state.dashboardWs = null;
+      ws.onclose = null;
+      ws.close();
+    }
+  }
+  async function startCrawl(dryRun){
+    try {
+      await api(`/crawl?dry_run=${dryRun?'true':'false'}`, {method:'POST'});
+      toast(dryRun ? 'Dry-Run gestartet.' : 'Live-Lauf gestartet.');
+      render();
+    } catch(e){
+      toast('Fehler: '+e.message, true);
+    }
+  }
   async function renderDashboard(){
     const [status, tickers, alerts, runs, daily] = await Promise.all([
       api('/status'), api(`/tickers?days=${state.days}`), api('/alerts?limit=5'), api('/runs?limit=4'), api(`/mentions/daily?days=${state.days}`)
     ]);
-    scheduleRefresh(status.crawl_running);
+    state.dashboardRunning = Boolean(status.crawl_running);
     const run = status.current_run;
     const max = Math.max(1, ...tickers.map(t=>Number(t.total_mentions||0)));
     const cand = run ? `${run.active_candidate_count||0}<span style="font-size:15px;opacity:.7;">/${run.candidate_count||0}</span>` : '0';
     const chartVals = (daily.data||[]).map(d=>Number(d.mentions||0));
     const total14 = chartVals.reduce((a,b)=>a+b,0);
     const tiles = [
-      ['Crawl-Runs', fmtNum(status.total_runs), 'seit Start', false],
-      ['Alerts gesamt', fmtNum(status.total_alerts), `${alerts.length} zuletzt`, false],
-      ['Ticker getrackt', fmtNum(status.tracked_tickers), 'aktive Historie', false],
-      ['Letzter Lauf', status.last_run_duration_s!=null?fmtDur(status.last_run_duration_s):'—', relTime(status.last_run_at), false],
-      ['Kandidaten aktiv', cand, 'im aktuellen Lauf', true],
+      ['Crawl-Runs', fmtNum(status.total_runs), 'seit Start', false, ''],
+      ['Alerts gesamt', fmtNum(status.total_alerts), `${alerts.length} zuletzt`, false, ''],
+      ['Ticker getrackt', fmtNum(status.tracked_tickers), 'aktive Historie', false, ''],
+      ['Letzter Lauf', status.last_run_duration_s!=null?fmtDur(status.last_run_duration_s):'—', relTime(status.last_run_at), false, ''],
+      ['Kandidaten aktiv', cand, 'im aktuellen Lauf', true, 'dashboardCandidateTile'],
     ];
     return `
       <div class="head-row">
-        <div><div class="page-title">Übersicht</div><div class="page-sub">Aktualisiert ${relTime(status.current_run&&status.current_run.updated_at)} · Auto-Refresh ${status.crawl_running?'aktiv':'aus'}</div></div>
+        <div><div class="page-title">Übersicht</div><div class="page-sub" id="dashboardLiveState">${dashboardLiveText(status, 'verbinde')}</div></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="seg">${[7,14,30].map(d=>`<span class="${state.days===d?'on':''}" onclick="setDays(${d})">${d}T</span>`).join('')}</div>
           <button class="btn" onclick="render()">Aktualisieren</button>
-          <button class="btn btn-primary" ${status.crawl_running?'disabled':''} onclick="startCrawl(false)">Live-Lauf</button>
-          <button class="btn" ${status.crawl_running?'disabled':''} onclick="startCrawl(true)">Dry-Run</button>
+          <button class="btn btn-primary" id="liveCrawlBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(false)">Live-Lauf</button>
+          <button class="btn" id="dryRunBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(true)">Dry-Run</button>
         </div>
       </div>
-      <div class="tiles">${tiles.map(([l,v,s,acc])=>`<div class="tile ${acc?'tile-accent':''}"><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>
-      ${runProgress(run)}
-      ${alertPreview(run)}
+      <div class="tiles">${tiles.map(([l,v,s,acc,id])=>`<div class="tile ${acc?'tile-accent':''}" ${id?`id="${id}"`:''}><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>
+      <div id="dashboardProgress">${runProgress(run)}</div>
+      <div id="dashboardAlertPreview">${alertPreview(run)}</div>
       <div style="display:grid;grid-template-columns:1.5fr 1fr;gap:14px;">
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
           <div class="card"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;"><span class="disp" style="font-size:15px;">Nennungen gesamt</span><span class="mono" style="font-size:13px;color:var(--text-3);">${fmtNum(total14)} · ${state.days} T</span></div>${chartSvg(chartVals, 600, 150)}</div>
@@ -396,10 +473,10 @@
       <div class="card" id="logBox" style="background:var(--bg-console);font-family:var(--font-mono);font-size:12.5px;line-height:1.9;height:calc(100vh - 150px);overflow:auto;">${state.logs.length?state.logs.map(logLineHtml).join(''):'<div style="color:var(--text-5);">Warte auf Log-Einträge …</div>'}</div>`;
   }
   function connectWs(){
-    if(state.ws && state.ws.readyState<=1) return;
+    if(state.logWs && state.logWs.readyState<=1) return;
     const proto = location.protocol==='https:'?'wss':'ws';
     const ws = new WebSocket(`${proto}://${location.host}/api/ws/logs`);
-    state.ws = ws;
+    state.logWs = ws;
     ws.onopen = ()=>{ const d=document.getElementById('wsDot'), s=document.getElementById('wsState'); if(d){d.style.background='var(--success)';d.style.boxShadow='0 0 0 3px var(--accent-soft)';} if(s)s.textContent='WebSocket verbunden'; };
     ws.onclose = ()=>{ const d=document.getElementById('wsDot'), s=document.getElementById('wsState'); if(d)d.style.background='var(--danger)'; if(s)s.textContent='getrennt'; };
     ws.onmessage = e=>{
@@ -409,7 +486,7 @@
       if(box){ if(box.firstChild && box.firstChild.textContent && box.firstChild.textContent.startsWith('Warte')) box.innerHTML=''; box.insertAdjacentHTML('beforeend', logLineHtml(e.data)); box.scrollTop=box.scrollHeight; }
     };
   }
-  function disconnectWs(){ if(state.ws){ state.ws.close(); state.ws=null; } }
+  function disconnectWs(){ if(state.logWs){ state.logWs.close(); state.logWs=null; } }
 
   // ── Setup-Wizard ───────────────────────────────────────────────────────
   function setupNode(n){
@@ -451,14 +528,10 @@
   }
 
   // ── Render-Dispatch ────────────────────────────────────────────────────
-  function scheduleRefresh(running){
-    clearTimeout(state.refreshTimer);
-    if(running && state.screen==='dashboard'){ state.refreshTimer=setTimeout(()=>{ if(state.screen==='dashboard') render(); }, 3000); }
-  }
   async function render(){
     const app = document.getElementById('app');
     if(state.screen!=='logs') disconnectWs();
-    if(state.screen!=='dashboard'){ clearTimeout(state.refreshTimer); }
+    if(state.screen!=='dashboard') disconnectDashboardWs();
     if(state.screen==='setup'){ app.innerHTML=renderSetup(); return; }
     let status=null;
     try { status = await api('/status'); } catch(e){}
@@ -474,6 +547,7 @@
     } catch(e){ body=`<div class="head-row"><div class="page-title">Fehler</div></div><div class="card" style="color:var(--danger);">${esc(e.message)}<div style="margin-top:12px;"><button class="btn" onclick="render()">Erneut laden</button></div></div>`; }
     app.innerHTML = sidebar(status) + `<main>${body}</main>`;
     if(state.screen==='logs') setTimeout(connectWs, 60);
+    if(state.screen==='dashboard') setTimeout(connectDashboardWs, 60);
   }
 
   async function init(){
