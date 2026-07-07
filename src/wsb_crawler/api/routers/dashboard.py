@@ -14,7 +14,13 @@ from loguru import logger
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.analysis.trends import get_top_tickers_cached
 from wsb_crawler.config import is_configured
-from wsb_crawler.crawler.runner import run_single_crawl
+from wsb_crawler.crawler.runner import (
+    is_crawl_running as runner_is_crawl_running,
+)
+from wsb_crawler.crawler.runner import (
+    run_single_crawl,
+    stop_current_crawl,
+)
 from wsb_crawler.enrichment.prices import get_price
 from wsb_crawler.enrichment.resolver import resolve_name
 from wsb_crawler.storage.database import Database
@@ -26,7 +32,7 @@ _crawl_task: asyncio.Task[None] | None = None
 
 
 def is_crawl_running() -> bool:
-    return _crawl_task is not None and not _crawl_task.done()
+    return runner_is_crawl_running() or (_crawl_task is not None and not _crawl_task.done())
 
 
 def _log_crawl_outcome(task: asyncio.Task[None]) -> None:
@@ -169,3 +175,11 @@ async def trigger_crawl(dry_run: bool = Query(default=False)) -> dict[str, Any]:
     _crawl_task = asyncio.create_task(run_single_crawl(db, dry_run=dry_run))
     _crawl_task.add_done_callback(_log_crawl_outcome)
     return {"ok": True, "dry_run": dry_run}
+
+
+@router.post("/crawl/stop")
+async def stop_crawl() -> dict[str, Any]:
+    """Stoppt einen laufenden Crawl-Lauf, egal ob manuell oder vom Scheduler gestartet."""
+    if not stop_current_crawl():
+        raise HTTPException(status_code=409, detail="Kein laufender Crawl")
+    return {"ok": True, "stopping": True}

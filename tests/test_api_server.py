@@ -26,3 +26,9 @@ def test_status_websocket_route_is_registered() -> None:
     from wsb_crawler.api.server import app
 
     assert any(getattr(route, "path", None) == "/api/ws/status" for route in app.routes)
+
+
+def test_stop_crawl_route_is_registered() -> None:
+    from wsb_crawler.api.server import app
+
+    assert any(getattr(route, "path", None) == "/api/crawl/stop" for route in app.routes)

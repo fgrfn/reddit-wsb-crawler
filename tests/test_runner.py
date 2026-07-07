@@ -7,6 +7,7 @@ Reihenfolge Speichern → Analysieren → Alert → Cooldown → Cleanup.
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -108,3 +109,29 @@ class TestRunSingleCrawl:
 
         # Nach Abschluss ist das Lock wieder frei
         assert not runner._crawl_lock.locked()
+
+    async def test_stop_current_crawl_cancels_active_run(self, db: Database):
+        """Ein laufender Crawl kann abgebrochen werden und bleibt nicht aktiv haengen."""
+        from wsb_crawler.crawler import runner
+
+        started = asyncio.Event()
+
+        async def _slow_crawl(run_id: str):
+            started.set()
+            await asyncio.sleep(30)
+            return _crawl_result({})
+
+        with patch.object(runner, "crawl_all_subreddits", new=AsyncMock(side_effect=_slow_crawl)):
+            task = asyncio.create_task(runner.run_single_crawl(db))
+            await asyncio.wait_for(started.wait(), timeout=1)
+
+            assert runner.is_crawl_running() is True
+            assert runner.stop_current_crawl() is True
+            await asyncio.wait_for(task, timeout=1)
+
+        assert runner.is_crawl_running() is False
+        assert runner.stop_current_crawl() is False
+
+        runs = await db.get_recent_runs()
+        assert runs[0]["finished_at"] is not None
+        assert runs[0]["is_healthy"] == 1
