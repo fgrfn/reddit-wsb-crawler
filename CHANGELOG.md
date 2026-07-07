@@ -2,13 +2,6 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
-## [Unreleased]
-
-### Fixed
-
-- Dashboard-Startseite bleibt nicht mehr leer, wenn einzelne Dashboard-API-Teilbereiche
-  langsam sind oder fehlschlagen; Panels laden jetzt mit Timeout und Fallback-Daten.
-
 ## [3.0.0] - 2026-07-07
 
 ### Added

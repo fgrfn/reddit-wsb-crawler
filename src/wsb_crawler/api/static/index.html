@@ -90,7 +90,6 @@
     price_move: {label:'Kurs+Akt.', v:'--reason-move'},
   };
   const NAV = [['dashboard','Dashboard'],['alerts','Alerts'],['config','Konfiguration'],['logs','Logs']];
-  const API_TIMEOUT_MS = 8000;
 
   // ── Helpers ────────────────────────────────────────────────────────────
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -113,25 +112,10 @@
   function toast(msg, err=false){ const t=document.getElementById('toast'); t.innerHTML=`<div class="toast ${err?'err':''}">${esc(msg)}</div>`; setTimeout(()=>{t.innerHTML='';}, 3200); }
 
   async function api(path, opts={}){
-    const {timeoutMs=API_TIMEOUT_MS, ...fetchOpts} = opts;
-    const controller = new AbortController();
-    const timer = setTimeout(()=>controller.abort(), timeoutMs);
-    if(!fetchOpts.signal) fetchOpts.signal = controller.signal;
-    try {
-      const res = await fetch('/api'+path, fetchOpts);
-      if(!res.ok){ let m=res.statusText; try{ const j=await res.json(); m=j.detail||m; }catch(e){} throw new Error(m); }
-      const ct = res.headers.get('content-type')||'';
-      return ct.includes('application/json') ? res.json() : res.text();
-    } catch(e) {
-      if(e && e.name === 'AbortError') throw new Error(`Timeout beim Laden von ${path}`);
-      throw e;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-  async function apiFallback(path, fallback, opts={}){
-    try { return await api(path, opts); }
-    catch(e){ console.warn(`Dashboard-Teil konnte nicht geladen werden: ${path}`, e); return typeof fallback === 'function' ? fallback(e) : fallback; }
+    const res = await fetch('/api'+path, opts);
+    if(!res.ok){ let m=res.statusText; try{ const j=await res.json(); m=j.detail||m; }catch(e){} throw new Error(m); }
+    const ct = res.headers.get('content-type')||'';
+    return ct.includes('application/json') ? res.json() : res.text();
   }
 
   // SVG-Flächenchart aus einer Werteliste
@@ -243,11 +227,7 @@
   }
   async function renderDashboard(){
     const [status, tickers, alerts, runs, daily] = await Promise.all([
-      apiFallback('/status', {configured:true,total_runs:0,total_alerts:0,tracked_tickers:0,last_run_at:null,last_run_duration_s:null,next_run_at:null,is_healthy:true,crawl_running:false,current_run:null}),
-      apiFallback(`/tickers?days=${state.days}`, []),
-      apiFallback('/alerts?limit=5', []),
-      apiFallback('/runs?limit=4', []),
-      apiFallback(`/mentions/daily?days=${state.days}`, {days:state.days,data:[]})
+      api('/status'), api(`/tickers?days=${state.days}`), api('/alerts?limit=5'), api('/runs?limit=4'), api(`/mentions/daily?days=${state.days}`)
     ]);
     scheduleRefresh(status.crawl_running);
     const run = status.current_run;
@@ -480,15 +460,9 @@
     if(state.screen!=='logs') disconnectWs();
     if(state.screen!=='dashboard'){ clearTimeout(state.refreshTimer); }
     if(state.screen==='setup'){ app.innerHTML=renderSetup(); return; }
-    if(state.screen==='dashboard'){
-      app.innerHTML = sidebar(null) + `<main><div class="card" style="color:var(--text-3);">Dashboard wird geladen …</div></main>`;
-    }
     let status=null;
     try { status = await api('/status'); } catch(e){}
     if(status && !status.configured && state.screen!=='config'){ state.screen='setup'; app.innerHTML=renderSetup(); return; }
-    if(state.screen==='dashboard'){
-      app.innerHTML = sidebar(status) + `<main><div class="card" style="color:var(--text-3);">Dashboard wird geladen …</div></main>`;
-    }
     let body='';
     try {
       if(state.screen==='dashboard') body=await renderDashboard();
