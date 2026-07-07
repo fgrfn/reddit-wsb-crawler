@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Any
 import httpx
 from loguru import logger
 
+from wsb_crawler.__version__ import __version__
 from wsb_crawler.config import Settings, get_settings
 from wsb_crawler.models import Alert, AlertReason, MarketStatus, RunStatus, TrendEntry
 
@@ -147,7 +148,7 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
 
     # Footer
     subreddits = ", ".join(f"r/{s}" for s in cfg.crawler.subreddits)
-    footer = f"WSB-Crawler v2 • {subreddits}"
+    footer = f"WSB-Crawler v{__version__} • {subreddits}"
 
     return {
         "title": title,
@@ -190,7 +191,7 @@ def _build_heartbeat_embed(status: RunStatus) -> dict[str, Any]:
         "title": "💓 WSB-Crawler Status",
         "color": COLOR_HEARTBEAT,
         "fields": fields,
-        "footer": {"text": "WSB-Crawler v2 • Automatischer Heartbeat"},
+        "footer": {"text": f"WSB-Crawler v{__version__} • Automatischer Heartbeat"},
         "timestamp": datetime.now(tz=UTC).isoformat(),
     }
 
@@ -359,7 +360,7 @@ async def send_top_tickers(entries: list[TrendEntry], days: int) -> None:
         "title": f"🏆 Top Ticker — letzte {days} Tage",
         "description": "\n\n".join(lines),
         "color": COLOR_SUCCESS,
-        "footer": {"text": "WSB-Crawler v2"},
+        "footer": {"text": f"WSB-Crawler v{__version__}"},
         "timestamp": datetime.now(tz=UTC).isoformat(),
     }
     await _send_webhook({"username": "WSB-Crawler", "embeds": [embed]}, webhook_url)
