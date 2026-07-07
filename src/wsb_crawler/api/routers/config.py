@@ -28,6 +28,7 @@ SECRET_KEYS = (
     "newsapi_key",
     "discord_bot_token",
     "discord_webhook_url",
+    "telegram_bot_token",
     "alphavantage_api_key",
 )
 
@@ -52,6 +53,10 @@ class ConfigPayload(BaseModel):
     discord_bot_token: str | None = None
     discord_command_channel_id: str | None = None
     discord_status_update: str | None = None
+
+    # Telegram (optional)
+    telegram_bot_token: str | None = None
+    telegram_chat_id: str | None = None
 
     # Alert-Schwellwerte
     alert_min_abs: int | None = Field(default=None, ge=1)

@@ -10,7 +10,7 @@ import asyncio
 
 from loguru import logger
 
-from wsb_crawler.alerts.discord import send_alerts
+from wsb_crawler.alerts.dispatch import send_alerts
 from wsb_crawler.analysis.detector import analyze_mentions
 from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.reddit import crawl_all_subreddits
@@ -106,7 +106,7 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
                 logger.info(f"Dry-Run: {len(alerts)} Alert(s) nicht an Discord gesendet")
                 update_run(alerts_sent=0, progress=92)
             else:
-                sent_count = await send_alerts(alerts)
+                sent_count = await send_alerts(alerts, cfg)
                 update_run(
                     alerts_sent=sent_count,
                     message=f"{sent_count} Alert(s) gesendet…",

@@ -69,7 +69,7 @@ class TestRunSingleCrawl:
             patch.object(runner, "send_alerts", new=sent) as mock_send,
         ):
             # send_alerts markiert Alerts als gesendet
-            async def _mark_sent(alerts):
+            async def _mark_sent(alerts, cfg):
                 for a in alerts:
                     a.sent = True
                 return len(alerts)
