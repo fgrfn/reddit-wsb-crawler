@@ -1,4 +1,4 @@
-# WSB-Crawler v2
+# WSB-Crawler v3
 
 [![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
 [![Version](https://img.shields.io/badge/version-3.0.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
