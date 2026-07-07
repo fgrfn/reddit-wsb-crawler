@@ -53,3 +53,12 @@ def test_dashboard_run_button_label_is_short() -> None:
     assert 'id="liveCrawlBtn"' in html
     assert ">RUN</button>" in html
     assert "Live-Lauf" not in html
+
+
+def test_alert_history_explains_columns() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "Was wird hier angezeigt?" in html
+    assert "Die Alert-History zeigt alle Ticker" in html
+    assert "Nennungen &amp; Faktor" in html
+    assert "keine Kursdaten verfügbar" in html
