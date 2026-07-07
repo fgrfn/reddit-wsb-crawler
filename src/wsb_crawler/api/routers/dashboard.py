@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -21,6 +22,7 @@ from wsb_crawler.crawler.runner import (
     run_single_crawl,
     stop_current_crawl,
 )
+from wsb_crawler.cron import CronSchedule
 from wsb_crawler.enrichment.prices import get_price
 from wsb_crawler.enrichment.resolver import resolve_name
 from wsb_crawler.storage.database import Database
@@ -159,6 +161,33 @@ async def get_runs(
     """Letzte Crawl-Runs mit Statistiken."""
     rows = await db.get_recent_runs(limit=limit)
     return rows
+
+
+@router.get("/runs/{run_id}")
+async def get_run_detail(run_id: str) -> dict[str, Any]:
+    """Einzelner Crawl-Run inklusive Ticker-Mentions."""
+    detail = await db.get_run_detail(run_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Run nicht gefunden")
+    return detail
+
+
+@router.get("/cron/preview")
+async def preview_cron(
+    expression: str = Query(..., min_length=1),
+    count: int = Query(default=3, ge=1, le=10),
+) -> dict[str, Any]:
+    """Berechnet die naechsten Cron-Laufzeiten fuer die UI-Vorschau."""
+    try:
+        schedule = CronSchedule(expression.strip())
+        moment = datetime.now(tz=UTC)
+        runs = []
+        for _ in range(count):
+            moment = schedule.next_after(moment)
+            runs.append(moment.isoformat())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"expression": expression.strip(), "next_runs": runs}
 
 
 @router.post("/crawl")

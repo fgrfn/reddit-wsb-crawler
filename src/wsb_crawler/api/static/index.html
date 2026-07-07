@@ -80,9 +80,10 @@
   <script>
   // ── State ──────────────────────────────────────────────────────────────
   const state = {
-    screen:'dashboard', ticker:null, days:14, tdDays:30, step:1, schedMode:'interval',
-    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, logs:[],
+    screen:'dashboard', ticker:null, runId:null, days:14, tdDays:30, step:1, schedMode:'interval',
+    configured:null, about:{}, logWs:null, dashboardWs:null, dashboardReconnectTimer:null, dashboardRunning:false, stoppingCrawl:false, logs:[],
     configValues:{}, configSecretSet:new Set(), configLoaded:false, configNextRunAt:null,
+    cronPreviewTimer:null,
   };
   const REASONS = {
     spike:      {label:'Spike',     v:'--reason-spike'},
@@ -143,6 +144,7 @@
   function parseHash(){
     const h = (location.hash || '#dashboard').slice(1);
     if(h.startsWith('ticker/')){ state.screen='ticker'; state.ticker=decodeURIComponent(h.slice(7)); }
+    else if(h.startsWith('run/')){ state.screen='run'; state.runId=decodeURIComponent(h.slice(4)); }
     else { state.screen = h || 'dashboard'; }
   }
   function navigate(to){ location.hash = '#'+to; }
@@ -247,7 +249,11 @@
       liveBtn.textContent = status.crawl_running ? 'RUNNING...' : 'RUN';
     }
     if(dryBtn) dryBtn.disabled = Boolean(status.crawl_running);
-    if(stopBtn) stopBtn.style.display = status.crawl_running ? '' : 'none';
+    if(stopBtn){
+      stopBtn.style.display = status.crawl_running ? '' : 'none';
+      stopBtn.disabled = Boolean(state.stoppingCrawl);
+      stopBtn.textContent = state.stoppingCrawl ? 'STOPPING...' : 'Stoppen';
+    }
 
     const tile = document.getElementById('dashboardCandidateTile');
     if(tile){
@@ -267,6 +273,7 @@
     if(aside) aside.outerHTML = sidebar(status);
 
     if(wasRunning && !status.crawl_running){
+      state.stoppingCrawl = false;
       setTimeout(()=>{ if(state.screen==='dashboard') render(); }, 300);
     }
   }
@@ -309,11 +316,15 @@
   }
   async function stopCrawl(){
     if(!confirm('Lauf wirklich stoppen?')) return;
+    state.stoppingCrawl = true;
+    const stopBtn = document.getElementById('stopCrawlBtn');
+    if(stopBtn){ stopBtn.disabled = true; stopBtn.textContent = 'STOPPING...'; }
     try {
       await api('/crawl/stop', {method:'POST'});
       toast('Crawl wird gestoppt.');
-      render();
     } catch(e){
+      state.stoppingCrawl = false;
+      if(stopBtn){ stopBtn.disabled = false; stopBtn.textContent = 'Stoppen'; }
       toast('Fehler: '+e.message, true);
     }
   }
@@ -341,7 +352,7 @@
           <div class="seg">${[7,14,30].map(d=>`<span class="${state.days===d?'on':''}" onclick="setDays(${d})">${d}T</span>`).join('')}</div>
           <button class="btn btn-primary" id="liveCrawlBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(false)">${status.crawl_running?'RUNNING...':'RUN'}</button>
           <button class="btn" id="dryRunBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(true)">Dry-Run</button>
-          <button class="btn" id="stopCrawlBtn" style="${status.crawl_running?'':'display:none;'}color:var(--danger);" onclick="stopCrawl()">Stoppen</button>
+          <button class="btn" id="stopCrawlBtn" ${state.stoppingCrawl?'disabled':''} style="${status.crawl_running?'':'display:none;'}color:var(--danger);" onclick="stopCrawl()">${state.stoppingCrawl?'STOPPING...':'Stoppen'}</button>
         </div>
       </div>
       <div class="tiles">${tiles.map(([l,v,s,acc,id])=>`<div class="tile ${acc?'tile-accent':''}" ${id?`id="${id}"`:''}><div class="tile-label">${l}</div><div class="tile-val">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}</div>
@@ -354,17 +365,36 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:14px;min-width:0;">
           <div class="card" style="padding:16px 18px;"><div class="disp" style="font-size:14px;margin-bottom:12px;">Letzte Alerts</div>${alerts.length?`<div style="display:flex;flex-direction:column;gap:11px;">${alerts.map(a=>{const rm=reasonMeta(a.reason);return `<div class="row-click" style="display:flex;align-items:center;gap:10px;" onclick="navigate('ticker/${esc(a.ticker)}')"><span style="width:7px;height:32px;border-radius:4px;background:var(${rm.v});"></span><div style="flex:1;min-width:0;"><div class="mono" style="font-weight:700;font-size:13px;">$${esc(a.ticker)} <span style="font-size:11px;color:var(--text-3);font-weight:400;">${rm.label}</span></div><div style="font-size:11px;color:var(--text-4);">${clock(a.sent_at)} · ${fmtNum(a.mentions)} Nennungen${a.ratio?' · '+Number(a.ratio).toLocaleString('de-DE',{maximumFractionDigits:1})+'×':''}</div></div><span style="font-size:12px;font-weight:600;color:${changeColor(a.price_change)};">${a.price_change==null?'—':fmtChange(a.price_change)}</span></div>`;}).join('')}</div>`:`<div class="empty">Noch keine Alerts.</div>`}</div>
-          <div class="card" style="padding:16px 18px;"><div class="disp" style="font-size:14px;margin-bottom:12px;">Letzte Runs</div>${runs.length?`<div style="display:flex;flex-direction:column;gap:9px;font-size:12px;">${runs.map(r=>`<div style="display:flex;align-items:center;gap:9px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--${r.is_healthy?'success':'danger'});"></span><span class="mono" style="color:var(--text-3);">${clock(r.started_at)}</span><span style="color:var(--text-2);">${fmtNum(r.posts_scanned)} Posts · ${fmtNum(r.comments_scanned)} Komm.</span><span style="margin-left:auto;color:var(--${r.is_healthy?'success':'danger'});font-weight:600;">${r.is_healthy?'OK':'Fehler'}</span></div>`).join('')}</div>`:`<div class="empty">Noch kein Lauf.</div>`}</div>
+          <div class="card" style="padding:16px 18px;"><div class="disp" style="font-size:14px;margin-bottom:12px;">Letzte Runs</div>${runs.length?`<div style="display:flex;flex-direction:column;gap:9px;font-size:12px;">${runs.map(r=>`<div class="row-click" onclick="navigate('run/${esc(r.id)}')" style="display:flex;align-items:center;gap:9px;padding:6px;border-radius:8px;"><span style="width:7px;height:7px;border-radius:50%;background:var(--${r.is_healthy?'success':'danger'});"></span><span class="mono" style="color:var(--text-3);">${clock(r.started_at)}</span><span style="color:var(--text-2);">${fmtNum(r.posts_scanned)} Posts · ${fmtNum(r.comments_scanned)} Komm.</span><span style="margin-left:auto;color:var(--${r.is_healthy?'success':'danger'});font-weight:600;">${r.is_healthy?'OK':'Fehler'}</span></div>`).join('')}</div>`:`<div class="empty">Noch kein Lauf.</div>`}</div>
         </div>
       </div>`;
   }
   function setDays(d){ state.days=d; render(); }
 
+  async function renderRunDetail(){
+    const r = await api(`/runs/${encodeURIComponent(state.runId)}`);
+    const mentions = r.mentions || [];
+    let subs = [];
+    try { subs = JSON.parse(r.subreddits || '[]'); } catch(e){}
+    const started = r.started_at ? new Date(r.started_at) : null;
+    const finished = r.finished_at ? new Date(r.finished_at) : null;
+    const duration = started && finished ? fmtDur((finished.getTime()-started.getTime())/1000) : 'läuft oder abgebrochen';
+    const max = Math.max(1, ...mentions.map(m=>Number(m.mentions||0)));
+    return `
+      <div class="head-row"><div><button class="btn" onclick="navigate('dashboard')" style="margin-bottom:10px;">← Dashboard</button><div class="page-title">Run-Details</div><div class="page-sub"><span class="mono">#${esc(String(r.id||'').slice(0,8))}</span> · ${dayTime(r.started_at)} · ${r.is_healthy?'OK':'Fehler'}</div></div></div>
+      <div class="tiles">
+        ${[['Posts',fmtNum(r.posts_scanned),'gescannt'],['Kommentare',fmtNum(r.comments_scanned),'gescannt'],['Dauer',duration,'Start bis Ende'],['Subreddits',subs.length?subs.map(s=>'r/'+s).join(', '):'—','Quelle'],['Ticker',fmtNum(mentions.length),'im Lauf erkannt']].map(([l,v,s])=>`<div class="tile"><div class="tile-label">${l}</div><div class="tile-val" style="font-size:${String(v).length>14?'18':'26'}px;">${v}</div><div class="tile-sub">${s}</div></div>`).join('')}
+      </div>
+      <div class="card"><div class="disp" style="font-size:15px;margin-bottom:14px;">Top-Ticker in diesem Lauf</div>
+        ${mentions.length?`<div style="display:flex;flex-direction:column;gap:9px;">${mentions.slice(0,30).map(m=>{const w=Math.max(5, Number(m.mentions||0)/max*100);return `<div class="row-click" onclick="navigate('ticker/${esc(m.ticker)}')" style="display:grid;grid-template-columns:86px 1fr 70px;gap:12px;align-items:center;"><span class="mono" style="font-weight:700;">$${esc(m.ticker)}</span><div style="height:20px;background:var(--bg-inset);border-radius:7px;overflow:hidden;"><div style="height:100%;width:${w}%;background:var(--bar-up);border-radius:7px;"></div></div><span class="mono" style="text-align:right;font-weight:600;">${fmtNum(m.mentions)}</span></div>`;}).join('')}</div>`:`<div class="empty">Dieser Run hat keine Ticker-Mentions gespeichert.</div>`}
+      </div>`;
+  }
+
   // ── Alerts ─────────────────────────────────────────────────────────────
   function alertRowCols(a){
     const rm = reasonMeta(a.reason);
     const priceCell = a.price==null ? '<span style="color:var(--text-4);">—</span>' : `${fmtPrice(a.price)} <b style="color:${changeColor(a.price_change)};">${a.price_change==null?'':fmtChange(a.price_change)}</b>`;
-    return `<div class="row-click" data-ticker="${esc(a.ticker)}" onclick="navigate('ticker/${esc(a.ticker)}')" style="display:grid;grid-template-columns:120px 1fr 120px 90px 90px 130px;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;">
+    return `<div class="row-click" data-ticker="${esc(a.ticker)}" data-reason="${esc(a.reason||'')}" data-mentions="${Number(a.mentions||0)}" data-confidence="${Number(a.confidence||0)}" data-sent="${esc(a.sent_at||'')}" onclick="navigate('ticker/${esc(a.ticker)}')" style="display:grid;grid-template-columns:120px 1fr 120px 90px 90px 130px;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border);align-items:center;font-size:13px;">
       <span class="mono" style="font-weight:700;">$${esc(a.ticker)}</span>
       <span class="mono" style="color:var(--text-3);font-size:12px;">${dayTime(a.sent_at)}</span>
       <span><span class="badge" style="color:var(${rm.v});background:var(${rm.v}-soft);">${rm.label}</span></span>
@@ -376,8 +406,15 @@
     const alerts = await api('/alerts?limit=200');
     const legend = [['new_ticker','Ticker war nie in der Historie und taucht plötzlich mit vielen Nennungen auf.'],['spike','Bekannter Ticker mit plötzlichem Anstieg gegenüber dem Ø (Delta + Faktor).'],['price_move','Spike und zugleich eine signifikante Kursbewegung des Tickers.']];
     return `
-      <div class="head-row"><div><div class="page-title">Alert-History</div><div class="page-sub">${fmtNum(alerts.length)} geladene Alerts</div></div>
-        <div style="display:flex;gap:10px;"><input class="inp" style="width:200px;" placeholder="Ticker filtern …" oninput="filterAlerts(this.value)" /><button class="btn" onclick="document.querySelector('#alertFilterInp')&&(document.querySelector('#alertFilterInp').value='');filterAlerts('')">Zurücksetzen</button></div></div>
+      <div class="head-row"><div><div class="page-title">Alert-History</div><div class="page-sub"><span id="alertCount">${fmtNum(alerts.length)}</span> von ${fmtNum(alerts.length)} geladenen Alerts</div></div>
+        <button class="btn" onclick="resetAlertFilters()">Filter zurücksetzen</button></div>
+      <div class="card" style="padding:14px 16px;display:grid;grid-template-columns:1.2fr .8fr .8fr .8fr .8fr;gap:10px;align-items:end;">
+        <label><span class="lbl">Ticker</span><input class="inp" id="alertFilterTicker" placeholder="z.B. GME" oninput="filterAlerts()" /></label>
+        <label><span class="lbl">Grund</span><select class="inp" id="alertFilterReason" onchange="filterAlerts()"><option value="">Alle</option><option value="new_ticker">Neu</option><option value="spike">Spike</option><option value="price_move">Kurs+Akt.</option></select></label>
+        <label><span class="lbl">Min. Nennungen</span><input class="inp" id="alertFilterMentions" type="number" min="0" placeholder="0" oninput="filterAlerts()" /></label>
+        <label><span class="lbl">Min. Confidence</span><input class="inp" id="alertFilterConfidence" type="number" min="0" max="100" placeholder="0" oninput="filterAlerts()" /></label>
+        <label><span class="lbl">Zeitraum</span><select class="inp" id="alertFilterDays" onchange="filterAlerts()"><option value="">Alle</option><option value="1">24h</option><option value="7">7 Tage</option><option value="30">30 Tage</option></select></label>
+      </div>
       <div class="card" style="padding:14px 16px;display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:14px;align-items:start;">
         <div><div class="disp" style="font-size:14px;margin-bottom:5px;">Was wird hier angezeigt?</div><div style="font-size:12.5px;color:var(--text-2);line-height:1.45;">Die Alert-History zeigt alle Ticker, für die der Crawler bereits einen Alert erzeugt hat. Ein Klick auf eine Zeile öffnet die Ticker-Details.</div></div>
         <div><div class="tile-label" style="margin-bottom:5px;">Nennungen &amp; Faktor</div><div style="font-size:12.5px;color:var(--text-2);line-height:1.45;">Nennungen sind Treffer im jeweiligen Lauf. Der Faktor zeigt den Anstieg gegenüber der historischen Basislinie.</div></div>
@@ -389,11 +426,30 @@
         <div id="alertRows">${alerts.length?alerts.map(alertRowCols).join(''):`<div class="empty" style="margin:18px;">Noch keine Alerts.</div>`}</div>
       </div>`;
   }
-  function filterAlerts(q){
-    q = (q||'').trim().toUpperCase();
+  function filterAlerts(){
+    const q = (document.getElementById('alertFilterTicker')?.value||'').trim().toUpperCase();
+    const reason = document.getElementById('alertFilterReason')?.value || '';
+    const minMentions = Number(document.getElementById('alertFilterMentions')?.value || 0);
+    const minConfidence = Number(document.getElementById('alertFilterConfidence')?.value || 0);
+    const days = Number(document.getElementById('alertFilterDays')?.value || 0);
+    const cutoff = days ? Date.now() - days*86400000 : 0;
+    let visible = 0;
     document.querySelectorAll('#alertRows [data-ticker]').forEach(el=>{
-      el.style.display = !q || el.getAttribute('data-ticker').toUpperCase().includes(q) ? '' : 'none';
+      const sent = new Date(el.getAttribute('data-sent') || 0).getTime();
+      const ok = (!q || el.getAttribute('data-ticker').toUpperCase().includes(q))
+        && (!reason || el.getAttribute('data-reason') === reason)
+        && Number(el.getAttribute('data-mentions') || 0) >= minMentions
+        && Number(el.getAttribute('data-confidence') || 0) >= minConfidence
+        && (!cutoff || sent >= cutoff);
+      el.style.display = ok ? '' : 'none';
+      if(ok) visible += 1;
     });
+    const count = document.getElementById('alertCount');
+    if(count) count.textContent = fmtNum(visible);
+  }
+  function resetAlertFilters(){
+    ['alertFilterTicker','alertFilterReason','alertFilterMentions','alertFilterConfidence','alertFilterDays'].forEach(id=>{ const el=document.getElementById(id); if(el) el.value=''; });
+    filterAlerts();
   }
 
   // ── Ticker-Detail ──────────────────────────────────────────────────────
@@ -447,7 +503,7 @@
           <span onclick="setSched('interval')" style="flex:1;text-align:center;padding:7px 8px;border-radius:7px;cursor:pointer;${mode==='interval'?'background:var(--accent);color:var(--accent-ink);':'color:var(--text-3);'}">Intervall</span>
           <span onclick="setSched('cron')" style="flex:1;text-align:center;padding:7px 8px;border-radius:7px;cursor:pointer;${mode==='cron'?'background:var(--accent);color:var(--accent-ink);':'color:var(--text-3);'}">Feste Zeiten (Cron)</span></div></div>
         <label style="display:${mode==='interval'?'block':'none'};"><span class="lbl">Intervall (Minuten)</span><input class="inp" data-cfg="crawl_interval_minutes" value="${esc(state.configValues.crawl_interval_minutes||'30')}" /><span class="hint">Läuft alle N Min. ab dem Start — die Uhrzeit verschiebt sich mit.</span></label>
-        <label style="display:${mode==='cron'?'block':'none'};"><span class="lbl">Cron-Ausdruck</span><input class="inp" data-cfg="cron_expression" value="${esc(state.configValues.cron_expression||'0 */2 * * *')}" /><span class="hint">Feste Zeiten, 5-Feld-Syntax. Beispiel: <b>0 */2 * * *</b> = alle 2 Std. zur vollen Stunde.</span><span class="hint">Nächster Lauf: <b>${nextRun}</b> (laut gespeicherter Konfiguration).</span></label>
+        <label style="display:${mode==='cron'?'block':'none'};"><span class="lbl">Cron-Ausdruck</span><input class="inp" id="cronExpressionInput" data-cfg="cron_expression" value="${esc(state.configValues.cron_expression||'0 */2 * * *')}" oninput="syncConfigInputs(); scheduleCronPreview(this.value)" /><span class="hint">Feste Zeiten, 5-Feld-Syntax. Beispiel: <b>0 */2 * * *</b> = alle 2 Std. zur vollen Stunde.</span><span class="hint">Nächster gespeicherter Lauf: <b>${nextRun}</b>.</span><span class="hint" id="cronPreview">Vorschau für Eingabe wird geladen …</span></label>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
           <label style="display:block;"><span class="lbl">Posts/Sub</span><input class="inp" data-cfg="posts_limit" value="${esc(state.configValues.posts_limit||'100')}" /><span class="hint">Max. Posts je Subreddit und Lauf.</span></label>
           <label style="display:block;"><span class="lbl">Komm./Post</span><input class="inp" data-cfg="comments_limit" value="${esc(state.configValues.comments_limit||'50')}" /><span class="hint">Max. Kommentare je Post.</span></label>
@@ -475,6 +531,23 @@
   }
   function setSched(m){ state.schedMode=m; syncConfigInputs(); render(); }
   function syncConfigInputs(){ document.querySelectorAll('[data-cfg]').forEach(el=>{ state.configValues[el.getAttribute('data-cfg')] = el.value; }); }
+  function scheduleCronPreview(expr){
+    clearTimeout(state.cronPreviewTimer);
+    state.cronPreviewTimer = setTimeout(()=>previewCronExpression(expr), 250);
+  }
+  async function previewCronExpression(expr){
+    const box = document.getElementById('cronPreview');
+    if(!box || state.schedMode!=='cron') return;
+    expr = (expr || '').trim();
+    if(!expr){ box.textContent = 'Vorschau: Cron-Ausdruck fehlt.'; return; }
+    box.textContent = 'Vorschau wird berechnet …';
+    try {
+      const data = await api(`/cron/preview?count=3&expression=${encodeURIComponent(expr)}`);
+      box.innerHTML = `Nächste 3 Läufe: <b>${data.next_runs.map(dayTime).join('</b>, <b>')}</b>`;
+    } catch(e){
+      box.textContent = 'Ungültiger Cron-Ausdruck: '+e.message;
+    }
+  }
   async function saveConfig(){
     syncConfigInputs();
     const payload = {};
@@ -563,6 +636,7 @@
       if(state.screen==='dashboard') body=await renderDashboard();
       else if(state.screen==='alerts') body=await renderAlerts();
       else if(state.screen==='ticker') body=await renderTicker();
+      else if(state.screen==='run') body=await renderRunDetail();
       else if(state.screen==='config') body=await renderConfig();
       else if(state.screen==='logs') body=renderLogs();
       else body=await renderDashboard();
@@ -570,6 +644,9 @@
     app.innerHTML = sidebar(status) + `<main>${body}</main>`;
     if(state.screen==='logs') setTimeout(connectWs, 60);
     if(state.screen==='dashboard') setTimeout(connectDashboardWs, 60);
+    if(state.screen==='config' && state.schedMode==='cron'){
+      setTimeout(()=>previewCronExpression(document.getElementById('cronExpressionInput')?.value || ''), 60);
+    }
   }
 
   async function init(){

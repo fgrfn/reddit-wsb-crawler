@@ -89,6 +89,29 @@ class TestDashboardEndpoints:
         assert len(runs) == 1
         assert runs[0]["posts_scanned"] == 100
 
+    async def test_run_detail_endpoint(self, db: Database):
+        run_id = await db.start_run(["wsb"])
+        await db.save_run_mentions(run_id, {"GME": 20, "AMC": 5})
+        await db.finish_run(run_id, 100, 50)
+
+        detail = await dashboard_router.get_run_detail(run_id)
+
+        assert detail["id"] == run_id
+        assert detail["posts_scanned"] == 100
+        assert [m["ticker"] for m in detail["mentions"]] == ["GME", "AMC"]
+
+    async def test_cron_preview_endpoint(self):
+        now = datetime(2026, 7, 7, 12, 15, tzinfo=UTC)
+        with patch("wsb_crawler.api.routers.dashboard.datetime") as dt_mock:
+            dt_mock.now.return_value = now
+            result = await dashboard_router.preview_cron("0 */2 * * *", count=3)
+
+        assert result["next_runs"] == [
+            datetime(2026, 7, 7, 14, 0, tzinfo=UTC).isoformat(),
+            datetime(2026, 7, 7, 16, 0, tzinfo=UTC).isoformat(),
+            datetime(2026, 7, 7, 18, 0, tzinfo=UTC).isoformat(),
+        ]
+
 
 class TestStatusEndpoint:
     async def test_status_reports_unconfigured(self, db: Database):

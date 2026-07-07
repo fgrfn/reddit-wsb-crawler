@@ -37,6 +37,8 @@ def test_dashboard_exposes_stop_crawl_action() -> None:
 
     assert "async function stopCrawl()" in html
     assert "confirm('Lauf wirklich stoppen?')" in html
+    assert "STOPPING..." in html
+    assert "state.stoppingCrawl = true" in html
     assert "api('/crawl/stop', {method:'POST'})" in html
     assert 'id="stopCrawlBtn"' in html
     assert "Stoppen" in html
@@ -85,6 +87,27 @@ def test_config_shows_cron_next_run_preview() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
     assert "configNextRunAt" in html
-    assert "Nächster Lauf:" in html
-    assert "laut gespeicherter Konfiguration" in html
+    assert "Nächster gespeicherter Lauf:" in html
+    assert "previewCronExpression" in html
+    assert "/cron/preview?count=3" in html
+    assert "Nächste 3 Läufe:" in html
     assert "Promise.all([api('/config'), api('/status')])" in html
+
+
+def test_alert_history_has_rich_filters() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert 'id="alertFilterReason"' in html
+    assert 'id="alertFilterMentions"' in html
+    assert 'id="alertFilterConfidence"' in html
+    assert 'id="alertFilterDays"' in html
+    assert "resetAlertFilters" in html
+
+
+def test_dashboard_links_to_run_detail() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "navigate('run/${esc(r.id)}')" in html
+    assert "async function renderRunDetail()" in html
+    assert "api(`/runs/${encodeURIComponent(state.runId)}`)" in html
+    assert "Top-Ticker in diesem Lauf" in html
