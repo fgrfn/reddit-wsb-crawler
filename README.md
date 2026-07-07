@@ -63,6 +63,18 @@ PUID=99 PGID=100 docker compose up -d --build
 
 Die SQLite-Datenbank liegt im Container unter `/app/data/wsb_crawler.db` und wird per `./data:/app/data` persistent gespeichert. Der Container startet kurz als root, korrigiert die Besitzerrechte von `/app/data` und `/app/logs`, und führt die App danach als Non-Root-User `crawler` aus.
 
+### Manueller Docker-Build per GitHub Actions
+
+Unter **Actions → Manual Docker Build → Run workflow** kann ein Docker-Image manuell
+gebaut werden. Der Workflow hat Eingaben für Image-Tag, Zielplattformen
+(`linux/amd64`, `linux/arm64` oder beide), Smoke-Test und optionalen Push nach GHCR.
+Wenn `push_image` aktiv ist, erscheinen die Images unter:
+
+```text
+ghcr.io/fgrfn/reddit-wsb-crawler:<image_tag>
+ghcr.io/fgrfn/reddit-wsb-crawler:manual-<commit>
+```
+
 ### Manuell lokal
 
 ```bash
