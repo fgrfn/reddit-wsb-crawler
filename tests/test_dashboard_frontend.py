@@ -20,3 +20,13 @@ def test_dashboard_uses_status_websocket_instead_of_refresh_timer() -> None:
     assert "function updateDashboardLive" in html
     assert "function scheduleRefresh" not in html
     assert "refreshTimer" not in html
+
+
+def test_config_fields_render_help_texts() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "Client-ID deiner Reddit Script-App." in html
+    assert "Discord Servereinstellungen" in html
+    assert "Komma-separiert, z.B. wallstreetbets, wallstreetbetsGER." in html
+    assert "Mindestanzahl, ab der ein neuer Ticker als Kandidat gilt." in html
+    assert "${f.h?`<span class=\"hint\">${esc(f.h)}</span>`:''}" in html
