@@ -74,6 +74,16 @@ def test_dashboard_run_button_shows_running_state() -> None:
     assert "RUNNING..." in html
 
 
+def test_dashboard_keeps_running_snapshot_across_reconnects() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "currentRun:null" in html
+    assert "if(status.current_run) state.currentRun = status.current_run;" in html
+    assert "status.current_run || (status.crawl_running ? state.currentRun : null)" in html
+    assert "function runProgressFallback()" in html
+    assert "api('/status').then(s=>updateDashboardLive(s, 'verbinde'))" in html
+
+
 def test_alert_history_table_headers_have_hints() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
