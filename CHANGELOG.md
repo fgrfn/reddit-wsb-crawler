@@ -2,6 +2,30 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
+## [3.0.0] - 2026-07-07
+
+### Added
+
+- Komplett neu gestaltetes Web-Dashboard (Light-Theme, sechs Screens: Dashboard, Alerts, Ticker-Detail, Konfiguration, Logs, Setup-Wizard) — weiterhin als Single-File ohne Build-Step.
+- **Telegram** als optionaler zweiter Alert-Kanal parallel zu Discord (`telegram_bot_token`, `telegram_chat_id`); Alerts gehen an alle konfigurierten Kanäle.
+- **Cron-Zeitsteuerung**: feste Uhrzeiten über 5-Feld-Cron (`schedule_mode`, `cron_expression`) alternativ zum festen Intervall, mit abhängigkeitsfreiem Cron-Parser.
+- Signalqualität: Engagement-Gewichtung aus Post-Scores und ein Bull/Bear-Sentiment aus dem Nennungs-Kontext fließen in Confidence-Score und Kandidaten-Ranking.
+- Sentiment, Confidence und Engagement werden in der Alert-Historie persistiert; Ticker-Detail zeigt Sentiment-Badge und Confidence.
+- Optionaler Zugriffsschutz `WSB_AUTH_TOKEN` (HTTP-Basic-Auth) mit Loopback-Ausnahme für den Docker-Healthcheck.
+- `GET /api/mentions/daily` für den Übersichts-Flächenchart „Nennungen gesamt".
+- Design-Referenz (`docs/DESIGN_REFERENCE.md`) für UI-Arbeit.
+
+### Changed
+
+- Ticker-Endpunkte (`/api/tickers`, `/api/tickers/{ticker}`) liefern jetzt Firmenname, aktuellen Kurs und einen echten (berechneten) Trend statt eines konstanten `flat`; die Liste bleibt netzwerkfrei (cache-only), die Detailseite holt frisch.
+- Docker: Port-Mapping bindet standardmäßig auf `127.0.0.1`; bei Bind auf `0.0.0.0` ohne Token wird eine Warnung geloggt.
+- Echter Schema-Migrations-Schritt (idempotentes `ALTER TABLE` für fehlende Spalten); `SCHEMA_VERSION` auf 2.
+- FastAPI-App liest ihre Version aus `__version__`, damit sie nicht mehr driftet.
+
+### Removed
+
+- Toter `build-frontend`-Workflow (verwies auf ein nicht vorhandenes `web/`-Verzeichnis).
+
 ## [2.1.0] - 2026-07-06
 
 ### Added

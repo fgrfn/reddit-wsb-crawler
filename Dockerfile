@@ -27,7 +27,7 @@ RUN pip install --no-cache-dir --prefix=/install .
 # ── Stage 2: Runtime ────────────────────────────────────
 FROM python:3.13-slim AS runtime
 
-ARG VERSION=2.1.0
+ARG VERSION=3.0.0
 ARG BUILD_COMMIT=""
 ARG BUILD_DATE=""
 LABEL maintainer="WSB-Crawler"

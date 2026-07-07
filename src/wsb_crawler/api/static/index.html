@@ -155,7 +155,7 @@
     return `<aside>
       <div class="brand"><div class="brand-badge">W</div><div style="line-height:1.15;">
         <div class="disp" style="font-size:15px;letter-spacing:-.01em;">WSB-Crawler</div>
-        <div class="mono" style="font-size:10.5px;color:var(--text-4);">v${esc(state.about.version||'2.1.0')}</div></div></div>
+        <div class="mono" style="font-size:10.5px;color:var(--text-4);">v${esc(state.about.version||'3.0.0')}</div></div></div>
       ${NAV.map(([id,label])=>`<div class="nav-link ${state.screen===id?'active':''}" onclick="navigate('${id}')"><span class="nav-dot"></span>${label}</div>`).join('')}
       <div style="margin-top:auto;display:flex;flex-direction:column;gap:10px;">
         <div style="padding:12px;border-radius:12px;background:var(--bg-app);border:1px solid var(--border);">
