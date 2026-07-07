@@ -46,8 +46,19 @@ def _parse_dt(value: str) -> datetime:
     return dt
 
 
-# Schema-Version für spätere Migrationen
-SCHEMA_VERSION = 1
+# Schema-Version für Migrationen
+SCHEMA_VERSION = 2
+
+# Nachträglich ergänzte Spalten pro Tabelle (Name → SQL-Typ). Werden per
+# ALTER TABLE nachgezogen, falls sie in einer bestehenden DB noch fehlen.
+_COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
+    "alert_history": [
+        ("confidence", "INTEGER"),
+        ("sentiment", "REAL"),
+        ("sentiment_label", "TEXT"),
+        ("avg_score", "REAL"),
+    ],
+}
 
 CREATE_TABLES = """
 PRAGMA journal_mode=WAL;
@@ -105,6 +116,10 @@ CREATE TABLE IF NOT EXISTS alert_history (
     ratio           REAL NOT NULL,
     price           REAL,
     price_change    REAL,
+    confidence      INTEGER,
+    sentiment       REAL,
+    sentiment_label TEXT,
+    avg_score       REAL,
     sent_at         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker ON alert_history(ticker);
@@ -143,6 +158,7 @@ class Database:
             ) from e
         self._conn.row_factory = aiosqlite.Row
         await self._conn.executescript(CREATE_TABLES)
+        await self._run_column_migrations()
         await self._apply_schema_version()
         logger.info(f"Datenbank initialisiert: {self._path}")
 
@@ -165,6 +181,20 @@ class Database:
         return self._conn
 
     # ── Schema ──────────────────────────────────────────────────────────────
+
+    async def _run_column_migrations(self) -> None:
+        """Ergänzt fehlende Spalten in bestehenden DBs (idempotent via PRAGMA-Check)."""
+        added = 0
+        for table, columns in _COLUMN_MIGRATIONS.items():
+            async with self.conn.execute(f"PRAGMA table_info({table})") as cur:
+                existing = {row["name"] for row in await cur.fetchall()}
+            for name, sql_type in columns:
+                if name not in existing:
+                    await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}")
+                    added += 1
+        if added:
+            await self.conn.commit()
+            logger.info(f"Schema-Migration: {added} Spalte(n) ergänzt")
 
     async def _apply_schema_version(self) -> None:
         async with self.conn.execute("SELECT MAX(version) as v FROM schema_version") as cur:
@@ -322,12 +352,14 @@ class Database:
     # ── Alert History ────────────────────────────────────────────────────────
 
     async def save_alert(self, alert: Alert) -> None:
-        """Speichert einen gesendeten Alert in der History."""
+        """Speichert einen gesendeten Alert in der History (inkl. Signal-Werten)."""
         price = alert.spike.price_data
+        signal = alert.spike.signal
         await self.conn.execute(
             """INSERT INTO alert_history
-               (ticker, reason, mentions, avg_mentions, ratio, price, price_change, sent_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (ticker, reason, mentions, avg_mentions, ratio, price, price_change,
+                confidence, sentiment, sentiment_label, avg_score, sent_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 alert.ticker,
                 alert.reason.value,
@@ -336,6 +368,10 @@ class Database:
                 alert.spike.ratio,
                 price.primary_price if price else None,
                 price.primary_change if price else None,
+                alert.spike.confidence or None,
+                round(signal.sentiment, 4) if signal else None,
+                signal.sentiment_label if signal else None,
+                round(signal.avg_score, 2) if signal else None,
                 alert.triggered_at.isoformat(),
             ),
         )

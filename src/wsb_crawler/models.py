@@ -279,6 +279,7 @@ class SpikeResult:
     news: list[NewsArticle] = field(default_factory=list)
     history: TickerHistory | None = None
     signal: TickerSignal | None = None  # Engagement + Sentiment (Ranking/Confidence)
+    confidence: int = 0  # Erklärbarkeits-Score 0–100 (vom Detector gesetzt)
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────
