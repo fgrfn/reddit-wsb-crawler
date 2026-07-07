@@ -36,6 +36,7 @@ def test_dashboard_exposes_stop_crawl_action() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
     assert "async function stopCrawl()" in html
+    assert "confirm('Lauf wirklich stoppen?')" in html
     assert "api('/crawl/stop', {method:'POST'})" in html
     assert 'id="stopCrawlBtn"' in html
     assert "Stoppen" in html
@@ -51,7 +52,7 @@ def test_dashboard_run_button_label_is_short() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
     assert 'id="liveCrawlBtn"' in html
-    assert ">RUN</button>" in html
+    assert "status.crawl_running?'RUNNING...':'RUN'" in html
     assert "Live-Lauf" not in html
 
 
@@ -62,3 +63,28 @@ def test_alert_history_explains_columns() -> None:
     assert "Die Alert-History zeigt alle Ticker" in html
     assert "Nennungen &amp; Faktor" in html
     assert "keine Kursdaten verfügbar" in html
+
+
+def test_dashboard_run_button_shows_running_state() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "liveBtn.textContent = status.crawl_running ? 'RUNNING...' : 'RUN';" in html
+    assert "RUNNING..." in html
+
+
+def test_alert_history_table_headers_have_hints() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "Anzahl erkannter Ticker-Nennungen im Alert-Lauf." in html
+    assert "Anstieg gegenueber der historischen Basislinie." in html
+    assert "Kurs und Kursbewegung zum Alert-Zeitpunkt" in html
+    assert "cursor:help" in html
+
+
+def test_config_shows_cron_next_run_preview() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "configNextRunAt" in html
+    assert "Nächster Lauf:" in html
+    assert "laut gespeicherter Konfiguration" in html
+    assert "Promise.all([api('/config'), api('/status')])" in html

@@ -93,7 +93,8 @@ class TestAlertEmbed:
         alert = Alert(ticker="GME", reason=AlertReason.NEW_TICKER, spike=spike)
         embed = _build_alert_embed(alert, _settings())
         assert "GME" in embed["title"]
-        assert embed["fields"][0]["name"] == "📊 Erwähnungen"
+        assert embed["fields"][0]["name"] == "Warum dieser Alert?"
+        assert any(f["name"] == "📊 Erwähnungen" for f in embed["fields"])
 
     def test_spike_embed_with_price(self):
         price = PriceData(
@@ -121,6 +122,25 @@ class TestAlertEmbed:
         assert "GameStop Corp." in embed["title"]
         # Kurs-Feld vorhanden
         assert any(f["name"] == "💰 Kurs" for f in embed["fields"])
+
+    def test_alert_embed_explains_reason_and_confidence(self):
+        spike = SpikeResult(
+            ticker="GME",
+            current_mentions=35,
+            avg_mentions=10.0,
+            ratio=3.5,
+            delta=25,
+            is_new=False,
+            confidence=82,
+            reason=AlertReason.SPIKE,
+        )
+        alert = Alert(ticker="GME", reason=AlertReason.SPIKE, spike=spike)
+        embed = _build_alert_embed(alert, _settings())
+
+        reason = next(f for f in embed["fields"] if f["name"] == "Warum dieser Alert?")
+        assert "Confidence 82/100" in reason["value"]
+        assert "3.5x" in reason["value"]
+        assert "+25" in reason["value"]
 
 
 class TestHeartbeatEmbed:

@@ -65,6 +65,22 @@ def _format_change(pct: float | None) -> str:
     return f"{sign}{pct:.2f}%"
 
 
+def _build_alert_reason_summary(alert: Alert) -> str:
+    spike = alert.spike
+    confidence = spike.confidence or 0
+
+    if spike.is_new:
+        reason = f"Neuer Ticker mit {spike.current_mentions} Nennungen"
+    else:
+        reason = f"{spike.ratio:.1f}x ueber Normalwert - +{spike.delta} Nennungen"
+
+    price = spike.price_data
+    if alert.reason == AlertReason.PRICE_MOVE and price and price.primary_change is not None:
+        reason += f" - Kurs {_format_change(price.primary_change)}"
+
+    return f"**Confidence {confidence}/100**\n{reason}"
+
+
 def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
     """Erstellt ein Discord Rich Embed für einen Alert."""
     spike = alert.spike
@@ -89,6 +105,13 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
         title += f" — {company}"
 
     fields = []
+    fields.append(
+        {
+            "name": "Warum dieser Alert?",
+            "value": _build_alert_reason_summary(alert),
+            "inline": False,
+        }
+    )
 
     # Mentions-Block
     mention_text = f"**{spike.current_mentions}**"
