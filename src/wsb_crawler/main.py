@@ -24,9 +24,10 @@ from wsb_crawler.alerts.discord import send_heartbeat
 from wsb_crawler.alerts.discord import set_database as discord_set_db
 from wsb_crawler.api.routers.status import setup_ws_log_sink
 from wsb_crawler.api.server import run_server
-from wsb_crawler.config import DB_PATH, get_settings, is_configured
+from wsb_crawler.config import DB_PATH, Settings, get_settings, is_configured
 from wsb_crawler.crawler.reddit import set_database as reddit_set_db
 from wsb_crawler.crawler.runner import run_single_crawl
+from wsb_crawler.cron import next_run as cron_next_run
 from wsb_crawler.enrichment.news import set_database as news_set_db
 from wsb_crawler.storage.database import Database
 
@@ -57,17 +58,35 @@ def _setup_logging(log_level: str = "INFO") -> None:
     )
 
 
+def _next_run_at(cfg: Settings, now: datetime) -> datetime:
+    """Berechnet den nächsten Laufzeitpunkt je nach Zeitsteuerungs-Modus.
+
+    Cron-Modus mit ungültigem Ausdruck fällt sicher aufs Intervall zurück.
+    """
+    crawler = cfg.crawler
+    interval_at = now + dt.timedelta(minutes=crawler.crawl_interval_minutes)
+    if crawler.schedule_mode == "cron" and crawler.cron_expression.strip():
+        try:
+            return cron_next_run(crawler.cron_expression.strip(), now)
+        except ValueError as exc:
+            logger.error(f"Ungültiger Cron-Ausdruck '{crawler.cron_expression}': {exc} — Intervall")
+    return interval_at
+
+
 async def scheduler_loop(db: Database) -> None:
-    """Wartet auf vollständige Konfiguration, dann regelmäßige Crawls."""
+    """Wartet auf vollständige Konfiguration, dann geplante Crawls (Intervall/Cron)."""
     # Warten bis Setup abgeschlossen
     while not await is_configured(db):
         logger.info("Warte auf Konfiguration via Dashboard...")
         await asyncio.sleep(5)
 
     cfg = await get_settings(db)
-    interval = cfg.crawler.crawl_interval_minutes * 60
-
-    logger.info(f"Scheduler gestartet — Intervall: {cfg.crawler.crawl_interval_minutes} Minuten")
+    if cfg.crawler.schedule_mode == "cron" and cfg.crawler.cron_expression.strip():
+        logger.info(f"Scheduler gestartet — Cron: {cfg.crawler.cron_expression}")
+    else:
+        logger.info(
+            f"Scheduler gestartet — Intervall: {cfg.crawler.crawl_interval_minutes} Minuten"
+        )
 
     while True:
         try:
@@ -75,22 +94,23 @@ async def scheduler_loop(db: Database) -> None:
         except Exception as e:
             logger.error(f"Crawl fehlgeschlagen: {e}")
 
+        # Config frisch laden (Dashboard-Änderungen wirken sofort ab nächstem Lauf)
+        with contextlib.suppress(Exception):
+            cfg = await get_settings(db)
+
+        now = datetime.now(tz=dt.UTC)
+        next_at = _next_run_at(cfg, now)
+
         try:
             status = await db.get_run_status()
-            status.next_run_at = datetime.now(tz=dt.UTC) + dt.timedelta(seconds=interval)
+            status.next_run_at = next_at
             await send_heartbeat(status)
         except Exception as e:
             logger.warning(f"Heartbeat fehlgeschlagen: {e}")
 
-        # Intervall neu laden (könnte per Dashboard geändert worden sein)
-        try:
-            cfg = await get_settings(db)
-            interval = cfg.crawler.crawl_interval_minutes * 60
-        except Exception:
-            pass
-
-        logger.info(f"Nächster Lauf in {interval // 60} Minuten...")
-        await asyncio.sleep(interval)
+        sleep_seconds = max(0.0, (next_at - datetime.now(tz=dt.UTC)).total_seconds())
+        logger.info(f"Nächster Lauf um {next_at:%H:%M} (in {sleep_seconds / 60:.0f} Min.)...")
+        await asyncio.sleep(sleep_seconds)
 
 
 async def bot_supervisor(db: Database) -> None:

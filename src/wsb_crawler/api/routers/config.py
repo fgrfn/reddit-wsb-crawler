@@ -64,6 +64,8 @@ class ConfigPayload(BaseModel):
     # Crawler
     subreddits: str | None = None  # komma-separiert
     crawl_interval_minutes: int | None = Field(default=None, ge=1)
+    schedule_mode: str | None = None  # "interval" oder "cron"
+    cron_expression: str | None = None  # 5-Feld-Cron
     posts_limit: int | None = Field(default=None, ge=1, le=1000)
     comments_limit: int | None = Field(default=None, ge=0, le=500)
     log_level: str | None = None
@@ -74,6 +76,25 @@ class ConfigPayload(BaseModel):
     def validate_webhook(cls, v: str | None) -> str | None:
         if v and not v.startswith("https://discord.com/api/webhooks/"):
             raise ValueError("Webhook-URL muss mit https://discord.com/api/webhooks/ beginnen")
+        return v
+
+    @field_validator("schedule_mode")
+    @classmethod
+    def validate_schedule_mode(cls, v: str | None) -> str | None:
+        if v and v not in ("interval", "cron"):
+            raise ValueError("schedule_mode muss 'interval' oder 'cron' sein")
+        return v
+
+    @field_validator("cron_expression")
+    @classmethod
+    def validate_cron_expression(cls, v: str | None) -> str | None:
+        if v and v.strip():
+            from wsb_crawler.cron import validate_cron
+
+            try:
+                validate_cron(v.strip())
+            except ValueError as exc:
+                raise ValueError(f"Ungültiger Cron-Ausdruck: {exc}") from exc
         return v
 
 
