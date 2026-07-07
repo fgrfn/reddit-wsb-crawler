@@ -5,14 +5,17 @@ Status-Router: aktueller Crawler-Zustand und Live-Streams via WebSocket.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 from collections import deque
+from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from loguru import logger
 
 from wsb_crawler.api.routers.dashboard import is_crawl_running
-from wsb_crawler.config import is_configured
+from wsb_crawler.config import Settings, get_settings, is_configured
+from wsb_crawler.cron import next_run as cron_next_run
 from wsb_crawler.runtime.progress import snapshot as progress_snapshot
 from wsb_crawler.storage.database import Database
 
@@ -24,6 +27,20 @@ _log_buffer: deque[str] = deque(maxlen=200)
 _ws_clients: list[WebSocket] = []
 # Starke Referenzen auf Broadcast-Tasks — sonst kann der GC laufende Tasks einsammeln
 _broadcast_tasks: set[asyncio.Task[None]] = set()
+
+
+def _next_run_at(cfg: Settings, now: datetime) -> datetime:
+    """Calculate the next scheduled crawl for API status responses."""
+    crawler = cfg.crawler
+    interval_at = now + dt.timedelta(minutes=crawler.crawl_interval_minutes)
+    if crawler.schedule_mode == "cron" and crawler.cron_expression.strip():
+        try:
+            return cron_next_run(crawler.cron_expression.strip(), now)
+        except ValueError as exc:
+            logger.error(
+                f"Ungueltiger Cron-Ausdruck '{crawler.cron_expression}': {exc} - Intervall"
+            )
+    return interval_at
 
 
 def setup_ws_log_sink() -> None:
@@ -74,6 +91,10 @@ async def _status_payload() -> dict[str, Any]:
     """Build the status payload shared by HTTP and WebSocket clients."""
     run_status = await db.get_run_status()
     configured = await is_configured(db)
+    next_run_at = None
+    if configured:
+        cfg = await get_settings(db)
+        next_run_at = _next_run_at(cfg, datetime.now(tz=dt.UTC))
     return {
         "configured": configured,
         "last_run_at": run_status.last_run_at.isoformat() if run_status.last_run_at else None,
@@ -81,7 +102,7 @@ async def _status_payload() -> dict[str, Any]:
         "total_runs": run_status.total_runs,
         "total_alerts": run_status.total_alerts_sent,
         "tracked_tickers": run_status.tracked_tickers,
-        "next_run_at": run_status.next_run_at.isoformat() if run_status.next_run_at else None,
+        "next_run_at": next_run_at.isoformat() if next_run_at else None,
         "is_healthy": run_status.is_healthy,
         "crawl_running": is_crawl_running(),
         "current_run": progress_snapshot(),

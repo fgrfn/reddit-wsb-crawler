@@ -4,6 +4,7 @@ Tests für Dashboard- und Status-Router (direkte Endpoint-Aufrufe).
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -94,6 +95,7 @@ class TestStatusEndpoint:
         result = await status_router.get_status()
         assert result["configured"] is False
         assert result["total_runs"] == 0
+        assert result["next_run_at"] is None
 
     async def test_status_after_configuration(self, db: Database):
         await db.set_setting("reddit_client_id", "x")
@@ -101,3 +103,29 @@ class TestStatusEndpoint:
         await db.set_setting("discord_webhook_url", "https://discord.com/api/webhooks/1/z")
         result = await status_router.get_status()
         assert result["configured"] is True
+
+    async def test_status_calculates_next_interval_run(self, db: Database):
+        await db.set_setting("reddit_client_id", "x")
+        await db.set_setting("reddit_client_secret", "y")
+        await db.set_setting("discord_webhook_url", "https://discord.com/api/webhooks/1/z")
+        await db.set_setting("crawl_interval_minutes", "30")
+
+        now = datetime(2026, 7, 7, 12, 0, tzinfo=UTC)
+        with patch("wsb_crawler.api.routers.status.datetime") as dt_mock:
+            dt_mock.now.return_value = now
+            result = await status_router.get_status()
+
+        assert result["next_run_at"] == (now + timedelta(minutes=30)).isoformat()
+
+    async def test_status_calculates_next_cron_run(self, db: Database):
+        await db.set_setting("reddit_client_id", "x")
+        await db.set_setting("reddit_client_secret", "y")
+        await db.set_setting("discord_webhook_url", "https://discord.com/api/webhooks/1/z")
+        await db.set_setting("schedule_mode", "cron")
+        await db.set_setting("cron_expression", "0 */2 * * *")
+
+        with patch("wsb_crawler.api.routers.status.datetime") as dt_mock:
+            dt_mock.now.return_value = datetime(2026, 7, 7, 12, 15, tzinfo=UTC)
+            result = await status_router.get_status()
+
+        assert result["next_run_at"] == datetime(2026, 7, 7, 14, 0, tzinfo=UTC).isoformat()
