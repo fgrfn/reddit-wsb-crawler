@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts.discord import (
     _build_alert_embed,
     _build_heartbeat_embed,
@@ -63,6 +64,22 @@ class TestFormatting:
 
 
 class TestAlertEmbed:
+    def test_alert_footer_uses_package_version(self):
+        spike = SpikeResult(
+            ticker="GME",
+            current_mentions=25,
+            avg_mentions=0.0,
+            ratio=float("inf"),
+            delta=25,
+            is_new=True,
+            reason=AlertReason.NEW_TICKER,
+        )
+        alert = Alert(ticker="GME", reason=AlertReason.NEW_TICKER, spike=spike)
+        embed = _build_alert_embed(alert, _settings())
+
+        assert embed["footer"]["text"].startswith(f"WSB-Crawler v{__version__}")
+        assert "v2" not in embed["footer"]["text"]
+
     def test_new_ticker_embed(self):
         spike = SpikeResult(
             ticker="GME",
@@ -76,7 +93,8 @@ class TestAlertEmbed:
         alert = Alert(ticker="GME", reason=AlertReason.NEW_TICKER, spike=spike)
         embed = _build_alert_embed(alert, _settings())
         assert "GME" in embed["title"]
-        assert embed["fields"][0]["name"] == "📊 Erwähnungen"
+        assert embed["fields"][0]["name"] == "Warum dieser Alert?"
+        assert any(f["name"] == "📊 Erwähnungen" for f in embed["fields"])
 
     def test_spike_embed_with_price(self):
         price = PriceData(
@@ -105,8 +123,42 @@ class TestAlertEmbed:
         # Kurs-Feld vorhanden
         assert any(f["name"] == "💰 Kurs" for f in embed["fields"])
 
+    def test_alert_embed_explains_reason_and_confidence(self):
+        spike = SpikeResult(
+            ticker="GME",
+            current_mentions=35,
+            avg_mentions=10.0,
+            ratio=3.5,
+            delta=25,
+            is_new=False,
+            confidence=82,
+            reason=AlertReason.SPIKE,
+        )
+        alert = Alert(ticker="GME", reason=AlertReason.SPIKE, spike=spike)
+        embed = _build_alert_embed(alert, _settings())
+
+        reason = next(f for f in embed["fields"] if f["name"] == "Warum dieser Alert?")
+        assert "Confidence 82/100" in reason["value"]
+        assert "3.5x" in reason["value"]
+        assert "+25" in reason["value"]
+
 
 class TestHeartbeatEmbed:
+    def test_heartbeat_footer_uses_package_version(self):
+        status = RunStatus(
+            last_run_at=None,
+            last_run_duration_seconds=None,
+            total_runs=0,
+            total_alerts_sent=0,
+            tracked_tickers=0,
+            next_run_at=None,
+            is_healthy=True,
+        )
+        embed = _build_heartbeat_embed(status)
+
+        assert embed["footer"]["text"].startswith(f"WSB-Crawler v{__version__}")
+        assert "v2" not in embed["footer"]["text"]
+
     def test_heartbeat_with_last_run(self):
         status = RunStatus(
             last_run_at=datetime.now(tz=UTC),
