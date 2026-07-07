@@ -525,6 +525,25 @@ class Database:
             rows = await cur.fetchall()
         return [dict(r) for r in rows]
 
+    async def get_run_detail(self, run_id: str) -> dict[str, Any] | None:
+        """Gibt einen einzelnen Crawl-Run inklusive Top-Mentions zurück."""
+        async with self.conn.execute("SELECT * FROM crawl_runs WHERE id = ?", (run_id,)) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+
+        detail = dict(row)
+        async with self.conn.execute(
+            """SELECT ticker, mentions, recorded_at
+               FROM ticker_mentions
+               WHERE run_id = ?
+               ORDER BY mentions DESC, ticker ASC""",
+            (run_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+        detail["mentions"] = [dict(r) for r in rows]
+        return detail
+
     # ── Aufräumen ────────────────────────────────────────────────────────────
 
     async def purge_old_mentions(self, days: int = 90) -> int:
