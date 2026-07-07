@@ -45,3 +45,11 @@ def test_dashboard_has_no_manual_refresh_button() -> None:
     html = INDEX.read_text(encoding="utf-8")
 
     assert "Aktualisieren" not in html
+
+
+def test_dashboard_run_button_label_is_short() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert 'id="liveCrawlBtn"' in html
+    assert ">RUN</button>" in html
+    assert "Live-Lauf" not in html
