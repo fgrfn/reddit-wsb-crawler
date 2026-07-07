@@ -39,3 +39,9 @@ def test_dashboard_exposes_stop_crawl_action() -> None:
     assert "api('/crawl/stop', {method:'POST'})" in html
     assert 'id="stopCrawlBtn"' in html
     assert "Stoppen" in html
+
+
+def test_dashboard_has_no_manual_refresh_button() -> None:
+    html = INDEX.read_text(encoding="utf-8")
+
+    assert "Aktualisieren" not in html

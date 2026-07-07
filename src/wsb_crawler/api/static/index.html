@@ -335,7 +335,6 @@
         <div><div class="page-title">Übersicht</div><div class="page-sub" id="dashboardLiveState">${dashboardLiveText(status, 'verbinde')}</div></div>
         <div style="display:flex;align-items:center;gap:10px;">
           <div class="seg">${[7,14,30].map(d=>`<span class="${state.days===d?'on':''}" onclick="setDays(${d})">${d}T</span>`).join('')}</div>
-          <button class="btn" onclick="render()">Aktualisieren</button>
           <button class="btn btn-primary" id="liveCrawlBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(false)">Live-Lauf</button>
           <button class="btn" id="dryRunBtn" ${status.crawl_running?'disabled':''} onclick="startCrawl(true)">Dry-Run</button>
           <button class="btn" id="stopCrawlBtn" style="${status.crawl_running?'':'display:none;'}color:var(--danger);" onclick="stopCrawl()">Stoppen</button>
