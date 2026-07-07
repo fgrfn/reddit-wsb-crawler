@@ -73,6 +73,14 @@ class TestDashboardEndpoints:
         assert result["ticker"] == "GME"
         assert len(result["data"]) == 1
 
+    async def test_daily_mentions_endpoint(self, db: Database):
+        run_id = await db.start_run(["wsb"])
+        await db.save_run_mentions(run_id, {"GME": 20, "AMC": 5})
+        result = await dashboard_router.get_daily_mentions(days=14)
+        assert result["days"] == 14
+        assert len(result["data"]) == 1
+        assert result["data"][0]["mentions"] == 25  # 20 + 5 über alle Ticker
+
     async def test_runs_endpoint(self, db: Database):
         run_id = await db.start_run(["wsb"])
         await db.finish_run(run_id, 100, 50)

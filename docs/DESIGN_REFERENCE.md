@@ -110,7 +110,8 @@ wenn man neu tippt (leeres Passwortfeld = Wert behalten). Sektionen & Felder:
 
 - **Reddit API:** Client ID, Client Secret*, Reddit Benutzername, Reddit Passwort*, User Agent
 - **Discord:** Webhook URL*, Bot Token* (optional)
-- **Subreddits & Crawler:** Subreddits, Intervall (Min.), Posts pro Subreddit, Kommentare pro Post
+- **Telegram (optional):** Bot Token*, Chat-ID — zweiter Alert-Kanal parallel zu Discord
+- **Subreddits & Crawler:** Subreddits, **Zeitsteuerung** (Umschalter Intervall ↔ Feste Zeiten/Cron: `crawl_interval_minutes` **oder** `cron_expression` + `schedule_mode`), Posts pro Subreddit, Kommentare pro Post
 - **Alert-Schwellwerte:** Min. Nennungen neuer Ticker, Min. Anstieg absolut, Min. Faktor,
   Min. Kursänderung %, Max. Alerts pro Lauf, Cooldown Stunden
 
@@ -240,6 +241,12 @@ liefert.
 ]
 ```
 `subreddits` ist ein JSON-**String**; `is_healthy` ist `0/1`.
+
+### GET `/api/mentions/daily?days=14`  (1–90)
+Tägliche Gesamt-Nennungen über alle Ticker — Datenquelle für den Übersichts-Flächenchart „Nennungen gesamt".
+```json
+{ "days": 14, "data": [ { "date": "2026-07-01T00:00:00+00:00", "mentions": 240 } ] }
+```
 
 ### GET `/api/about`
 ```json

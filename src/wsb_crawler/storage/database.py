@@ -244,6 +244,20 @@ class Database:
             ],
         )
 
+    async def get_daily_mention_totals(self, days: int = 14) -> list[tuple[datetime, int]]:
+        """Tägliche Gesamt-Nennungen über alle Ticker (für den Übersichts-Chart)."""
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        async with self.conn.execute(
+            """SELECT DATE(recorded_at) as day, SUM(mentions) as total
+               FROM ticker_mentions
+               WHERE recorded_at >= ?
+               GROUP BY DATE(recorded_at)
+               ORDER BY day ASC""",
+            (since,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [(datetime.fromisoformat(r["day"]).replace(tzinfo=UTC), r["total"]) for r in rows]
+
     async def get_avg_mentions(
         self, ticker: str, days: int = 30, exclude_run_id: str | None = None
     ) -> float:

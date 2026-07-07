@@ -134,6 +134,18 @@ async def get_alerts(
     return rows
 
 
+@router.get("/mentions/daily")
+async def get_daily_mentions(
+    days: int = Query(default=14, ge=1, le=90),
+) -> dict[str, Any]:
+    """Tägliche Gesamt-Nennungen über alle Ticker (Übersichts-Chart)."""
+    totals = await db.get_daily_mention_totals(days=days)
+    return {
+        "days": days,
+        "data": [{"date": ts.isoformat(), "mentions": count} for ts, count in totals],
+    }
+
+
 @router.get("/runs")
 async def get_runs(
     limit: int = Query(default=20, ge=1, le=100),
