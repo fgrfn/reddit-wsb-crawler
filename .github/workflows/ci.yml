@@ -18,6 +18,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Tags für hatch-vcs (Version aus Git-Tag)
 
       - name: Python ${{ matrix.python-version }} einrichten
         uses: actions/setup-python@v5

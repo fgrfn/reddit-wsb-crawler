@@ -8,6 +8,10 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
 - Discord-Alerts können konfigurierte User/Rollen per `@` erwähnen (`discord_mention_targets`, einstellbar in der WebUI). Unterstützt User-IDs, Rollen (`&<id>`/`role:<id>`), `@here` und `@everyone`; der Ping wird mit passenden `allowed_mentions` gesetzt, damit er zuverlässig ausgelöst wird.
 
+### Changed
+
+- Die Paketversion wird jetzt aus dem Git-Tag abgeleitet (hatch-vcs, `dynamic = ["version"]`); `__version__` liest sie aus den Paket-Metadaten. Damit entfällt das manuelle Nachziehen der Versionsnummer an mehreren Stellen — die Versions-Drift ist strukturell behoben. Der Release-Prozess ist nur noch: CHANGELOG-Eintrag → mergen → `vX.Y.Z` taggen.
+
 ## [3.0.0] - 2026-07-07
 
 ### Added

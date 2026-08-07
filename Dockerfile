@@ -21,7 +21,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # hatchling bricht sonst beim Metadaten-Bauen ab.
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
-RUN pip install --no-cache-dir --prefix=/install hatchling
+# hatch-vcs liest die Version normalerweise aus dem Git-Tag. Im Build-Kontext
+# gibt es kein .git, daher die Version aus dem VERSION-Build-Arg vorgeben.
+ARG VERSION=0.0.0
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${VERSION}
+RUN pip install --no-cache-dir --prefix=/install hatchling hatch-vcs
 RUN pip install --no-cache-dir --prefix=/install .
 
 # ── Stage 2: Runtime ────────────────────────────────────
