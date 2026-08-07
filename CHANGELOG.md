@@ -2,6 +2,12 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
+## [Unreleased]
+
+### Added
+
+- Discord-Alerts können konfigurierte User/Rollen per `@` erwähnen (`discord_mention_targets`, einstellbar in der WebUI). Unterstützt User-IDs, Rollen (`&<id>`/`role:<id>`), `@here` und `@everyone`; der Ping wird mit passenden `allowed_mentions` gesetzt, damit er zuverlässig ausgelöst wird.
+
 ## [3.0.0] - 2026-07-07
 
 ### Added

@@ -55,6 +55,7 @@ class ConfigPayload(BaseModel):
     discord_bot_token: str | None = None
     discord_command_channel_id: str | None = None
     discord_status_update: str | None = None
+    discord_mention_targets: str | None = None  # @-Ziele bei Alerts
 
     # Telegram (optional)
     telegram_bot_token: str | None = None

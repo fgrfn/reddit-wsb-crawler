@@ -8,6 +8,7 @@ Rate-Limit-Handling: Discord erlaubt 5 Requests pro 2 Sekunden pro Webhook.
 from __future__ import annotations
 
 import asyncio
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -288,14 +289,95 @@ async def _edit_webhook_message(
         return False
 
 
+_USER_MENTION_RE = re.compile(r"^<@!?(\d+)>$")
+_ROLE_MENTION_RE = re.compile(r"^<@&(\d+)>$")
+
+
+def build_mentions(raw: str | None) -> tuple[str, dict[str, Any] | None]:
+    """Parst konfigurierte @-Ziele zu (content, allowed_mentions).
+
+    Akzeptiert komma- oder leerzeichen-getrennt:
+    - User-IDs als reine Ziffern (`123`) oder fertig als `<@123>` / `<@!123>`
+    - Rollen als `&123`, `role:123` oder fertig als `<@&123>`
+    - `@here` / `here` und `@everyone` / `everyone`
+
+    allowed_mentions wird explizit gesetzt, damit der Ping über den Webhook
+    tatsächlich feuert (und nur für die genannten Ziele). Unbekannte Tokens
+    werden ignoriert. Gibt ("", None) zurück, wenn nichts Gültiges übrig ist.
+    """
+    if not raw or not raw.strip():
+        return "", None
+
+    parts: list[str] = []
+    users: list[str] = []
+    roles: list[str] = []
+    parse: list[str] = []
+    seen: set[str] = set()
+
+    def _add(mention: str) -> bool:
+        if mention in seen:
+            return False
+        seen.add(mention)
+        parts.append(mention)
+        return True
+
+    for token in re.split(r"[\s,]+", raw.strip()):
+        if not token:
+            continue
+        bare = token.lower().lstrip("@")
+        if bare in ("here", "everyone"):
+            if _add(f"@{bare}") and "everyone" not in parse:
+                parse.append("everyone")
+            continue
+        user_match = _USER_MENTION_RE.match(token)
+        if user_match:
+            if _add(f"<@{user_match.group(1)}>"):
+                users.append(user_match.group(1))
+            continue
+        role_match = _ROLE_MENTION_RE.match(token)
+        if role_match:
+            if _add(f"<@&{role_match.group(1)}>"):
+                roles.append(role_match.group(1))
+            continue
+        if token.startswith("&") and token[1:].isdigit():
+            if _add(f"<@&{token[1:]}>"):
+                roles.append(token[1:])
+            continue
+        if token.lower().startswith("role:") and token[5:].isdigit():
+            if _add(f"<@&{token[5:]}>"):
+                roles.append(token[5:])
+            continue
+        if token.isdigit():
+            if _add(f"<@{token}>"):
+                users.append(token)
+            continue
+        # unbekanntes Token → ignorieren
+
+    if not parts:
+        return "", None
+
+    allowed: dict[str, Any] = {}
+    if parse:
+        allowed["parse"] = parse
+    if users:
+        allowed["users"] = users
+    if roles:
+        allowed["roles"] = roles
+    return " ".join(parts), allowed
+
+
 async def send_alert(alert: Alert) -> bool:
     """Sendet einen Alert als Discord Rich Embed."""
     cfg = await get_settings(_get_db())
     embed = _build_alert_embed(alert, cfg)
-    payload = {
+    payload: dict[str, Any] = {
         "username": "WSB-Crawler",
         "embeds": [embed],
     }
+    content, allowed_mentions = build_mentions(cfg.discord.mention_targets)
+    if content:
+        payload["content"] = content
+        payload["allowed_mentions"] = allowed_mentions
     # wait=False (Default) → _send_webhook liefert bool
     success = bool(await _send_webhook(payload, cfg.discord.webhook_url))
     if success:
