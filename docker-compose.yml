@@ -10,10 +10,10 @@ x-common: &common
     context: .
     dockerfile: Dockerfile
     args:
-      VERSION: "3.1.1"
+      VERSION: ${VERSION:-0.0.0}
       BUILD_COMMIT: ${BUILD_COMMIT:-local}
       BUILD_DATE: ${BUILD_DATE:-}
-  image: wsb-crawler:3.1.1
+  image: wsb-crawler:${VERSION:-local}
   environment:
     - TZ=Europe/Berlin
     - WSB_PORT=${WSB_PORT:-80}  # Port ändern via: WSB_PORT=8080 docker compose up

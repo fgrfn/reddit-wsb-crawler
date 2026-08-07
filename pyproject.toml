@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "wsb-crawler"
-version = "3.1.1"
+dynamic = ["version"]  # aus dem Git-Tag abgeleitet (hatch-vcs) — Single Source of Truth
 description = "Automatisches Frühwarnsystem für Reddit-Aktien-Hypes"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -53,6 +53,12 @@ dev = [
 
 [project.scripts]
 wsb-crawler = "wsb_crawler.main:main"
+
+[tool.hatch.version]
+source = "vcs"
+# local_scheme "no-local-version" hält Dev-Versionen PEP440-sauber (z.B.
+# 3.1.1.dev3 statt 3.1.1.dev3+g<hash>) und damit Docker-Tag-tauglich.
+raw-options = { local_scheme = "no-local-version" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/wsb_crawler"]

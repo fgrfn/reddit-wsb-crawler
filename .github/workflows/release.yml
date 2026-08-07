@@ -65,10 +65,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: pyproject.toml Version aktualisieren
-        run: |
-          VERSION=${{ steps.version.outputs.version }}
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+      # Kein pyproject-Version-Patch mehr nötig: die Version kommt aus dem
+      # Git-Tag (hatch-vcs); der Docker-Build erhält sie über den VERSION-Build-Arg.
 
       - name: GitHub Release erstellen
         uses: softprops/action-gh-release@v2
