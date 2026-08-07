@@ -1,7 +1,7 @@
 # WSB-Crawler v3
 
 [![CI](https://github.com/fgrfn/reddit-wsb-crawler/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/fgrfn/reddit-wsb-crawler/actions)
-[![Version](https://img.shields.io/badge/version-3.0.0-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
+[![Version](https://img.shields.io/badge/version-3.1.1-blue)](https://github.com/fgrfn/reddit-wsb-crawler/releases)
 [![Python](https://img.shields.io/badge/python-3.11+-blue)](https://www.python.org)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
