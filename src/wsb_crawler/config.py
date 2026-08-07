@@ -79,6 +79,7 @@ class DiscordSettings:
     bot_token: str | None = None
     command_channel_id: int | None = None
     status_update: bool = True
+    mention_targets: str | None = None  # @-Ziele bei Alerts (User-IDs/Rollen/@here/@everyone)
 
 
 @dataclass
@@ -147,6 +148,7 @@ async def get_settings(db: Database) -> Settings:
         "discord_bot_token",
         "discord_command_channel_id",
         "discord_status_update",
+        "discord_mention_targets",
         "telegram_bot_token",
         "telegram_chat_id",
         "newsapi_key",
@@ -206,6 +208,7 @@ async def get_settings(db: Database) -> Settings:
             if s.get("discord_command_channel_id")
             else None,
             status_update=s.get("discord_status_update", "true").lower() == "true",
+            mention_targets=opt("discord_mention_targets"),
         ),
         telegram=TelegramSettings(
             bot_token=opt("telegram_bot_token"),
