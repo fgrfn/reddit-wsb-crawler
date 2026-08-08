@@ -13,6 +13,7 @@ from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
 from wsb_crawler.__version__ import __version__
+from wsb_crawler.analysis.simulate import SimulationThresholds, simulate_thresholds
 from wsb_crawler.analysis.trends import get_top_tickers_cached
 from wsb_crawler.config import is_configured
 from wsb_crawler.crawler.runner import (
@@ -140,6 +141,45 @@ async def get_alerts(
     """Alert-History, optional gefiltert nach Ticker."""
     rows = await db.get_alert_history(limit=limit, ticker=ticker)
     return rows
+
+
+@router.get("/alerts/stats")
+async def get_alert_stats(
+    days: int = Query(default=30, ge=1, le=365),
+    hit_threshold: float = Query(default=3.0, ge=0.1, le=100.0),
+) -> dict[str, Any]:
+    """Erfolgskontrolle: Trefferquote je Alert-Grund über nachgemessene Kurse."""
+    stats = await db.get_alert_outcome_stats(days=days, hit_threshold_pct=hit_threshold)
+    return {"days": days, "hit_threshold": hit_threshold, "by_reason": stats}
+
+
+@router.get("/alerts/simulate")
+async def simulate_alert_thresholds(
+    days: int = Query(default=14, ge=1, le=90),
+    min_abs: int = Query(default=20, ge=1),
+    min_delta: int = Query(default=10, ge=0),
+    ratio: float = Query(default=2.0, gt=0),
+    max_per_run: int = Query(default=3, ge=1, le=25),
+    cooldown_h: int = Query(default=4, ge=0),
+    velocity_enabled: bool = Query(default=True),
+    velocity_ratio: float = Query(default=2.5, gt=1),
+    velocity_min_abs: int = Query(default=8, ge=1),
+    velocity_runs: int = Query(default=3, ge=2, le=20),
+) -> dict[str, Any]:
+    """Spielt die gespeicherte Historie mit anderen Schwellwerten durch."""
+    thresholds = SimulationThresholds(
+        min_abs=min_abs,
+        min_delta=min_delta,
+        ratio=ratio,
+        max_per_run=max_per_run,
+        cooldown_h=cooldown_h,
+        velocity_enabled=velocity_enabled,
+        velocity_ratio=velocity_ratio,
+        velocity_min_abs=velocity_min_abs,
+        velocity_runs=velocity_runs,
+    )
+    result = await simulate_thresholds(db, thresholds, days=days)
+    return result.as_dict()
 
 
 @router.get("/mentions/daily")

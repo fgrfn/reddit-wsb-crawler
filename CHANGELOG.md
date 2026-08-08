@@ -6,6 +6,11 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
 ### Added
 
+- **Erfolgskontrolle für Alerts**: Zu jedem Alert wird der Kurs 1 h und 24 h später nachgemessen (am Ende jedes Crawls, gedrosselt und ohne den Lauf gefährden zu können). Die Alerts-Seite zeigt daraus je Alert-Grund Durchschnitts-Entwicklung und Trefferquote — Schwellwerte lassen sich damit anhand von Daten statt nach Gefühl justieren. Neuer Endpunkt `GET /api/alerts/stats`.
+- **Schwellwert-Simulator**: `GET /api/alerts/simulate` spielt die gespeicherte Historie mit anderen Schwellwerten durch und zeigt sofort, wie viele Alerts dabei entstanden wären (inkl. Cooldown und Limit pro Lauf). In der Alerts-Seite als Formular mit Ergebnis-Übersicht. Bewusst eine Näherung: Kurs-/News-Anreicherung wird nicht simuliert.
+
+### Added
+
 - **Velocity-Frühwarnung**: neuer Alert-Grund `velocity`, der die Nennungen des aktuellen Laufs gegen den Schnitt der letzten Läufe vergleicht (Default: 3 Läufe, Faktor 2.5, min. 8 Nennungen; in der WebUI ein-/ausschaltbar). Damit werden Spikes erkannt, **während sie aufbauen** — der 30-Tage-Schnitt reagiert dafür zu spät. Fehlende Läufe zählen als 0, ein voller Vergleich braucht Historie, und der Rauschfilter verhindert Alarme bei Kleinstzahlen. Beschleunigung fließt in Confidence und Kandidaten-Ranking ein und wird in Discord-/Telegram-Alerts sowie im Dashboard ausgewiesen.
 
 - Der Crawler liest jetzt mehrere Reddit-Listings pro Lauf (`hot`, `new`, `rising`, `top`; Default `hot,new,rising`, wählbar in der WebUI unter „Reddit-Quellen"). `new`/`rising` zeigen aufkommende Ticker, bevor sie in `hot` auftauchen — Spikes werden dadurch früher erkannt. Posts werden über die Listings dedupliziert, und `posts_limit` bleibt die Gesamt-Obergrenze pro Subreddit (gleichmäßig auf die Quellen verteilt), sodass die API-Last unverändert bleibt.
