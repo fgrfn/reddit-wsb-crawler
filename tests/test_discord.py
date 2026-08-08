@@ -78,7 +78,9 @@ class TestAlertEmbed:
         embed = _build_alert_embed(alert, _settings())
 
         assert embed["footer"]["text"].startswith(f"WSB-Crawler v{__version__}")
-        assert "v2" not in embed["footer"]["text"]
+        # Kein altes v2-Branding. Auf das Präfix prüfen, nicht auf "v2" allein —
+        # Dev-Versionen aus dem Git-Tag enthalten sonst zufällig Treffer ("…dev2").
+        assert "WSB-Crawler v2" not in embed["footer"]["text"]
 
     def test_new_ticker_embed(self):
         spike = SpikeResult(
@@ -157,7 +159,9 @@ class TestHeartbeatEmbed:
         embed = _build_heartbeat_embed(status)
 
         assert embed["footer"]["text"].startswith(f"WSB-Crawler v{__version__}")
-        assert "v2" not in embed["footer"]["text"]
+        # Kein altes v2-Branding. Auf das Präfix prüfen, nicht auf "v2" allein —
+        # Dev-Versionen aus dem Git-Tag enthalten sonst zufällig Treffer ("…dev2").
+        assert "WSB-Crawler v2" not in embed["footer"]["text"]
 
     def test_heartbeat_with_last_run(self):
         status = RunStatus(
