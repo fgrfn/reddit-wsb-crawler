@@ -57,8 +57,15 @@ _COLUMN_MIGRATIONS: dict[str, list[tuple[str, str]]] = {
         ("sentiment", "REAL"),
         ("sentiment_label", "TEXT"),
         ("avg_score", "REAL"),
+        # Erfolgskontrolle: Kurs 1 h / 24 h nach dem Alert (NULL = noch nicht gemessen)
+        ("price_1h", "REAL"),
+        ("price_24h", "REAL"),
     ],
 }
+
+# Zeitfenster der Erfolgskontrolle → Spalte. Whitelist, weil der Spaltenname
+# in SQL interpoliert wird.
+OUTCOME_WINDOWS: dict[int, str] = {1: "price_1h", 24: "price_24h"}
 
 CREATE_TABLES = """
 PRAGMA journal_mode=WAL;
@@ -120,6 +127,8 @@ CREATE TABLE IF NOT EXISTS alert_history (
     sentiment       REAL,
     sentiment_label TEXT,
     avg_score       REAL,
+    price_1h        REAL,
+    price_24h       REAL,
     sent_at         TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker ON alert_history(ticker);
@@ -287,6 +296,176 @@ class Database:
         ) as cur:
             rows = await cur.fetchall()
         return [(datetime.fromisoformat(r["day"]).replace(tzinfo=UTC), r["total"]) for r in rows]
+
+    # ── Daten für den Schwellwert-Simulator ──────────────────────────────────
+
+    async def get_runs_since(self, days: int = 30) -> list[tuple[str, datetime]]:
+        """(run_id, started_at) aller abgeschlossenen Läufe im Fenster, älteste zuerst."""
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        async with self.conn.execute(
+            """SELECT id, started_at FROM crawl_runs
+               WHERE started_at >= ? AND finished_at IS NOT NULL
+               ORDER BY started_at ASC""",
+            (since,),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [(row["id"], _parse_dt(row["started_at"])) for row in rows]
+
+    async def get_candidate_tickers_since(self, days: int, min_mentions: int) -> list[str]:
+        """Ticker, die im Fenster mindestens einmal `min_mentions` erreichen.
+
+        Alles darunter kann keinen Alert auslösen — diese Vorauswahl hält die
+        Datenmenge der Simulation klein.
+        """
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        async with self.conn.execute(
+            """SELECT DISTINCT ticker FROM ticker_mentions
+               WHERE recorded_at >= ? AND mentions >= ?""",
+            (since, min_mentions),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [row["ticker"] for row in rows]
+
+    async def get_ticker_mention_history(
+        self, tickers: list[str], days: int
+    ) -> dict[str, list[tuple[datetime, int]]]:
+        """Nennungen je Ticker im Fenster als (recorded_at, mentions)."""
+        if not tickers:
+            return {}
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        placeholders = ",".join("?" * len(tickers))
+        async with self.conn.execute(
+            f"""SELECT ticker, recorded_at, mentions FROM ticker_mentions
+                WHERE recorded_at >= ? AND ticker IN ({placeholders})
+                ORDER BY recorded_at ASC""",  # noqa: S608 — nur Platzhalter interpoliert
+            (since, *tickers),
+        ) as cur:
+            rows = await cur.fetchall()
+        history: dict[str, list[tuple[datetime, int]]] = {}
+        for row in rows:
+            history.setdefault(row["ticker"], []).append(
+                (_parse_dt(row["recorded_at"]), int(row["mentions"]))
+            )
+        return history
+
+    async def get_ticker_first_seen(self, tickers: list[str]) -> dict[str, datetime]:
+        """Erste je gespeicherte Nennung pro Ticker (für den NEW_TICKER-Fall)."""
+        if not tickers:
+            return {}
+        placeholders = ",".join("?" * len(tickers))
+        async with self.conn.execute(
+            f"""SELECT ticker, MIN(recorded_at) AS first_seen FROM ticker_mentions
+                WHERE ticker IN ({placeholders})
+                GROUP BY ticker""",  # noqa: S608 — nur Platzhalter interpoliert
+            tuple(tickers),
+        ) as cur:
+            rows = await cur.fetchall()
+        return {row["ticker"]: _parse_dt(row["first_seen"]) for row in rows}
+
+    async def get_run_mentions_map(
+        self, tickers: list[str], days: int
+    ) -> dict[str, dict[str, int]]:
+        """{run_id: {ticker: mentions}} im Fenster, auf die gegebenen Ticker begrenzt."""
+        if not tickers:
+            return {}
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        placeholders = ",".join("?" * len(tickers))
+        async with self.conn.execute(
+            f"""SELECT run_id, ticker, SUM(mentions) AS mentions FROM ticker_mentions
+                WHERE recorded_at >= ? AND ticker IN ({placeholders})
+                GROUP BY run_id, ticker""",  # noqa: S608 — nur Platzhalter interpoliert
+            (since, *tickers),
+        ) as cur:
+            rows = await cur.fetchall()
+        per_run: dict[str, dict[str, int]] = {}
+        for row in rows:
+            per_run.setdefault(row["run_id"], {})[row["ticker"]] = int(row["mentions"])
+        return per_run
+
+    # ── Erfolgskontrolle von Alerts ──────────────────────────────────────────
+
+    async def get_alerts_awaiting_outcome(
+        self, window_hours: int, max_age_days: int = 7, limit: int = 25
+    ) -> list[dict[str, Any]]:
+        """Alerts, deren Nachmessung für dieses Zeitfenster fällig ist.
+
+        Fällig heißt: das Fenster ist verstrichen, es gibt einen Einstiegskurs
+        und der Wert fehlt noch. `max_age_days` begrenzt die Nachlaufzeit, damit
+        dauerhaft nicht abrufbare Ticker nicht endlos erneut versucht werden.
+        """
+        column = OUTCOME_WINDOWS.get(window_hours)
+        if column is None:
+            raise ValueError(f"Unbekanntes Zeitfenster: {window_hours}")
+
+        due_before = (_utcnow() - timedelta(hours=window_hours)).isoformat()
+        not_older_than = (_utcnow() - timedelta(days=max_age_days)).isoformat()
+        async with self.conn.execute(
+            f"""SELECT id, ticker, price, sent_at FROM alert_history
+                WHERE {column} IS NULL
+                  AND price IS NOT NULL
+                  AND sent_at <= ?
+                  AND sent_at >= ?
+                ORDER BY sent_at ASC
+                LIMIT ?""",  # noqa: S608 — Spaltenname aus Whitelist
+            (due_before, not_older_than, limit),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [dict(row) for row in rows]
+
+    async def save_alert_outcome(self, alert_id: int, window_hours: int, price: float) -> None:
+        """Speichert den nachgemessenen Kurs für ein Zeitfenster."""
+        column = OUTCOME_WINDOWS.get(window_hours)
+        if column is None:
+            raise ValueError(f"Unbekanntes Zeitfenster: {window_hours}")
+        await self.conn.execute(
+            f"UPDATE alert_history SET {column} = ? WHERE id = ?",  # noqa: S608 — Whitelist
+            (price, alert_id),
+        )
+        await self.conn.commit()
+
+    async def get_alert_outcome_stats(
+        self, days: int = 30, hit_threshold_pct: float = 3.0
+    ) -> list[dict[str, Any]]:
+        """Trefferquote je Alert-Grund über die nachgemessenen Kurse.
+
+        „Treffer" = Kurs im Zeitfenster um mindestens `hit_threshold_pct`
+        gestiegen. Alerts ohne Messung zählen nicht in die Quote (nur in
+        `alerts`), damit eine ausstehende Messung sie nicht verwässert.
+        """
+        since = (_utcnow() - timedelta(days=days)).isoformat()
+        async with self.conn.execute(
+            """SELECT
+                   reason,
+                   COUNT(*) AS alerts,
+                   COUNT(price_1h) AS measured_1h,
+                   COUNT(price_24h) AS measured_24h,
+                   AVG(CASE WHEN price_1h IS NOT NULL
+                       THEN (price_1h - price) / price * 100 END) AS avg_1h,
+                   AVG(CASE WHEN price_24h IS NOT NULL
+                       THEN (price_24h - price) / price * 100 END) AS avg_24h,
+                   SUM(CASE WHEN price_1h IS NOT NULL
+                       AND (price_1h - price) / price * 100 >= ? THEN 1 ELSE 0 END) AS hits_1h,
+                   SUM(CASE WHEN price_24h IS NOT NULL
+                       AND (price_24h - price) / price * 100 >= ? THEN 1 ELSE 0 END) AS hits_24h
+               FROM alert_history
+               WHERE sent_at >= ? AND price IS NOT NULL AND price > 0
+               GROUP BY reason
+               ORDER BY alerts DESC""",
+            (hit_threshold_pct, hit_threshold_pct, since),
+        ) as cur:
+            rows = await cur.fetchall()
+
+        stats: list[dict[str, Any]] = []
+        for row in rows:
+            data = dict(row)
+            for window in ("1h", "24h"):
+                measured = data[f"measured_{window}"] or 0
+                hits = data[f"hits_{window}"] or 0
+                data[f"hit_rate_{window}"] = round(hits / measured * 100, 1) if measured else None
+                avg = data[f"avg_{window}"]
+                data[f"avg_{window}"] = round(avg, 2) if avg is not None else None
+            stats.append(data)
+        return stats
 
     async def get_recent_run_mentions(
         self, ticker: str, runs: int = 3, exclude_run_id: str | None = None

@@ -12,6 +12,7 @@ from loguru import logger
 
 from wsb_crawler.alerts.dispatch import send_alerts
 from wsb_crawler.analysis.detector import analyze_mentions
+from wsb_crawler.analysis.outcomes import update_alert_outcomes
 from wsb_crawler.config import get_settings
 from wsb_crawler.crawler.reddit import crawl_all_subreddits
 from wsb_crawler.runtime.progress import (
@@ -167,6 +168,13 @@ async def _run_crawl(db: Database, *, dry_run: bool = False) -> None:
         purged = await db.purge_old_mentions(days=MENTION_RETENTION_DAYS)
         if purged:
             logger.debug(f"{purged} Mentions älter als {MENTION_RETENTION_DAYS} Tage gelöscht")
+
+        # Erfolgskontrolle früherer Alerts nachziehen. Darf den Lauf nie
+        # scheitern lassen — es ist reine Auswertung.
+        try:
+            await update_alert_outcomes(db)
+        except Exception as e:
+            logger.warning(f"Erfolgskontrolle fehlgeschlagen: {e}")
 
         duration = result.duration_seconds or 0
         message = (

@@ -7,14 +7,24 @@ per Default nur auf localhost und Secrets werden in GET-Responses maskiert.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
 from wsb_crawler.__version__ import __version__
-from wsb_crawler.alerts.discord import _send_webhook
+from wsb_crawler.alerts.discord import _build_alert_embed, _send_webhook, build_mentions
 from wsb_crawler.config import VALID_LISTINGS, get_settings, is_configured
+from wsb_crawler.models import (
+    Alert,
+    AlertReason,
+    MarketStatus,
+    NewsArticle,
+    PriceData,
+    SpikeResult,
+    TickerSignal,
+)
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["config"])
@@ -163,23 +173,86 @@ async def config_status() -> dict[str, Any]:
     return {"configured": configured}
 
 
+def _demo_alert() -> Alert:
+    """Erfundener Alert für die Testnachricht — plausible, aber frei erdachte Werte."""
+    now = datetime.now(tz=UTC)
+    spike = SpikeResult(
+        ticker="DEMO",
+        current_mentions=42,
+        avg_mentions=12.0,
+        ratio=3.5,
+        delta=30,
+        is_new=False,
+        reason=AlertReason.SPIKE,
+        confidence=78,
+        price_data=PriceData(
+            ticker="DEMO",
+            company_name="Beispiel AG (Testnachricht)",
+            price=24.80,
+            currency="USD",
+            change_24h=6.4,
+            change_1h=1.1,
+            change_7d=-2.3,
+            market_status=MarketStatus.OPEN,
+        ),
+        signal=TickerSignal(
+            ticker="DEMO",
+            mention_count=42,
+            total_score=3780,
+            max_score=1240,
+            bull_hits=9,
+            bear_hits=2,
+        ),
+        news=[
+            NewsArticle(
+                ticker="DEMO",
+                title="Beispiel-Schlagzeile: So sieht ein echter Alert aus",
+                source="WSB-Crawler",
+                url="https://github.com/fgrfn/reddit-wsb-crawler",
+                published_at=now - timedelta(hours=3),
+            )
+        ],
+    )
+    alert = Alert(ticker="DEMO", reason=AlertReason.SPIKE, spike=spike)
+    alert.triggered_at = now
+    return alert
+
+
 @router.post("/config/discord/test")
 async def test_discord_webhook() -> dict[str, Any]:
-    """Sendet eine Testnachricht an den gespeicherten Discord-Webhook."""
+    """Sendet einen erfundenen Beispiel-Alert an den gespeicherten Discord-Webhook.
+
+    Nutzt bewusst denselben Renderer wie echte Alerts, damit die Testnachricht
+    zeigt, wie ein Alert tatsächlich aussieht. Deutlich als Test gekennzeichnet
+    und ohne Ping: die konfigurierten @-Ziele werden nur benannt, damit ein
+    Konfigurations-Test nicht den halben Server aufweckt.
+    """
     if not await is_configured(db):
         raise HTTPException(status_code=400, detail="Konfiguration unvollständig")
 
     cfg = await get_settings(db)
-    payload = {
+    embed = _build_alert_embed(_demo_alert(), cfg)
+    embed["title"] = "🧪 Testnachricht — " + str(embed.get("title", ""))
+    embed["footer"] = {"text": f"WSB-Crawler v{__version__} • Testnachricht mit erfundenen Daten"}
+
+    mention_content, _ = build_mentions(cfg.discord.mention_targets)
+    embed.setdefault("fields", []).append(
+        {
+            "name": "🔔 Bei echten Alerts wird erwähnt",
+            "value": (
+                f"{mention_content}\n_(hier absichtlich ohne Ping)_"
+                if mention_content
+                else "_niemand — das Feld für @-Erwähnungen ist leer_"
+            ),
+            "inline": False,
+        }
+    )
+
+    payload: dict[str, Any] = {
         "username": "WSB-Crawler",
-        "embeds": [
-            {
-                "title": "WSB-Crawler Test",
-                "description": "Discord-Benachrichtigung funktioniert.",
-                "color": 0x57F287,
-                "footer": {"text": f"WSB-Crawler v{__version__} • Testnachricht"},
-            }
-        ],
+        "embeds": [embed],
+        # Keine Pings aus einem Konfigurations-Test heraus
+        "allowed_mentions": {"parse": []},
     }
     if not await _send_webhook(payload, cfg.discord.webhook_url):
         raise HTTPException(

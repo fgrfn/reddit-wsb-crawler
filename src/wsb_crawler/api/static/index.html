@@ -453,12 +453,89 @@
       <span class="mono" style="text-align:right;color:var(--text-2);">${a.ratio?Number(a.ratio).toLocaleString('de-DE',{maximumFractionDigits:1})+'×':'—'}</span>
       <span class="mono" style="text-align:right;">${priceCell}</span></div>`;
   }
+  // ── Erfolgskontrolle + Schwellwert-Simulator ───────────────────────────
+  function pctCell(v){
+    if(v === null || v === undefined) return '<span style="color:var(--text-4);">—</span>';
+    const n = Number(v);
+    return `<b style="color:${n>=0?'var(--success)':'var(--danger)'};">${n>=0?'+':''}${n.toFixed(1)}%</b>`;
+  }
+  function rateCell(v, measured){
+    if(v === null || v === undefined) return '<span style="color:var(--text-4);">wird gemessen</span>';
+    const n = Number(v);
+    const tone = n>=60?'success':n>=40?'warn':'danger';
+    return `<b style="color:var(--${tone});">${n.toFixed(0)}%</b> <span style="color:var(--text-4);font-size:11px;">(${measured})</span>`;
+  }
+  function outcomeCard(stats){
+    const rows = (stats.by_reason||[]).filter(s=>s.alerts>0);
+    if(!rows.length) return `<div class="card"><div class="disp" style="font-size:15px;margin-bottom:6px;">Erfolgskontrolle</div><div class="empty">Noch keine Alerts mit Kursdaten. Die Trefferquote erscheint, sobald Alerts gesendet und 1 h bzw. 24 h später nachgemessen wurden.</div></div>`;
+    return `<div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;"><span class="disp" style="font-size:15px;">Erfolgskontrolle</span><span class="mono" style="font-size:12px;color:var(--text-3);">${stats.days} T · Treffer ab +${stats.hit_threshold}%</span></div>
+      <span class="hint" style="margin-bottom:12px;">Kurs beim Alert gegen den Kurs 1 h bzw. 24 h danach. Zeigt, welcher Alert-Grund tatsächlich etwas taugt — Basis fürs Nachjustieren.</span>
+      <div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 1fr 1fr;gap:10px;padding:0 2px 8px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-4);">
+        <span>Grund</span><span style="text-align:right;">Alerts</span><span style="text-align:right;">Ø 1 h</span><span style="text-align:right;">Treffer 1 h</span><span style="text-align:right;">Ø 24 h</span><span style="text-align:right;">Treffer 24 h</span></div>
+      ${rows.map(s=>{const rm=reasonMeta(s.reason);return `<div style="display:grid;grid-template-columns:1.1fr 70px 1fr 1fr 1fr 1fr;gap:10px;padding:9px 2px;border-top:1px solid var(--border);align-items:center;font-size:13px;">
+        <span><span class="badge" style="color:var(${rm.v});background:var(${rm.v}-soft);">${rm.label}</span></span>
+        <span class="mono" style="text-align:right;font-weight:600;">${fmtNum(s.alerts)}</span>
+        <span class="mono" style="text-align:right;">${pctCell(s.avg_1h)}</span>
+        <span class="mono" style="text-align:right;">${rateCell(s.hit_rate_1h, s.measured_1h)}</span>
+        <span class="mono" style="text-align:right;">${pctCell(s.avg_24h)}</span>
+        <span class="mono" style="text-align:right;">${rateCell(s.hit_rate_24h, s.measured_24h)}</span></div>`;}).join('')}
+    </div>`;
+  }
+  const SIM_FIELDS = [
+    ['simDays','Zeitraum (Tage)','14'],['simRatio','Anstiegsfaktor','2.0'],
+    ['simMinDelta','Min. Anstieg','10'],['simMinAbs','Min. Nennungen (neu)','20'],
+    ['simVelRatio','Frühwarn-Faktor','2.5'],['simMaxPerRun','Max. Alerts/Lauf','3'],
+  ];
+  function simulatorCard(){
+    return `<div class="card">
+      <div class="disp" style="font-size:15px;margin-bottom:4px;">Schwellwerte simulieren</div>
+      <span class="hint" style="margin-bottom:12px;">Spielt die gespeicherte Historie mit anderen Schwellwerten durch — du siehst sofort, wie viele Alerts dabei herausgekommen wären, ohne Tage zu warten.</span>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;align-items:end;">
+        ${SIM_FIELDS.map(([id,label,def])=>`<label><span class="lbl">${label}</span><input class="inp" id="${id}" value="${def}" /></label>`).join('')}
+        <label style="display:flex;align-items:center;gap:7px;padding-bottom:9px;"><input type="checkbox" id="simVelOn" checked /><span style="font-size:12.5px;color:var(--text-2);">Frühwarnung</span></label>
+        <button class="btn btn-primary" onclick="runSimulation()">Simulieren</button>
+      </div>
+      <div id="simResult" style="margin-top:14px;"></div>
+    </div>`;
+  }
+  async function runSimulation(){
+    const val = (id, def) => { const el=document.getElementById(id); const n=Number(el?el.value:def); return Number.isFinite(n)?n:def; };
+    const box = document.getElementById('simResult');
+    if(box) box.innerHTML = `<span class="hint">Simuliere …</span>`;
+    const q = new URLSearchParams({
+      days: val('simDays',14), ratio: val('simRatio',2.0), min_delta: val('simMinDelta',10),
+      min_abs: val('simMinAbs',20), velocity_ratio: val('simVelRatio',2.5),
+      max_per_run: val('simMaxPerRun',3),
+      velocity_enabled: document.getElementById('simVelOn')?.checked ? 'true' : 'false',
+    });
+    try {
+      const r = await api('/alerts/simulate?'+q.toString());
+      const reasons = Object.entries(r.per_reason||{});
+      if(box) box.innerHTML = `
+        <div style="display:flex;gap:22px;flex-wrap:wrap;align-items:baseline;">
+          <div><span class="mono" style="font-size:26px;font-weight:600;">${fmtNum(r.total_alerts)}</span> <span style="font-size:12px;color:var(--text-3);">Alerts in ${r.days} Tagen</span></div>
+          <div><span class="mono" style="font-size:18px;font-weight:600;">${r.alerts_per_day}</span> <span style="font-size:12px;color:var(--text-3);">pro Tag</span></div>
+          <div style="font-size:12px;color:var(--text-3);">${fmtNum(r.runs_evaluated)} Läufe ausgewertet</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px;">
+          ${reasons.length?reasons.map(([k,n])=>{const rm=reasonMeta(k);return `<span class="badge" style="color:var(${rm.v});background:var(${rm.v}-soft);">${rm.label}: ${n}</span>`;}).join(''):'<span class="hint">Keine Alerts mit diesen Werten.</span>'}
+        </div>
+        ${(r.top_tickers||[]).length?`<div style="margin-top:11px;font-size:12.5px;color:var(--text-2);">Häufigste: ${r.top_tickers.map(t=>`<span class="mono">$${esc(t.ticker)}</span> (${t.alerts})`).join(' · ')}</div>`:''}
+        <span class="hint" style="margin-top:10px;">Näherung: Kurs-/News-Anreicherung wird nicht simuliert, „Kurs bewegt sich" erscheint daher als „Stark im Gespräch". Cooldown unterdrückte ${fmtNum(r.suppressed_by_cooldown)}, das Limit pro Lauf ${fmtNum(r.suppressed_by_cap)} weitere.</span>`;
+    } catch(e){
+      if(box) box.innerHTML = `<span class="hint" style="color:var(--danger);">Fehler: ${esc(e.message)}</span>`;
+    }
+  }
+
   async function renderAlerts(){
-    const alerts = await api('/alerts?limit=200');
+    const [alerts, stats] = await Promise.all([api('/alerts?limit=200'), api('/alerts/stats?days=30')]);
     const legend = [['new_ticker','Ticker war nie in der Historie und taucht plötzlich mit vielen Nennungen auf.'],['spike','Bekannter Ticker mit plötzlichem Anstieg gegenüber dem Ø (Delta + Faktor).'],['price_move','Spike und zugleich eine signifikante Kursbewegung des Tickers.'],['velocity','Beschleunigung über die letzten Läufe — greift, während ein Spike noch aufbaut, bevor der 30-Tage-Schnitt reagiert.']];
     return `
       <div class="head-row"><div><div class="page-title">Alert-History</div><div class="page-sub"><span id="alertCount">${fmtNum(alerts.length)}</span> von ${fmtNum(alerts.length)} geladenen Alerts</div></div>
         <button class="btn" onclick="resetAlertFilters()">Filter zurücksetzen</button></div>
+      ${outcomeCard(stats)}
+      ${simulatorCard()}
       <div class="card" style="padding:14px 16px;display:grid;grid-template-columns:1.2fr .8fr .8fr .8fr .8fr;gap:10px;align-items:end;">
         <label><span class="lbl">Ticker</span><input class="inp" id="alertFilterTicker" placeholder="z.B. GME" oninput="filterAlerts()" /></label>
         <label><span class="lbl">Grund</span><select class="inp" id="alertFilterReason" onchange="filterAlerts()"><option value="">Alle</option><option value="new_ticker">Neu</option><option value="spike">Spike</option><option value="price_move">Kurs+Akt.</option><option value="velocity">Frühwarnung</option></select></label>
@@ -535,6 +612,9 @@
       {k:'discord_mention_targets',l:'@-Erwähnungen bei Alerts (optional)',h:'Wer bei jedem Alert gepingt wird. Komma-getrennt: User-IDs (z.B. 123456789012345678), Rollen als &987654321098765432, sowie @here oder @everyone. User-/Rollen-ID per Rechtsklick → „ID kopieren" (Discord-Entwicklermodus). Hinweis: @everyone/@here erreichen alle, die den Webhook-Kanal sehen können — nicht zwingend den ganzen Server. Für einen kleinen Kreis besser User-IDs oder eine eigene Rolle nutzen.'}]},
     {title:'Telegram', dot:'#2AABEE', optional:true, fields:[
       {k:'telegram_bot_token',l:'Bot Token',secret:true,h:'Optionaler Telegram-Bot-Token fuer Benachrichtigungen.'},{k:'telegram_chat_id',l:'Chat-ID',h:'Ziel-Chat oder Kanal fuer Telegram-Alerts.'}]},
+    {title:'Datenquellen', dot:'--success', optional:true, fields:[
+      {k:'alphavantage_api_key',l:'Alphavantage API-Key',secret:true,h:'Zweitquelle für Kurse, wenn Yahoo nichts liefert oder drosselt (429). Kostenloser Schlüssel auf alphavantage.co — das Tageslimit ist klein, daher nur als Fallback genutzt.'},
+      {k:'newsapi_key',l:'NewsAPI-Key',secret:true,h:'Optional: Schlagzeilen zu Alert-Tickern von newsapi.org. Ohne Schlüssel bleiben Alerts ohne News-Block.'}]},
     {title:'Alert-Schwellwerte', dot:'--warn', grid:true, fields:[
       {k:'alert_min_abs',l:'Min. Nennungen (neu)',h:'Mindestanzahl, ab der ein neuer Ticker als Kandidat gilt.'},{k:'alert_min_delta',l:'Min. Anstieg absolut',h:'Mindestanstieg gegenueber der historischen Basislinie.'},{k:'alert_ratio',l:'Anstiegsfaktor',h:'Faktor zur Basislinie, z.B. 2.0 fuer doppelt so viele Nennungen.'},
       {k:'alert_min_price_move',l:'Min. Kursbewegung %',h:'Optionaler Kursbewegungs-Filter fuer Price-Move-Alerts.'},{k:'alert_max_per_run',l:'Max. Alerts/Lauf',h:'Begrenzt die Anzahl gesendeter Alerts pro Crawl.'},{k:'alert_cooldown_h',l:'Cooldown (Std.)',h:'Sperrzeit, bevor derselbe Ticker erneut alarmieren darf.'}]},
@@ -648,7 +728,7 @@
     return `
       <div class="head-row"><div><div class="page-title">Konfiguration</div><div class="page-sub">Secrets sind maskiert · leeres Feld behält den Wert</div></div><button class="btn btn-primary" onclick="saveConfig()">Speichern</button></div>
       <div id="configValidation" class="card" style="display:none;border-color:var(--danger);color:var(--danger);padding:13px 16px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${sec(CFG_SECTIONS[0])}${sec(CFG_SECTIONS[1])}${sec(CFG_SECTIONS[2])}${schedCard()}${sec(CFG_SECTIONS[3])}${velocityCard()}</div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${CFG_SECTIONS.map(sec).join('')}${schedCard()}${velocityCard()}</div>`;
   }
   function setSched(m){ state.schedMode=m; syncConfigInputs(); render(); }
   function syncConfigInputs(){ document.querySelectorAll('[data-cfg]').forEach(el=>{ state.configValues[el.getAttribute('data-cfg')] = el.value; }); }
