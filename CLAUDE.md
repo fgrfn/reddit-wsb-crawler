@@ -179,7 +179,9 @@ docker compose up -d
 
 1. **Keine `.env`-Migration:** Wer von v1 migriert, muss Werte manuell im Setup-Wizard eingeben.
 
-2. **Testabdeckung der Entry-Points:** `main.py` und `alerts/bot.py` sind noch ungetestet (Integrations-/Discord-Client-Code). Coverage-Gate liegt bei 60 %.
+2. **Kursquelle Yahoo:** yfinance drosselt schnell (`429`). Ohne konfigurierten Alphavantage-Schlüssel (Sektion „Datenquellen") kommen Alerts für betroffene Ticker ohne Kurs — und ohne Einstiegskurs kann die Alert-Erfolgskontrolle nichts messen.
+
+**Testabdeckung:** Coverage-Gate liegt bei 80 % (Ist-Stand ~85 %). Der Scheduler-Loop (`main.py`) und die Bot-Slash-Commands (`alerts/bot.py`) sind getestet; Endlos-Loops werden über einen `asyncio.sleep`-Ersatz kontrolliert abgebrochen (siehe `tests/test_main_entrypoint.py`).
 
 ---
 

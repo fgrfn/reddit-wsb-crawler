@@ -42,7 +42,9 @@ jobs:
 
       - name: pytest – Tests mit Coverage
         # Tests seeden ihre eigene DB → keine ENV-Variablen mehr nötig.
-        run: pytest --cov=src/wsb_crawler --cov-report=xml --cov-fail-under=60
+        # Gate mit Reserve unter dem Ist-Stand (~85 %), damit es echte Rückschritte
+        # fängt, ohne bei kleinen Schwankungen zu blockieren.
+        run: pytest --cov=src/wsb_crawler --cov-report=xml --cov-fail-under=80
 
       - name: Coverage zu Codecov hochladen
         if: matrix.python-version == '3.11'
