@@ -288,6 +288,31 @@ class Database:
             rows = await cur.fetchall()
         return [(datetime.fromisoformat(r["day"]).replace(tzinfo=UTC), r["total"]) for r in rows]
 
+    async def get_recent_run_mentions(
+        self, ticker: str, runs: int = 3, exclude_run_id: str | None = None
+    ) -> list[int]:
+        """Nennungen des Tickers in den letzten N abgeschlossenen Läufen (neueste zuerst).
+
+        Läufe ohne Nennung des Tickers liefern 0 — Abwesenheit ist für die
+        Beschleunigungsmessung eine echte Null, kein fehlender Wert. Basis für
+        die Velocity-Erkennung (Spike im Aufbau).
+        """
+        async with self.conn.execute(
+            """SELECT COALESCE(SUM(m.mentions), 0) AS mentions
+               FROM (
+                   SELECT id, started_at FROM crawl_runs
+                   WHERE id != COALESCE(?, '') AND finished_at IS NOT NULL
+                   ORDER BY started_at DESC
+                   LIMIT ?
+               ) r
+               LEFT JOIN ticker_mentions m ON m.run_id = r.id AND m.ticker = ?
+               GROUP BY r.id, r.started_at
+               ORDER BY r.started_at DESC""",
+            (exclude_run_id, runs, ticker),
+        ) as cur:
+            rows = await cur.fetchall()
+        return [int(row["mentions"]) for row in rows]
+
     async def get_avg_mentions(
         self, ticker: str, days: int = 30, exclude_run_id: str | None = None
     ) -> float:

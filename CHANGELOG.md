@@ -6,6 +6,8 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
 ### Added
 
+- **Velocity-Frühwarnung**: neuer Alert-Grund `velocity`, der die Nennungen des aktuellen Laufs gegen den Schnitt der letzten Läufe vergleicht (Default: 3 Läufe, Faktor 2.5, min. 8 Nennungen; in der WebUI ein-/ausschaltbar). Damit werden Spikes erkannt, **während sie aufbauen** — der 30-Tage-Schnitt reagiert dafür zu spät. Fehlende Läufe zählen als 0, ein voller Vergleich braucht Historie, und der Rauschfilter verhindert Alarme bei Kleinstzahlen. Beschleunigung fließt in Confidence und Kandidaten-Ranking ein und wird in Discord-/Telegram-Alerts sowie im Dashboard ausgewiesen.
+
 - Der Crawler liest jetzt mehrere Reddit-Listings pro Lauf (`hot`, `new`, `rising`, `top`; Default `hot,new,rising`, wählbar in der WebUI unter „Reddit-Quellen"). `new`/`rising` zeigen aufkommende Ticker, bevor sie in `hot` auftauchen — Spikes werden dadurch früher erkannt. Posts werden über die Listings dedupliziert, und `posts_limit` bleibt die Gesamt-Obergrenze pro Subreddit (gleichmäßig auf die Quellen verteilt), sodass die API-Last unverändert bleibt.
 
 ## [3.1.1] - 2026-08-07

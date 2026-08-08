@@ -58,6 +58,42 @@ def _quality_allows_alert(spike: SpikeResult, *, min_abs: int) -> bool:
     return spike.current_mentions >= max(min_abs * 2, 50)
 
 
+def compute_velocity(current: int, recent: list[int]) -> tuple[float, float]:
+    """Beschleunigung des aktuellen Laufs gegen die letzten Läufe.
+
+    Gibt (avg, ratio) zurück. `recent` sind die Nennungen der vorherigen Läufe
+    (fehlende Läufe zählen als 0). Ein leeres Fenster oder ein Schnitt von 0
+    liefert ratio 0.0 — dann gibt es keine Basis für eine Beschleunigungs-
+    Aussage, und der Fall gehört ohnehin zu NEW_TICKER.
+    """
+    if not recent:
+        return 0.0, 0.0
+    avg = sum(recent) / len(recent)
+    if avg <= 0:
+        return 0.0, 0.0
+    return avg, current / avg
+
+
+def velocity_triggers(
+    current: int,
+    recent: list[int],
+    *,
+    min_abs: int,
+    ratio_threshold: float,
+) -> bool:
+    """True, wenn die Kurzfrist-Beschleunigung einen Frühwarn-Alert rechtfertigt.
+
+    Bewusst konservativ: es braucht ein volles Vergleichsfenster (sonst ist der
+    Schnitt nicht belastbar), eine Mindestmenge an Nennungen im aktuellen Lauf
+    (Rauschfilter — 2→6 ist dreifach, aber bedeutungslos) und einen Anstieg über
+    dem Schwellwert.
+    """
+    if current < min_abs:
+        return False
+    _, ratio = compute_velocity(current, recent)
+    return ratio >= ratio_threshold
+
+
 def _confidence_score(spike: SpikeResult) -> int:
     """
     Erklärbarkeits-Score (0..100) für Alert-Vorschau und Dashboard.
@@ -80,6 +116,10 @@ def _confidence_score(spike: SpikeResult) -> int:
         score += min(8, int(abs(spike.price_data.primary_change)))
     if spike.news:
         score += min(8, len(spike.news) * 2)
+    if spike.velocity_ratio > 0:
+        # Kurzfrist-Beschleunigung: stützt v.a. Frühwarn-Alerts, deren
+        # 30-Tage-ratio noch niedrig ist.
+        score += min(12, int(spike.velocity_ratio * 3))
     return max(0, min(100, score))
 
 
@@ -94,7 +134,16 @@ def _candidate_rank(spike: SpikeResult) -> float:
     ratio = 100.0 if spike.ratio == float("inf") else min(spike.ratio, 100.0)
     engagement = spike.signal.engagement_weight if spike.signal else 0.0
     sentiment = abs(spike.signal.sentiment) if spike.signal else 0.0
-    return ratio + engagement * 10 + sentiment * 5 + min(spike.current_mentions, 50) * 0.2
+    # Velocity-Alerts haben oft eine niedrige 30-Tage-ratio — die Beschleunigung
+    # macht sie trotzdem konkurrenzfähig, wenn max_per_run begrenzt.
+    velocity = min(spike.velocity_ratio, 20.0)
+    return (
+        ratio
+        + velocity * 2
+        + engagement * 10
+        + sentiment * 5
+        + min(spike.current_mentions, 50) * 0.2
+    )
 
 
 def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
@@ -107,6 +156,8 @@ def _alert_preview(alerts: list[Alert]) -> list[dict[str, object]]:
             "ratio": None if alert.spike.ratio == float("inf") else round(alert.spike.ratio, 2),
             "delta": alert.spike.delta,
             "is_new": alert.spike.is_new,
+            "velocity_ratio": round(alert.spike.velocity_ratio, 2),
+            "velocity_avg": round(alert.spike.velocity_avg, 2),
             "price": alert.spike.price_data.primary_price if alert.spike.price_data else None,
             "price_change": alert.spike.price_data.primary_change
             if alert.spike.price_data
@@ -162,8 +213,12 @@ async def analyze_mentions(
         return alerts
 
     # Vorfilter: jeder Alert-Typ erfordert mindestens min(min_abs, min_delta)
-    # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls
+    # Nennungen — für das Gros der Ticker (1-2 Nennungen) sparen wir uns die DB-Calls.
+    # Die Velocity-Schwelle muss mit einfließen, sonst filtert der Vorfilter genau
+    # die Frühwarn-Kandidaten weg, die noch unter min_abs/min_delta liegen.
     min_relevant = min(cfg.min_abs, cfg.min_delta)
+    if cfg.velocity_enabled:
+        min_relevant = min(min_relevant, cfg.velocity_min_abs)
     relevant_items = [
         (ticker, current) for ticker, current in mention_counts.items() if current >= min_relevant
     ]
@@ -192,6 +247,29 @@ async def analyze_mentions(
         elif not is_new and delta >= cfg.min_delta and ratio >= cfg.ratio:
             reason = AlertReason.SPIKE
 
+        # Frühwarnung: Beschleunigung über die letzten Läufe. Nur prüfen, wenn
+        # noch kein Grund gefunden wurde (spart die DB-Abfrage) und der Ticker
+        # bekannt ist — brandneue Ticker deckt NEW_TICKER ab.
+        velocity_avg = 0.0
+        velocity_ratio = 0.0
+        if (
+            cfg.velocity_enabled
+            and reason is None
+            and not is_new
+            and current >= cfg.velocity_min_abs
+        ):
+            recent = await db.get_recent_run_mentions(
+                ticker, runs=cfg.velocity_runs, exclude_run_id=run_id
+            )
+            velocity_avg, velocity_ratio = compute_velocity(current, recent)
+            if velocity_triggers(
+                current,
+                recent,
+                min_abs=cfg.velocity_min_abs,
+                ratio_threshold=cfg.velocity_ratio,
+            ):
+                reason = AlertReason.VELOCITY
+
         spike_results.append(
             SpikeResult(
                 ticker=ticker,
@@ -202,6 +280,8 @@ async def analyze_mentions(
                 is_new=is_new,
                 reason=reason,
                 signal=signals.get(ticker),
+                velocity_avg=velocity_avg,
+                velocity_ratio=velocity_ratio,
             )
         )
 

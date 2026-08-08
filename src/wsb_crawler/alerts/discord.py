@@ -40,6 +40,7 @@ def _get_db() -> Database:
 COLOR_SPIKE = 0xFF4500  # Reddit-Orange
 COLOR_NEW = 0x00B0F4  # Blau
 COLOR_PRICE_MOVE = 0xFFAA00  # Amber
+COLOR_VELOCITY = 0x8B5CF6  # Violett — Frühwarnung (Beschleunigung)
 COLOR_HEARTBEAT = 0x2B2D31  # Discord-Dunkel
 COLOR_SUCCESS = 0x57F287  # Grün
 
@@ -72,6 +73,12 @@ def _build_alert_reason_summary(alert: Alert) -> str:
 
     if spike.is_new:
         reason = f"Neuer Ticker mit {spike.current_mentions} Nennungen"
+    elif alert.reason == AlertReason.VELOCITY:
+        # Frühwarnung: die Beschleunigung ist hier die Aussage, nicht der 30-Tage-Schnitt
+        reason = (
+            f"Beschleunigung: {spike.velocity_ratio:.1f}x gegenueber den letzten Laeufen "
+            f"(Ø {spike.velocity_avg:.1f} → {spike.current_mentions})"
+        )
     else:
         reason = f"{spike.ratio:.1f}x ueber Normalwert - +{spike.delta} Nennungen"
 
@@ -92,12 +99,14 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
         AlertReason.NEW_TICKER: COLOR_NEW,
         AlertReason.SPIKE: COLOR_SPIKE,
         AlertReason.PRICE_MOVE: COLOR_PRICE_MOVE,
+        AlertReason.VELOCITY: COLOR_VELOCITY,
     }.get(alert.reason, COLOR_SPIKE)
 
     reason_label = {
         AlertReason.NEW_TICKER: "🆕 Neuer Ticker",
         AlertReason.SPIKE: "🚀 Spike erkannt",
         AlertReason.PRICE_MOVE: "💹 Kurs + Aktivität",
+        AlertReason.VELOCITY: "⚡ Frühwarnung",
     }.get(alert.reason, "⚡ Alert")
 
     company = price.company_name if price else None

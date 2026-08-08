@@ -27,6 +27,7 @@ class AlertReason(StrEnum):
     NEW_TICKER = "new_ticker"  # Ticker noch nie gesehen, hohe abs. Nennungen
     SPIKE = "spike"  # Bekannter Ticker, plötzlicher Anstieg
     PRICE_MOVE = "price_move"  # Signifikante Kursbewegung + Nennungen
+    VELOCITY = "velocity"  # Beschleunigung über die letzten Läufe (Frühwarnung)
 
 
 class MarketStatus(StrEnum):
@@ -280,6 +281,11 @@ class SpikeResult:
     history: TickerHistory | None = None
     signal: TickerSignal | None = None  # Engagement + Sentiment (Ranking/Confidence)
     confidence: int = 0  # Erklärbarkeits-Score 0–100 (vom Detector gesetzt)
+    # Kurzfrist-Beschleunigung: Nennungen dieses Laufs gegen den Schnitt der
+    # letzten Läufe (0.0 = nicht berechnet). Erkennt Spikes im Aufbau, bevor
+    # der 30-Tage-Schnitt reagiert.
+    velocity_avg: float = 0.0
+    velocity_ratio: float = 0.0
 
 
 # ── Alerts ─────────────────────────────────────────────────────────────────
