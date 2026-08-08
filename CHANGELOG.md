@@ -11,18 +11,20 @@ Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 - **Ticker-Filter in der WebUI** (Sektion „Ticker-Filter“): eigene Wörter zusätzlich ignorieren (Fehlalarme selbst abstellen) und Ausnahmen von der eingebauten Blacklist erlauben (echte Ticker, die als normales Wort gefiltert werden, z.B. WEN für Wendy’s). Bisher war die Blacklist nur im Code änderbar. Eigene Einträge greifen auch bei $-Schreibweise; bei widersprüchlicher Angabe gewinnt die Ausnahme.
 - **Alphavantage als Zweitquelle für Kurse**: Liefert Yahoo keinen Kurs (Drosselung mit `429` oder „no price data found"), wird — falls ein Schlüssel konfiguriert ist — Alphavantage befragt. Meldet auch diese API ihr Limit, wird der Fallback vorübergehend gesperrt, statt das Tageskontingent zu verbrennen.
 - Alphavantage- und NewsAPI-Schlüssel sind jetzt in der WebUI eintragbar (neue Sektion „Datenquellen"); bisher waren sie nur per ENV oder direktem API-Aufruf setzbar. Der Alphavantage-Schlüssel war zuvor überhaupt nicht ausgewertet.
+- Die Discord-Testnachricht sendet jetzt einen **erfundenen Beispiel-Alert**, gerendert über denselben Code wie echte Alerts — man sieht damit sofort, wie ein Alert aussieht, statt nur eine Erfolgsmeldung zu bekommen. Deutlich als Test gekennzeichnet und bewusst ohne Ping; die konfigurierten @-Ziele werden nur benannt.
+- **Velocity-Frühwarnung**: neuer Alert-Grund `velocity`, der die Nennungen des aktuellen Laufs gegen den Schnitt der letzten Läufe vergleicht (Default: 3 Läufe, Faktor 2.5, min. 8 Nennungen; in der WebUI ein-/ausschaltbar). Damit werden Spikes erkannt, **während sie aufbauen** — der 30-Tage-Schnitt reagiert dafür zu spät. Fehlende Läufe zählen als 0, ein voller Vergleich braucht Historie, und der Rauschfilter verhindert Alarme bei Kleinstzahlen. Beschleunigung fließt in Confidence und Kandidaten-Ranking ein und wird in Discord-/Telegram-Alerts sowie im Dashboard ausgewiesen.
+
+- Der Crawler liest jetzt mehrere Reddit-Listings pro Lauf (`hot`, `new`, `rising`, `top`; Default `hot,new,rising`, wählbar in der WebUI unter „Reddit-Quellen"). `new`/`rising` zeigen aufkommende Ticker, bevor sie in `hot` auftauchen — Spikes werden dadurch früher erkannt. Posts werden über die Listings dedupliziert, und `posts_limit` bleibt die Gesamt-Obergrenze pro Subreddit (gleichmäßig auf die Quellen verteilt), sodass die API-Last unverändert bleibt.
 
 ### Fixed
 
 - Ein einzelnes fehlendes yfinance-Feld ließ den kompletten Kursabruf scheitern (`Konnte Kurs für HTZ nicht holen: 'currency'`), obwohl der Preis vorhanden war — Felder werden jetzt defensiv gelesen.
 - Bei `429 Too Many Requests` wurde die Anfrage wiederholt und die Drosselung damit verschärft; Rate-Limits werden jetzt erkannt, nicht wiederholt und führen direkt zur Zweitquelle. Sie erscheinen außerdem nicht mehr als Warnung, weil sie Betriebsrauschen sind.
+- Die Lauf-Ansicht im Dashboard verschwand nach Crawl-Ende; sie bleibt jetzt mit Ergebnis stehen. Der Scheduler loggte die nächste Laufzeit in UTC neben lokalen Zeitstempeln, was wie ein Zeitsprung aussah.
 
-### Added
+### Changed
 
-- Die Discord-Testnachricht sendet jetzt einen **erfundenen Beispiel-Alert**, gerendert über denselben Code wie echte Alerts — man sieht damit sofort, wie ein Alert aussieht, statt nur eine Erfolgsmeldung zu bekommen. Deutlich als Test gekennzeichnet und bewusst ohne Ping; die konfigurierten @-Ziele werden nur benannt.
-- **Velocity-Frühwarnung**: neuer Alert-Grund `velocity`, der die Nennungen des aktuellen Laufs gegen den Schnitt der letzten Läufe vergleicht (Default: 3 Läufe, Faktor 2.5, min. 8 Nennungen; in der WebUI ein-/ausschaltbar). Damit werden Spikes erkannt, **während sie aufbauen** — der 30-Tage-Schnitt reagiert dafür zu spät. Fehlende Läufe zählen als 0, ein voller Vergleich braucht Historie, und der Rauschfilter verhindert Alarme bei Kleinstzahlen. Beschleunigung fließt in Confidence und Kandidaten-Ranking ein und wird in Discord-/Telegram-Alerts sowie im Dashboard ausgewiesen.
-
-- Der Crawler liest jetzt mehrere Reddit-Listings pro Lauf (`hot`, `new`, `rising`, `top`; Default `hot,new,rising`, wählbar in der WebUI unter „Reddit-Quellen"). `new`/`rising` zeigen aufkommende Ticker, bevor sie in `hot` auftauchen — Spikes werden dadurch früher erkannt. Posts werden über die Listings dedupliziert, und `posts_limit` bleibt die Gesamt-Obergrenze pro Subreddit (gleichmäßig auf die Quellen verteilt), sodass die API-Last unverändert bleibt.
+- Coverage-Gate der CI von 60 % auf 80 % angehoben; `main.py` (Scheduler-Loop) und `alerts/bot.py` (Slash-Commands) sind jetzt getestet (96 % / 97 %).
 
 ## [3.1.1] - 2026-08-07
 
