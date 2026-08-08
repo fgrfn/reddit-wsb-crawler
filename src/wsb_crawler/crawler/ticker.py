@@ -10,6 +10,7 @@ Portiert und verbessert aus v1:
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 
 from wsb_crawler.models import RedditPost, TickerMention
 
@@ -295,7 +296,27 @@ BLACKLIST: frozenset[str] = frozenset(
 CONTEXT_WINDOW = 100
 
 
-def extract_tickers(post: RedditPost) -> list[TickerMention]:
+def effective_blacklist(
+    extra: Iterable[str] | None = None, allowlist: Iterable[str] | None = None
+) -> frozenset[str]:
+    """Baut die wirksame Blacklist aus eingebauter Liste, Zusätzen und Ausnahmen.
+
+    `extra` blockt zusätzliche Wörter (eigene Fehlalarme), `allowlist` hebt
+    Einträge der eingebauten Liste auf (ein echter Ticker, der fälschlich als
+    Wort gefiltert wird). Die Ausnahme gewinnt, damit ein bewusst erlaubter
+    Ticker nicht doch von der Standardliste blockiert wird.
+    """
+    blocked = set(BLACKLIST)
+    if extra:
+        blocked |= {t.strip().upper().lstrip("$") for t in extra if t.strip()}
+    if allowlist:
+        blocked -= {t.strip().upper().lstrip("$") for t in allowlist if t.strip()}
+    return frozenset(blocked)
+
+
+def extract_tickers(
+    post: RedditPost, blacklist: frozenset[str] | None = None
+) -> list[TickerMention]:
     """
     Extrahiert alle Ticker-Erwähnungen aus einem Post/Kommentar.
 
@@ -305,7 +326,11 @@ def extract_tickers(post: RedditPost) -> list[TickerMention]:
     Gibt pro Post jede Ticker+Post-ID-Kombination nur einmal zurück
     (Dedup innerhalb eines Posts), zählt aber mehrfache Nennungen
     über separate Posts hinweg.
+
+    `blacklist` überschreibt die eingebaute Liste (siehe `effective_blacklist`);
+    ohne Angabe gilt die eingebaute.
     """
+    blocked = BLACKLIST if blacklist is None else blacklist
     text = f"{post.title} {post.text}".strip()
     if not text:
         return []
@@ -318,7 +343,7 @@ def extract_tickers(post: RedditPost) -> list[TickerMention]:
         ticker = (match.group(1) or match.group(2)).upper()
         is_explicit = match.group(1) is not None
 
-        if ticker in BLACKLIST:
+        if ticker in blocked:
             continue
         # Einzelbuchstaben nur mit explizitem $-Präfix ("$F" ja, "F" nein)
         if len(ticker) < 2 and not is_explicit:

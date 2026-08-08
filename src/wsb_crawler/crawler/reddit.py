@@ -17,7 +17,11 @@ from loguru import logger
 
 from wsb_crawler.analysis.signals import compute_signals
 from wsb_crawler.config import RedditSettings, get_settings
-from wsb_crawler.crawler.ticker import aggregate_mentions, extract_tickers
+from wsb_crawler.crawler.ticker import (
+    aggregate_mentions,
+    effective_blacklist,
+    extract_tickers,
+)
 from wsb_crawler.models import CrawlResult, RedditPost, TickerMention
 from wsb_crawler.runtime.progress import update_run, update_subreddit
 
@@ -258,9 +262,14 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
         posts_scanned=len(all_posts),
         comments_scanned=len(all_comments),
     )
+    # Eigene Filter aus der Konfiguration auf die eingebaute Blacklist anwenden
+    blocked = effective_blacklist(
+        extra=crawler_cfg.ticker_blacklist_extra,
+        allowlist=crawler_cfg.ticker_allowlist,
+    )
     all_mentions: list[TickerMention] = []
     for idx, item in enumerate(all_items, start=1):
-        all_mentions.extend(extract_tickers(item))
+        all_mentions.extend(extract_tickers(item, blacklist=blocked))
         if idx % 2500 == 0:
             update_run(
                 message=f"Ticker-Erkennung: {idx}/{len(all_items)} Texte verarbeitet…",

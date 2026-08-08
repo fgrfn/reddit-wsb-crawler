@@ -615,6 +615,9 @@
     {title:'Datenquellen', dot:'--success', optional:true, fields:[
       {k:'alphavantage_api_key',l:'Alphavantage API-Key',secret:true,h:'Zweitquelle für Kurse, wenn Yahoo nichts liefert oder drosselt (429). Kostenloser Schlüssel auf alphavantage.co — das Tageslimit ist klein, daher nur als Fallback genutzt.'},
       {k:'newsapi_key',l:'NewsAPI-Key',secret:true,h:'Optional: Schlagzeilen zu Alert-Tickern von newsapi.org. Ohne Schlüssel bleiben Alerts ohne News-Block.'}]},
+    {title:'Ticker-Filter', dot:'--reason-spike', optional:true, fields:[
+      {k:'ticker_blacklist_extra',l:'Zusätzlich ignorieren',h:'Eigene Fehlalarme abstellen: komma-getrennte Wörter, die nie als Ticker gelten sollen (z.B. YOLO, PUMP). Wirkt zusätzlich zur eingebauten Liste und greift auch bei $-Schreibweise.'},
+      {k:'ticker_allowlist',l:'Trotzdem zulassen',h:'Ausnahmen von der eingebauten Liste: echte Ticker, die als normales Wort gefiltert werden (z.B. WEN für Wendy\'s, ALL für Allstate).'}]},
     {title:'Alert-Schwellwerte', dot:'--warn', grid:true, fields:[
       {k:'alert_min_abs',l:'Min. Nennungen (neu)',h:'Mindestanzahl, ab der ein neuer Ticker als Kandidat gilt.'},{k:'alert_min_delta',l:'Min. Anstieg absolut',h:'Mindestanstieg gegenueber der historischen Basislinie.'},{k:'alert_ratio',l:'Anstiegsfaktor',h:'Faktor zur Basislinie, z.B. 2.0 fuer doppelt so viele Nennungen.'},
       {k:'alert_min_price_move',l:'Min. Kursbewegung %',h:'Optionaler Kursbewegungs-Filter fuer Price-Move-Alerts.'},{k:'alert_max_per_run',l:'Max. Alerts/Lauf',h:'Begrenzt die Anzahl gesendeter Alerts pro Crawl.'},{k:'alert_cooldown_h',l:'Cooldown (Std.)',h:'Sperrzeit, bevor derselbe Ticker erneut alarmieren darf.'}]},
