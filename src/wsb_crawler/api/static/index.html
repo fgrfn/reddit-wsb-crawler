@@ -612,6 +612,9 @@
       {k:'discord_mention_targets',l:'@-Erwähnungen bei Alerts (optional)',h:'Wer bei jedem Alert gepingt wird. Komma-getrennt: User-IDs (z.B. 123456789012345678), Rollen als &987654321098765432, sowie @here oder @everyone. User-/Rollen-ID per Rechtsklick → „ID kopieren" (Discord-Entwicklermodus). Hinweis: @everyone/@here erreichen alle, die den Webhook-Kanal sehen können — nicht zwingend den ganzen Server. Für einen kleinen Kreis besser User-IDs oder eine eigene Rolle nutzen.'}]},
     {title:'Telegram', dot:'#2AABEE', optional:true, fields:[
       {k:'telegram_bot_token',l:'Bot Token',secret:true,h:'Optionaler Telegram-Bot-Token fuer Benachrichtigungen.'},{k:'telegram_chat_id',l:'Chat-ID',h:'Ziel-Chat oder Kanal fuer Telegram-Alerts.'}]},
+    {title:'Datenquellen', dot:'--success', optional:true, fields:[
+      {k:'alphavantage_api_key',l:'Alphavantage API-Key',secret:true,h:'Zweitquelle für Kurse, wenn Yahoo nichts liefert oder drosselt (429). Kostenloser Schlüssel auf alphavantage.co — das Tageslimit ist klein, daher nur als Fallback genutzt.'},
+      {k:'newsapi_key',l:'NewsAPI-Key',secret:true,h:'Optional: Schlagzeilen zu Alert-Tickern von newsapi.org. Ohne Schlüssel bleiben Alerts ohne News-Block.'}]},
     {title:'Alert-Schwellwerte', dot:'--warn', grid:true, fields:[
       {k:'alert_min_abs',l:'Min. Nennungen (neu)',h:'Mindestanzahl, ab der ein neuer Ticker als Kandidat gilt.'},{k:'alert_min_delta',l:'Min. Anstieg absolut',h:'Mindestanstieg gegenueber der historischen Basislinie.'},{k:'alert_ratio',l:'Anstiegsfaktor',h:'Faktor zur Basislinie, z.B. 2.0 fuer doppelt so viele Nennungen.'},
       {k:'alert_min_price_move',l:'Min. Kursbewegung %',h:'Optionaler Kursbewegungs-Filter fuer Price-Move-Alerts.'},{k:'alert_max_per_run',l:'Max. Alerts/Lauf',h:'Begrenzt die Anzahl gesendeter Alerts pro Crawl.'},{k:'alert_cooldown_h',l:'Cooldown (Std.)',h:'Sperrzeit, bevor derselbe Ticker erneut alarmieren darf.'}]},
@@ -725,7 +728,7 @@
     return `
       <div class="head-row"><div><div class="page-title">Konfiguration</div><div class="page-sub">Secrets sind maskiert · leeres Feld behält den Wert</div></div><button class="btn btn-primary" onclick="saveConfig()">Speichern</button></div>
       <div id="configValidation" class="card" style="display:none;border-color:var(--danger);color:var(--danger);padding:13px 16px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${sec(CFG_SECTIONS[0])}${sec(CFG_SECTIONS[1])}${sec(CFG_SECTIONS[2])}${schedCard()}${sec(CFG_SECTIONS[3])}${velocityCard()}</div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${CFG_SECTIONS.map(sec).join('')}${schedCard()}${velocityCard()}</div>`;
   }
   function setSched(m){ state.schedMode=m; syncConfigInputs(); render(); }
   function syncConfigInputs(){ document.querySelectorAll('[data-cfg]').forEach(el=>{ state.configValues[el.getAttribute('data-cfg')] = el.value; }); }

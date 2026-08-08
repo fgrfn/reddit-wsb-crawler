@@ -29,6 +29,7 @@ from wsb_crawler.crawler.reddit import set_database as reddit_set_db
 from wsb_crawler.crawler.runner import run_single_crawl
 from wsb_crawler.cron import next_run as cron_next_run
 from wsb_crawler.enrichment.news import set_database as news_set_db
+from wsb_crawler.enrichment.prices import set_database as prices_set_db
 from wsb_crawler.storage.database import Database
 
 PORT = int(os.getenv("WSB_PORT", "80"))
@@ -167,6 +168,7 @@ async def main_async() -> None:
         reddit_set_db(db)
         discord_set_db(db)
         news_set_db(db)
+        prices_set_db(db)
 
         # Browser öffnen (nicht in Docker/Headless — WSB_NO_BROWSER=1)
         url = DASHBOARD_URL if configured else f"{DASHBOARD_URL}/setup"
