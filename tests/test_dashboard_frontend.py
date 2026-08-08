@@ -79,7 +79,9 @@ def test_dashboard_keeps_running_snapshot_across_reconnects() -> None:
 
     assert "currentRun:null" in html
     assert "if(status.current_run) state.currentRun = status.current_run;" in html
-    assert "status.current_run || (status.crawl_running ? state.currentRun : null)" in html
+    # Der gemerkte Lauf gilt jetzt unabhängig von crawl_running — das deckt den
+    # Reconnect weiter ab und lässt die Ansicht zusätzlich nach Crawl-Ende stehen.
+    assert "const run = status.current_run || state.currentRun;" in html
     assert "function runProgressFallback()" in html
     assert "api('/status').then(s=>updateDashboardLive(s, 'verbinde'))" in html
 
@@ -159,3 +161,17 @@ def test_dashboard_links_to_run_detail() -> None:
     assert "async function renderRunDetail()" in html
     assert "api(`/runs/${encodeURIComponent(state.runId)}`)" in html
     assert "Top-Ticker in diesem Lauf" in html
+
+
+def test_run_view_survives_crawl_end() -> None:
+    """Die Lauf-Ansicht darf nach Crawl-Ende nicht verschwinden."""
+    html = INDEX.read_text(encoding="utf-8")
+    # Kein früher Abbruch mehr für abgeschlossene Läufe
+    assert "if(!run || !run.active) return ''" not in html
+    assert "if(!run) return ''" in html
+    # Der letzte Lauf wird nicht mehr aus dem State gelöscht
+    assert "state.currentRun = null" not in html
+    assert "const run = status.current_run || state.currentRun;" in html
+    # Abgeschlossen/fehlgeschlagen wird unterschieden
+    assert "abgeschlossen" in html
+    assert "fehlgeschlagen" in html

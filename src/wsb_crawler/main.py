@@ -109,7 +109,12 @@ async def scheduler_loop(db: Database) -> None:
             logger.warning(f"Heartbeat fehlgeschlagen: {e}")
 
         sleep_seconds = max(0.0, (next_at - datetime.now(tz=dt.UTC)).total_seconds())
-        logger.info(f"Nächster Lauf um {next_at:%H:%M} (in {sleep_seconds / 60:.0f} Min.)...")
+        # In lokaler Zeit loggen — die Logzeilen tragen lokale Zeitstempel, eine
+        # UTC-Uhrzeit daneben liest sich sonst wie ein Zeitsprung.
+        logger.info(
+            f"Nächster Lauf um {next_at.astimezone():%H:%M} "
+            f"(in {sleep_seconds / 60:.0f} Min.)..."
+        )
         await asyncio.sleep(sleep_seconds)
 
 
