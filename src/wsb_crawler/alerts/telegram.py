@@ -23,6 +23,7 @@ _REASON_LABEL = {
     AlertReason.NEW_TICKER: "🆕 Neuer Ticker",
     AlertReason.SPIKE: "🚀 Spike",
     AlertReason.PRICE_MOVE: "💹 Kurs + Aktivität",
+    AlertReason.VELOCITY: "⚡ Frühwarnung",
 }
 _SENTIMENT_LABEL = {"bullish": "🐂 Bullish", "bearish": "🐻 Bearish", "neutral": "➖ Neutral"}
 
@@ -60,6 +61,13 @@ def _build_message(alert: Alert) -> str:
         lines.append(
             f"📊 <b>{spike.current_mentions}</b> Erwähnungen · "
             f"Ø {spike.avg_mentions:.1f} ({spike.ratio:.1f}×) · +{spike.delta}"
+        )
+
+    # Beschleunigung (Frühwarn-Signal)
+    if spike.velocity_ratio > 0:
+        lines.append(
+            f"⚡ <b>{spike.velocity_ratio:.1f}×</b> gegenüber letzten Läufen "
+            f"(Ø {spike.velocity_avg:.1f})"
         )
 
     # Stimmung + Engagement

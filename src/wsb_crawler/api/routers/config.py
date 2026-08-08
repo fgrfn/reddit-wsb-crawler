@@ -68,6 +68,10 @@ class ConfigPayload(BaseModel):
     alert_min_price_move: float | None = Field(default=None, ge=0)
     alert_max_per_run: int | None = Field(default=None, ge=1, le=25)
     alert_cooldown_h: int | None = Field(default=None, ge=0)
+    alert_velocity_enabled: str | None = None
+    alert_velocity_ratio: float | None = Field(default=None, gt=1)
+    alert_velocity_min_abs: int | None = Field(default=None, ge=1)
+    alert_velocity_runs: int | None = Field(default=None, ge=2, le=20)
 
     # Crawler
     subreddits: str | None = None  # komma-separiert

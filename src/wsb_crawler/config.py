@@ -105,6 +105,12 @@ class AlertSettings:
     min_price_move: float = 5.0
     max_per_run: int = 3
     cooldown_h: int = 4
+    # Velocity (Frühwarnung): Beschleunigung gegen den Schnitt der letzten Läufe
+    # statt gegen den 30-Tage-Schnitt — greift, während ein Spike noch aufbaut.
+    velocity_enabled: bool = True
+    velocity_ratio: float = 2.5  # current / Ø der letzten Läufe
+    velocity_min_abs: int = 8  # Rauschfilter: Mindest-Nennungen im aktuellen Lauf
+    velocity_runs: int = 3  # Größe des Vergleichsfensters (Läufe)
 
 
 @dataclass
@@ -167,6 +173,10 @@ async def get_settings(db: Database) -> Settings:
         "alert_min_price_move",
         "alert_max_per_run",
         "alert_cooldown_h",
+        "alert_velocity_enabled",
+        "alert_velocity_ratio",
+        "alert_velocity_min_abs",
+        "alert_velocity_runs",
         "subreddits",
         "crawl_interval_minutes",
         "schedule_mode",
@@ -238,6 +248,10 @@ async def get_settings(db: Database) -> Settings:
             min_price_move=float(opt("alert_min_price_move") or "5.0"),
             max_per_run=int(opt("alert_max_per_run") or "3"),
             cooldown_h=int(opt("alert_cooldown_h") or "4"),
+            velocity_enabled=(opt("alert_velocity_enabled") or "true").lower() == "true",
+            velocity_ratio=float(opt("alert_velocity_ratio") or "2.5"),
+            velocity_min_abs=int(opt("alert_velocity_min_abs") or "8"),
+            velocity_runs=int(opt("alert_velocity_runs") or "3"),
         ),
         crawler=CrawlerSettings(
             subreddits=subreddits,

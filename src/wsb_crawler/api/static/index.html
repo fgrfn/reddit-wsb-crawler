@@ -19,6 +19,7 @@
       --reason-new:#2563EB; --reason-new-soft:rgba(37,99,235,.1);
       --reason-spike:#EA580C; --reason-spike-soft:rgba(234,88,12,.1);
       --reason-move:#D97706; --reason-move-soft:rgba(217,119,6,.1);
+      --reason-velocity:#8B5CF6; --reason-velocity-soft:rgba(139,92,246,.1);
       --bull:#16A34A; --bull-soft:rgba(22,163,74,.1); --bear:#DC2626; --bear-soft:rgba(220,38,38,.1);
       --bar-up:linear-gradient(90deg,#16A34A,#22C55E); --bar-down:linear-gradient(90deg,#DC2626,#EF4444); --bar-flat:#EA580C;
       --toggle-bg:#FFFFFF; --dot-off:#D6D3CB;
@@ -89,6 +90,7 @@
     spike:      {label:'Spike',     v:'--reason-spike'},
     new_ticker: {label:'Neu',       v:'--reason-new'},
     price_move: {label:'Kurs+Akt.', v:'--reason-move'},
+    velocity:   {label:'Frühwarnung', v:'--reason-velocity'},
   };
   const NAV = [['dashboard','Dashboard'],['alerts','Alerts'],['config','Konfiguration'],['logs','Logs']];
 
@@ -441,13 +443,13 @@
   }
   async function renderAlerts(){
     const alerts = await api('/alerts?limit=200');
-    const legend = [['new_ticker','Ticker war nie in der Historie und taucht plötzlich mit vielen Nennungen auf.'],['spike','Bekannter Ticker mit plötzlichem Anstieg gegenüber dem Ø (Delta + Faktor).'],['price_move','Spike und zugleich eine signifikante Kursbewegung des Tickers.']];
+    const legend = [['new_ticker','Ticker war nie in der Historie und taucht plötzlich mit vielen Nennungen auf.'],['spike','Bekannter Ticker mit plötzlichem Anstieg gegenüber dem Ø (Delta + Faktor).'],['price_move','Spike und zugleich eine signifikante Kursbewegung des Tickers.'],['velocity','Beschleunigung über die letzten Läufe — greift, während ein Spike noch aufbaut, bevor der 30-Tage-Schnitt reagiert.']];
     return `
       <div class="head-row"><div><div class="page-title">Alert-History</div><div class="page-sub"><span id="alertCount">${fmtNum(alerts.length)}</span> von ${fmtNum(alerts.length)} geladenen Alerts</div></div>
         <button class="btn" onclick="resetAlertFilters()">Filter zurücksetzen</button></div>
       <div class="card" style="padding:14px 16px;display:grid;grid-template-columns:1.2fr .8fr .8fr .8fr .8fr;gap:10px;align-items:end;">
         <label><span class="lbl">Ticker</span><input class="inp" id="alertFilterTicker" placeholder="z.B. GME" oninput="filterAlerts()" /></label>
-        <label><span class="lbl">Grund</span><select class="inp" id="alertFilterReason" onchange="filterAlerts()"><option value="">Alle</option><option value="new_ticker">Neu</option><option value="spike">Spike</option><option value="price_move">Kurs+Akt.</option></select></label>
+        <label><span class="lbl">Grund</span><select class="inp" id="alertFilterReason" onchange="filterAlerts()"><option value="">Alle</option><option value="new_ticker">Neu</option><option value="spike">Spike</option><option value="price_move">Kurs+Akt.</option><option value="velocity">Frühwarnung</option></select></label>
         <label><span class="lbl">Min. Nennungen</span><input class="inp" id="alertFilterMentions" type="number" min="0" placeholder="0" oninput="filterAlerts()" /></label>
         <label><span class="lbl">Min. Confidence</span><input class="inp" id="alertFilterConfidence" type="number" min="0" max="100" placeholder="0" oninput="filterAlerts()" /></label>
         <label><span class="lbl">Zeitraum</span><select class="inp" id="alertFilterDays" onchange="filterAlerts()"><option value="">Alle</option><option value="1">24h</option><option value="7">7 Tage</option><option value="30">30 Tage</option></select></label>
@@ -457,7 +459,7 @@
         <div><div class="tile-label" style="margin-bottom:5px;">Nennungen &amp; Faktor</div><div style="font-size:12.5px;color:var(--text-2);line-height:1.45;">Nennungen sind Treffer im jeweiligen Lauf. Der Faktor zeigt den Anstieg gegenüber der historischen Basislinie.</div></div>
         <div><div class="tile-label" style="margin-bottom:5px;">Kurs</div><div style="font-size:12.5px;color:var(--text-2);line-height:1.45;">Der Kurswert ist die erkannte Kursbewegung zum Alert-Zeitpunkt. Ein Strich bedeutet: keine Kursdaten verfügbar.</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">${legend.map(([r,txt])=>{const rm=reasonMeta(r);return `<div class="card" style="border-radius:13px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;"><span class="badge" style="flex:none;margin-top:1px;color:var(${rm.v});background:var(${rm.v}-soft);">${rm.label}</span><span style="font-size:12px;color:var(--text-2);line-height:1.45;">${txt}</span></div>`;}).join('')}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;">${legend.map(([r,txt])=>{const rm=reasonMeta(r);return `<div class="card" style="border-radius:13px;padding:13px 15px;display:flex;gap:11px;align-items:flex-start;"><span class="badge" style="flex:none;margin-top:1px;color:var(${rm.v});background:var(${rm.v}-soft);">${rm.label}</span><span style="font-size:12px;color:var(--text-2);line-height:1.45;">${txt}</span></div>`;}).join('')}</div>
       <div class="card" style="padding:0;overflow:hidden;">
         <div style="display:grid;grid-template-columns:120px 1fr 120px 90px 90px 130px;gap:12px;padding:13px 20px;border-bottom:1px solid var(--border);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-4);"><span title="Ticker, fuer den ein Alert erzeugt wurde." style="cursor:help;">Ticker</span><span title="Zeitpunkt, zu dem der Alert gesendet wurde." style="cursor:help;">Zeitpunkt</span><span title="Warum der Alert ausgeloest wurde: neuer Ticker, Spike oder Kurs + Aktivitaet." style="cursor:help;">Grund</span><span style="text-align:right;cursor:help;" title="Anzahl erkannter Ticker-Nennungen im Alert-Lauf.">Nennungen</span><span style="text-align:right;cursor:help;" title="Anstieg gegenueber der historischen Basislinie.">Faktor</span><span style="text-align:right;cursor:help;" title="Kurs und Kursbewegung zum Alert-Zeitpunkt, falls verfuegbar.">Kurs</span></div>
         <div id="alertRows">${alerts.length?alerts.map(alertRowCols).join(''):`<div class="empty" style="margin:18px;">Noch keine Alerts.</div>`}</div>
@@ -566,6 +568,35 @@
       <span class="hint">Welche Listings pro Lauf gelesen werden. <b>New</b> und <b>Rising</b> zeigen aufkommende Ticker, bevor sie in <b>Hot</b> auftauchen — Spikes werden dadurch früher erkannt. Das Post-Budget oben wird gleichmäßig auf die aktiven Quellen verteilt, die API-Last bleibt also gleich.</span>
       <input type="hidden" data-cfg="listings" value="${esc(currentListings().join(','))}" /></div>`;
   }
+  function velocityEnabled(){
+    const raw = state.configValues.alert_velocity_enabled;
+    if(raw === undefined || raw === null || raw === '') return true;  // Default an
+    return String(raw).toLowerCase() === 'true';
+  }
+  function toggleVelocity(){
+    syncConfigInputs();
+    state.configValues.alert_velocity_enabled = velocityEnabled() ? 'false' : 'true';
+    render();
+  }
+  function velocityCard(){
+    const on = velocityEnabled();
+    return `<div class="card" style="padding:20px;">
+      <div class="disp" style="font-size:15px;margin-bottom:6px;display:flex;align-items:center;justify-content:space-between;">
+        <span style="display:flex;align-items:center;gap:8px;"><span style="width:8px;height:8px;border-radius:50%;background:var(--reason-velocity);"></span>Frühwarnung (Beschleunigung)</span>
+        <span onclick="toggleVelocity()" style="cursor:pointer;display:flex;align-items:center;gap:7px;font-size:12px;font-weight:600;color:${on?'var(--accent)':'var(--text-4)'};">
+          <span style="width:34px;height:19px;border-radius:999px;background:${on?'var(--accent)':'var(--dot-off)'};position:relative;transition:background .15s;">
+            <span style="position:absolute;top:2px;left:${on?'17px':'2px'};width:15px;height:15px;border-radius:50%;background:#fff;transition:left .15s;"></span></span>
+          ${on?'Aktiv':'Aus'}</span>
+      </div>
+      <span class="hint" style="margin-bottom:14px;">Alarmiert, wenn die Nennungen gegenüber den <b>letzten Läufen</b> stark anziehen — also während ein Spike noch aufbaut, bevor der 30-Tage-Schnitt reagiert. Findet Spikes früher, erzeugt aber auch mehr Fehlalarme.</span>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;${on?'':'opacity:.45;pointer-events:none;'}">
+        <label style="display:block;"><span class="lbl">Anstiegsfaktor</span><input class="inp" data-cfg="alert_velocity_ratio" value="${esc(state.configValues.alert_velocity_ratio||'2.5')}" /><span class="hint">Vielfaches gegenüber dem Schnitt der letzten Läufe (z.B. 2.5).</span></label>
+        <label style="display:block;"><span class="lbl">Min. Nennungen</span><input class="inp" data-cfg="alert_velocity_min_abs" value="${esc(state.configValues.alert_velocity_min_abs||'8')}" /><span class="hint">Rauschfilter — 2→6 ist dreifach, aber bedeutungslos.</span></label>
+        <label style="display:block;"><span class="lbl">Vergleichsfenster</span><input class="inp" data-cfg="alert_velocity_runs" value="${esc(state.configValues.alert_velocity_runs||'3')}" /><span class="hint">Anzahl vorheriger Läufe für den Vergleich.</span></label>
+      </div>
+      <input type="hidden" data-cfg="alert_velocity_enabled" value="${on?'true':'false'}" />
+    </div>`;
+  }
   function schedCard(){
     const mode = state.schedMode;
     const nextRun = state.configNextRunAt ? dayTime(state.configNextRunAt) : 'nach dem Speichern verfügbar';
@@ -605,7 +636,7 @@
     return `
       <div class="head-row"><div><div class="page-title">Konfiguration</div><div class="page-sub">Secrets sind maskiert · leeres Feld behält den Wert</div></div><button class="btn btn-primary" onclick="saveConfig()">Speichern</button></div>
       <div id="configValidation" class="card" style="display:none;border-color:var(--danger);color:var(--danger);padding:13px 16px;"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${sec(CFG_SECTIONS[0])}${sec(CFG_SECTIONS[1])}${sec(CFG_SECTIONS[2])}${schedCard()}${sec(CFG_SECTIONS[3])}</div>`;
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start;">${sec(CFG_SECTIONS[0])}${sec(CFG_SECTIONS[1])}${sec(CFG_SECTIONS[2])}${schedCard()}${sec(CFG_SECTIONS[3])}${velocityCard()}</div>`;
   }
   function setSched(m){ state.schedMode=m; syncConfigInputs(); render(); }
   function syncConfigInputs(){ document.querySelectorAll('[data-cfg]').forEach(el=>{ state.configValues[el.getAttribute('data-cfg')] = el.value; }); }
