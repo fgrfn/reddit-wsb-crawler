@@ -79,74 +79,116 @@ def _make_reddit_client(cfg: RedditSettings) -> asyncpraw.Reddit:
     return asyncpraw.Reddit(**kwargs)
 
 
+def _listing_iterator(subreddit: Any, listing: str, limit: int) -> Any:
+    """Gibt den async-Iterator für ein Reddit-Listing zurück.
+
+    `hot` ist popularitätssortiert und läuft der Aktivität hinterher; `new` und
+    `rising` zeigen aufkommende Diskussionen, bevor sie in `hot` auftauchen —
+    dadurch werden Spikes früher erkannt.
+    """
+    if listing == "new":
+        return subreddit.new(limit=limit)
+    if listing == "rising":
+        return subreddit.rising(limit=limit)
+    if listing == "top":
+        return subreddit.top(limit=limit, time_filter="day")
+    return subreddit.hot(limit=limit)
+
+
+def _split_budget(limit: int, listing_count: int) -> int:
+    """Verteilt das Post-Budget gleichmäßig auf die Listings.
+
+    `posts_limit` bleibt damit die Obergrenze pro Subreddit *insgesamt* — mehr
+    Listings kosten also keine zusätzliche API-Last, sondern verschieben die
+    Abdeckung von "populär" zu "aufkommend".
+    """
+    return max(1, limit // max(1, listing_count))
+
+
 async def _fetch_posts(
     reddit: asyncpraw.Reddit,
     subreddit_name: str,
     limit: int,
     comments_limit: int,
+    listings: tuple[str, ...] = ("hot",),
 ) -> tuple[list[RedditPost], list[RedditPost]]:
     """
-    Holt Posts + Kommentare eines Subreddits.
+    Holt Posts + Kommentare eines Subreddits über alle konfigurierten Listings.
     Gibt (posts, comments) zurück.
     """
     posts: list[RedditPost] = []
     comments: list[RedditPost] = []
+    seen_ids: set[str] = set()
 
     update_subreddit(subreddit_name, posts=0, comments=0)
+    per_listing = _split_budget(limit, len(listings))
     logger.info(
-        f"r/{subreddit_name}: lade bis zu {limit} Posts mit je {comments_limit} Top-Kommentaren"
+        f"r/{subreddit_name}: lade bis zu {limit} Posts "
+        f"({', '.join(listings)} — je {per_listing}) mit je {comments_limit} Top-Kommentaren"
     )
 
     subreddit = await reddit.subreddit(subreddit_name)
 
-    async for submission in subreddit.hot(limit=limit):
-        post = RedditPost(
-            id=submission.id,
-            subreddit=subreddit_name,
-            title=submission.title,
-            text=submission.selftext or "",
-            author=str(submission.author) if submission.author else "[deleted]",
-            score=submission.score,
-            upvote_ratio=submission.upvote_ratio,
-            created_utc=datetime.fromtimestamp(submission.created_utc, tz=UTC),
-            url=f"https://reddit.com{submission.permalink}",
-            is_comment=False,
-        )
-        posts.append(post)
+    for listing in listings:
+        listing_new = 0
+        async for submission in _listing_iterator(subreddit, listing, per_listing):
+            # Ein Post kann in mehreren Listings stehen — nur einmal zählen
+            # (spart auch den zusätzlichen Kommentar-Call)
+            if submission.id in seen_ids:
+                continue
+            seen_ids.add(submission.id)
+            listing_new += 1
 
-        # Top-Kommentare holen (nicht alle – zu viele API-Calls)
-        if comments_limit > 0:
-            submission.comment_sort = "top"
-            await submission.load()
-            # replace_more ist in asyncpraw eine Coroutine — ohne await bleiben
-            # MoreComments-Objekte im Baum und belegen Plätze im Limit-Slice
-            await submission.comments.replace_more(limit=0)
+            post = RedditPost(
+                id=submission.id,
+                subreddit=subreddit_name,
+                title=submission.title,
+                text=submission.selftext or "",
+                author=str(submission.author) if submission.author else "[deleted]",
+                score=submission.score,
+                upvote_ratio=submission.upvote_ratio,
+                created_utc=datetime.fromtimestamp(submission.created_utc, tz=UTC),
+                url=f"https://reddit.com{submission.permalink}",
+                is_comment=False,
+            )
+            posts.append(post)
 
-            for comment in list(submission.comments)[:comments_limit]:
-                if not hasattr(comment, "body"):
-                    continue
-                comments.append(
-                    RedditPost(
-                        id=comment.id,
-                        subreddit=subreddit_name,
-                        title="",
-                        text=comment.body,
-                        author=str(comment.author) if comment.author else "[deleted]",
-                        score=comment.score,
-                        upvote_ratio=0.0,
-                        created_utc=datetime.fromtimestamp(comment.created_utc, tz=UTC),
-                        url=f"https://reddit.com{submission.permalink}{comment.id}/",
-                        is_comment=True,
-                        parent_id=submission.id,
+            # Top-Kommentare holen (nicht alle – zu viele API-Calls)
+            if comments_limit > 0:
+                submission.comment_sort = "top"
+                await submission.load()
+                # replace_more ist in asyncpraw eine Coroutine — ohne await bleiben
+                # MoreComments-Objekte im Baum und belegen Plätze im Limit-Slice
+                await submission.comments.replace_more(limit=0)
+
+                for comment in list(submission.comments)[:comments_limit]:
+                    if not hasattr(comment, "body"):
+                        continue
+                    comments.append(
+                        RedditPost(
+                            id=comment.id,
+                            subreddit=subreddit_name,
+                            title="",
+                            text=comment.body,
+                            author=str(comment.author) if comment.author else "[deleted]",
+                            score=comment.score,
+                            upvote_ratio=0.0,
+                            created_utc=datetime.fromtimestamp(comment.created_utc, tz=UTC),
+                            url=f"https://reddit.com{submission.permalink}{comment.id}/",
+                            is_comment=True,
+                            parent_id=submission.id,
+                        )
                     )
+
+            if len(posts) % 25 == 0:
+                update_subreddit(subreddit_name, posts=len(posts), comments=len(comments))
+                logger.info(
+                    f"r/{subreddit_name}: Zwischenstand {len(posts)} Posts, "
+                    f"{len(comments)} Kommentare"
                 )
 
-        if len(posts) % 25 == 0:
-            update_subreddit(subreddit_name, posts=len(posts), comments=len(comments))
-            logger.info(
-                f"r/{subreddit_name}: Zwischenstand {len(posts)} Posts, "
-                f"{len(comments)} Kommentare"
-            )
+        if len(listings) > 1:
+            logger.info(f"r/{subreddit_name}/{listing}: {listing_new} neue Posts")
 
     update_subreddit(subreddit_name, posts=len(posts), comments=len(comments), done=True)
     logger.info(f"r/{subreddit_name}: fertig — {len(posts)} Posts, {len(comments)} Kommentare")
@@ -175,6 +217,7 @@ async def crawl_all_subreddits(run_id: str) -> CrawlResult:
                 sub,
                 limit=crawler_cfg.posts_limit,
                 comments_limit=crawler_cfg.comments_limit,
+                listings=tuple(crawler_cfg.listings),
             )
             for sub in crawler_cfg.subreddits
         ]

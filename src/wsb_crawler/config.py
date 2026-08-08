@@ -40,6 +40,10 @@ DB_PATH = _resolve_db_path()
 # ENV-Variablen haben denselben Namen in uppercase, z.B. REDDIT_CLIENT_ID.
 REQUIRED_CONFIG_KEYS = ("reddit_client_id", "reddit_client_secret", "discord_webhook_url")
 
+# Reddit-Listings, die der Crawler lesen kann. "hot" ist popularitätssortiert
+# und hinkt der Aktivität nach; "new"/"rising" zeigen aufkommende Diskussionen.
+VALID_LISTINGS = ("hot", "new", "rising", "top")
+
 
 async def is_configured(db: Database) -> bool:
     """True, wenn Pflichtwerte in DB oder ENV vorhanden sind.
@@ -111,6 +115,9 @@ class CrawlerSettings:
     cron_expression: str = ""  # 5-Feld-Cron, nur bei schedule_mode == "cron"
     posts_limit: int = 500
     comments_limit: int = 100
+    # Reddit-Listings, die pro Lauf gelesen werden. "new"/"rising" zeigen
+    # aufkommende Diskussionen vor "hot" → Spikes werden früher erkannt.
+    listings: list[str] = field(default_factory=lambda: ["hot", "new", "rising"])
     alphavantage_api_key: str | None = None
     db_path: Path = field(default_factory=lambda: DB_PATH)
     log_level: str = "INFO"
@@ -166,6 +173,7 @@ async def get_settings(db: Database) -> Settings:
         "cron_expression",
         "posts_limit",
         "comments_limit",
+        "listings",
         "alphavantage_api_key",
         "log_level",
     }:
@@ -184,6 +192,15 @@ async def get_settings(db: Database) -> Settings:
 
     def opt(key: str, default: str | None = None) -> str | None:
         return s.get(key) or default
+
+    # Listings validieren — unbekannte Werte ignorieren, mind. "hot" behalten
+    listings_raw = opt("listings", "hot,new,rising") or ""
+    listings = [
+        entry
+        for entry in (part.strip().lower() for part in listings_raw.split(","))
+        if entry in VALID_LISTINGS
+    ]
+    listings = list(dict.fromkeys(listings)) or ["hot"]
 
     subreddits_raw = opt("subreddits", "wallstreetbets,wallstreetbetsGER") or ""
     subreddits = [r.strip() for r in subreddits_raw.split(",") if r.strip()]
@@ -229,6 +246,7 @@ async def get_settings(db: Database) -> Settings:
             cron_expression=opt("cron_expression") or "",
             posts_limit=int(opt("posts_limit") or "500"),
             comments_limit=int(opt("comments_limit") or "100"),
+            listings=listings,
             alphavantage_api_key=opt("alphavantage_api_key"),
             db_path=DB_PATH,
             log_level=opt("log_level") or "INFO",

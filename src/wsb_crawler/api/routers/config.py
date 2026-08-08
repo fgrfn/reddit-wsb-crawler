@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from wsb_crawler.__version__ import __version__
 from wsb_crawler.alerts.discord import _send_webhook
-from wsb_crawler.config import get_settings, is_configured
+from wsb_crawler.config import VALID_LISTINGS, get_settings, is_configured
 from wsb_crawler.storage.database import Database
 
 router = APIRouter(tags=["config"])
@@ -76,6 +76,7 @@ class ConfigPayload(BaseModel):
     cron_expression: str | None = None  # 5-Feld-Cron
     posts_limit: int | None = Field(default=None, ge=1, le=1000)
     comments_limit: int | None = Field(default=None, ge=0, le=500)
+    listings: str | None = None  # komma-separiert: hot,new,rising,top
     log_level: str | None = None
     alphavantage_api_key: str | None = None
 
@@ -84,6 +85,21 @@ class ConfigPayload(BaseModel):
     def validate_webhook(cls, v: str | None) -> str | None:
         if v and not v.startswith("https://discord.com/api/webhooks/"):
             raise ValueError("Webhook-URL muss mit https://discord.com/api/webhooks/ beginnen")
+        return v
+
+    @field_validator("listings")
+    @classmethod
+    def validate_listings(cls, v: str | None) -> str | None:
+        if v and v.strip():
+            entries = [part.strip().lower() for part in v.split(",") if part.strip()]
+            unknown = [e for e in entries if e not in VALID_LISTINGS]
+            if unknown:
+                raise ValueError(
+                    f"Unbekannte Listings: {', '.join(unknown)} — "
+                    f"erlaubt: {', '.join(VALID_LISTINGS)}"
+                )
+            if not entries:
+                raise ValueError("Mindestens ein Listing ist erforderlich")
         return v
 
     @field_validator("schedule_mode")

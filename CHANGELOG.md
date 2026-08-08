@@ -2,6 +2,12 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
+## [Unreleased]
+
+### Added
+
+- Der Crawler liest jetzt mehrere Reddit-Listings pro Lauf (`hot`, `new`, `rising`, `top`; Default `hot,new,rising`, wählbar in der WebUI unter „Reddit-Quellen"). `new`/`rising` zeigen aufkommende Ticker, bevor sie in `hot` auftauchen — Spikes werden dadurch früher erkannt. Posts werden über die Listings dedupliziert, und `posts_limit` bleibt die Gesamt-Obergrenze pro Subreddit (gleichmäßig auf die Quellen verteilt), sodass die API-Last unverändert bleibt.
+
 ## [3.1.1] - 2026-08-07
 
 ### Added
