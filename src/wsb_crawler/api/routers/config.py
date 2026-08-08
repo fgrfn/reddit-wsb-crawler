@@ -91,6 +91,8 @@ class ConfigPayload(BaseModel):
     posts_limit: int | None = Field(default=None, ge=1, le=1000)
     comments_limit: int | None = Field(default=None, ge=0, le=500)
     listings: str | None = None  # komma-separiert: hot,new,rising,top
+    ticker_blacklist_extra: str | None = None  # eigene Filter, komma-separiert
+    ticker_allowlist: str | None = None  # Ausnahmen von der eingebauten Blacklist
     log_level: str | None = None
     alphavantage_api_key: str | None = None
 

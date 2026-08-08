@@ -124,6 +124,9 @@ class CrawlerSettings:
     # Reddit-Listings, die pro Lauf gelesen werden. "new"/"rising" zeigen
     # aufkommende Diskussionen vor "hot" → Spikes werden früher erkannt.
     listings: list[str] = field(default_factory=lambda: ["hot", "new", "rising"])
+    # Eigene Ticker-Filter zusätzlich zur eingebauten Blacklist
+    ticker_blacklist_extra: list[str] = field(default_factory=list)
+    ticker_allowlist: list[str] = field(default_factory=list)
     alphavantage_api_key: str | None = None
     db_path: Path = field(default_factory=lambda: DB_PATH)
     log_level: str = "INFO"
@@ -184,6 +187,8 @@ async def get_settings(db: Database) -> Settings:
         "posts_limit",
         "comments_limit",
         "listings",
+        "ticker_blacklist_extra",
+        "ticker_allowlist",
         "alphavantage_api_key",
         "log_level",
     }:
@@ -211,6 +216,11 @@ async def get_settings(db: Database) -> Settings:
         if entry in VALID_LISTINGS
     ]
     listings = list(dict.fromkeys(listings)) or ["hot"]
+
+    def _ticker_list(key: str) -> list[str]:
+        raw = opt(key, "") or ""
+        entries = [t.strip().upper().lstrip("$") for t in raw.replace("\n", ",").split(",")]
+        return list(dict.fromkeys(t for t in entries if t))
 
     subreddits_raw = opt("subreddits", "wallstreetbets,wallstreetbetsGER") or ""
     subreddits = [r.strip() for r in subreddits_raw.split(",") if r.strip()]
@@ -261,6 +271,8 @@ async def get_settings(db: Database) -> Settings:
             posts_limit=int(opt("posts_limit") or "500"),
             comments_limit=int(opt("comments_limit") or "100"),
             listings=listings,
+            ticker_blacklist_extra=_ticker_list("ticker_blacklist_extra"),
+            ticker_allowlist=_ticker_list("ticker_allowlist"),
             alphavantage_api_key=opt("alphavantage_api_key"),
             db_path=DB_PATH,
             log_level=opt("log_level") or "INFO",
