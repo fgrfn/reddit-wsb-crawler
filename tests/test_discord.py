@@ -95,8 +95,8 @@ class TestAlertEmbed:
         alert = Alert(ticker="GME", reason=AlertReason.NEW_TICKER, spike=spike)
         embed = _build_alert_embed(alert, _settings())
         assert "GME" in embed["title"]
-        assert embed["fields"][0]["name"] == "Warum dieser Alert?"
-        assert any(f["name"] == "📊 Erwähnungen" for f in embed["fields"])
+        assert embed["fields"][0]["name"] == "Was ist passiert?"
+        assert any(f["name"] == "📊 Nennungen" for f in embed["fields"])
 
     def test_spike_embed_with_price(self):
         price = PriceData(
@@ -139,9 +139,9 @@ class TestAlertEmbed:
         alert = Alert(ticker="GME", reason=AlertReason.SPIKE, spike=spike)
         embed = _build_alert_embed(alert, _settings())
 
-        reason = next(f for f in embed["fields"] if f["name"] == "Warum dieser Alert?")
-        assert "Confidence 82/100" in reason["value"]
-        assert "3.5x" in reason["value"]
+        reason = next(f for f in embed["fields"] if f["name"] == "Was ist passiert?")
+        assert "Signalstärke 82/100" in reason["value"]
+        assert "3.5× so viele" in reason["value"]
         assert "+25" in reason["value"]
 
 
@@ -189,3 +189,45 @@ class TestHeartbeatEmbed:
         )
         embed = _build_heartbeat_embed(status)
         assert embed["fields"][0]["value"] == "—"
+
+
+class TestPlainLanguage:
+    """Alert-Texte in einfacher Sprache, ohne widersprüchliche Bezugsgrößen."""
+
+    @staticmethod
+    def _velocity_alert(delta: int = -8) -> Alert:
+        spike = SpikeResult(
+            ticker="HTZ",
+            current_mentions=18,
+            avg_mentions=26.0,  # 30-Tage-Schnitt liegt hier HÖHER als der Lauf
+            ratio=0.69,
+            delta=delta,
+            is_new=False,
+            reason=AlertReason.VELOCITY,
+            velocity_avg=5.0,
+            velocity_ratio=3.6,
+            confidence=50,
+        )
+        return Alert(ticker="HTZ", reason=AlertReason.VELOCITY, spike=spike)
+
+    def _fields_text(self, alert: Alert) -> str:
+        embed = _build_alert_embed(alert, _settings())
+        return " ".join(f["value"] for f in embed["fields"])
+
+    def test_negative_delta_never_renders_double_sign(self) -> None:
+        assert "+-" not in self._fields_text(self._velocity_alert())
+
+    def test_velocity_uses_recent_runs_not_30_day_average(self) -> None:
+        text = self._fields_text(self._velocity_alert())
+        # Der 30-Tage-Schnitt (26) würde der Aussage "Nennungen ziehen an" widersprechen
+        assert "sonst Ø 26" not in text
+        assert "letzte Läufe: Ø 5" in text
+        assert "3.6×" in text
+
+    def test_no_english_jargon_in_alert_text(self) -> None:
+        embed = _build_alert_embed(self._velocity_alert(), _settings())
+        text = (
+            embed["title"] + " " + " ".join(f["name"] + " " + f["value"] for f in embed["fields"])
+        )
+        for jargon in ("Confidence", "Velocity", "Bullish", "Bearish", "Spike", "Score"):
+            assert jargon not in text, f"Jargon '{jargon}' noch in der Nachricht"
