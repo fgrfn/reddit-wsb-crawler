@@ -67,26 +67,36 @@ def _format_change(pct: float | None) -> str:
     return f"{sign}{pct:.2f}%"
 
 
+def _sentiment_strength(sentiment: float) -> str:
+    """Beschreibt die Deutlichkeit der Stimmung in Worten statt als Rohwert."""
+    strength = abs(sentiment)
+    if strength >= 0.6:
+        return "deutlich"
+    if strength >= 0.25:
+        return "leicht"
+    return "knapp"
+
+
 def _build_alert_reason_summary(alert: Alert) -> str:
     spike = alert.spike
     confidence = spike.confidence or 0
 
     if spike.is_new:
-        reason = f"Neuer Ticker mit {spike.current_mentions} Nennungen"
+        reason = f"Neu im Gespräch — {spike.current_mentions} Nennungen"
     elif alert.reason == AlertReason.VELOCITY:
         # Frühwarnung: die Beschleunigung ist hier die Aussage, nicht der 30-Tage-Schnitt
         reason = (
-            f"Beschleunigung: {spike.velocity_ratio:.1f}x gegenueber den letzten Laeufen "
-            f"(Ø {spike.velocity_avg:.1f} → {spike.current_mentions})"
+            f"Nennungen ziehen an: Ø {spike.velocity_avg:.0f} → {spike.current_mentions} "
+            f"in den letzten Läufen ({spike.velocity_ratio:.1f}× so viele)"
         )
     else:
-        reason = f"{spike.ratio:.1f}x ueber Normalwert - +{spike.delta} Nennungen"
+        reason = f"{spike.ratio:.1f}× so viele Nennungen wie sonst (+{spike.delta})"
 
     price = spike.price_data
     if alert.reason == AlertReason.PRICE_MOVE and price and price.primary_change is not None:
-        reason += f" - Kurs {_format_change(price.primary_change)}"
+        reason += f" — Kurs {_format_change(price.primary_change)}"
 
-    return f"**Confidence {confidence}/100**\n{reason}"
+    return f"**Signalstärke {confidence}/100**\n{reason}"
 
 
 def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
@@ -103,11 +113,11 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
     }.get(alert.reason, COLOR_SPIKE)
 
     reason_label = {
-        AlertReason.NEW_TICKER: "🆕 Neuer Ticker",
-        AlertReason.SPIKE: "🚀 Spike erkannt",
-        AlertReason.PRICE_MOVE: "💹 Kurs + Aktivität",
+        AlertReason.NEW_TICKER: "🆕 Neu im Gespräch",
+        AlertReason.SPIKE: "🚀 Stark im Gespräch",
+        AlertReason.PRICE_MOVE: "💹 Kurs bewegt sich",
         AlertReason.VELOCITY: "⚡ Frühwarnung",
-    }.get(alert.reason, "⚡ Alert")
+    }.get(alert.reason, "⚡ Hinweis")
 
     company = price.company_name if price else None
     title = f"{reason_label}: **${alert.ticker}**"
@@ -117,7 +127,7 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
     fields = []
     fields.append(
         {
-            "name": "Warum dieser Alert?",
+            "name": "Was ist passiert?",
             "value": _build_alert_reason_summary(alert),
             "inline": False,
         }
@@ -125,19 +135,28 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
 
     # Mentions-Block
     mention_text = f"**{spike.current_mentions}**"
-    if not spike.is_new:
-        mention_text += f"\n∅ {spike.avg_mentions:.1f}/Lauf ({spike.ratio:.1f}x)"
-        mention_text += f"\n+{spike.delta} mehr als normal"
-    fields.append({"name": "📊 Erwähnungen", "value": mention_text, "inline": True})
+    if alert.reason == AlertReason.VELOCITY and spike.velocity_avg > 0:
+        # Bei der Frühwarnung sind die letzten Läufe die Bezugsgröße — der
+        # 30-Tage-Schnitt kann hier sogar höher liegen und würde verwirren.
+        mention_text += f"\nletzte Läufe: Ø {spike.velocity_avg:.0f}"
+        mention_text += f"\n{spike.velocity_ratio:.1f}× so viele"
+    elif not spike.is_new:
+        mention_text += f"\nsonst Ø {spike.avg_mentions:.0f} pro Lauf"
+        if spike.delta > 0:
+            mention_text += f"\n+{spike.delta} mehr als sonst"
+    fields.append({"name": "📊 Nennungen", "value": mention_text, "inline": True})
 
     # Stimmung + Engagement (aus Post-Scores und Kontext-Sentiment)
     if spike.signal:
         sig = spike.signal
-        mood = {"bullish": "🐂 Bullish", "bearish": "🐻 Bearish", "neutral": "➖ Neutral"}[
+        mood = {"bullish": "🐂 Positiv", "bearish": "🐻 Negativ", "neutral": "➖ Gemischt"}[
             sig.sentiment_label
         ]
-        signal_text = f"{mood} ({sig.sentiment:+.2f})"
-        signal_text += f"\n∅ Score {sig.avg_score:.0f} · Peak {sig.max_score}"
+        if sig.sentiment_label == "neutral":
+            signal_text = mood
+        else:
+            signal_text = f"{mood} ({_sentiment_strength(sig.sentiment)})"
+        signal_text += f"\nØ {sig.avg_score:.0f} Upvotes · Spitze {sig.max_score}"
         fields.append({"name": "🧭 Stimmung", "value": signal_text, "inline": True})
 
     # Kurs-Block
@@ -173,7 +192,7 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
             news_lines.append(f"[{article.title[:70]}...]({article.url}) _{age_str}_")
         fields.append(
             {
-                "name": "📰 Aktuelle News",
+                "name": "📰 Schlagzeilen",
                 "value": "\n".join(news_lines),
                 "inline": False,
             }

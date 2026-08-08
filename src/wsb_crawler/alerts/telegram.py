@@ -20,12 +20,22 @@ from wsb_crawler.models import Alert, AlertReason
 _API_BASE = "https://api.telegram.org"
 
 _REASON_LABEL = {
-    AlertReason.NEW_TICKER: "🆕 Neuer Ticker",
-    AlertReason.SPIKE: "🚀 Spike",
-    AlertReason.PRICE_MOVE: "💹 Kurs + Aktivität",
+    AlertReason.NEW_TICKER: "🆕 Neu im Gespräch",
+    AlertReason.SPIKE: "🚀 Stark im Gespräch",
+    AlertReason.PRICE_MOVE: "💹 Kurs bewegt sich",
     AlertReason.VELOCITY: "⚡ Frühwarnung",
 }
-_SENTIMENT_LABEL = {"bullish": "🐂 Bullish", "bearish": "🐻 Bearish", "neutral": "➖ Neutral"}
+_SENTIMENT_LABEL = {"bullish": "🐂 Positiv", "bearish": "🐻 Negativ", "neutral": "➖ Gemischt"}
+
+
+def _strength(sentiment: float) -> str:
+    """Deutlichkeit der Stimmung in Worten statt als Rohwert."""
+    value = abs(sentiment)
+    if value >= 0.6:
+        return "deutlich"
+    if value >= 0.25:
+        return "leicht"
+    return "knapp"
 
 
 def _fmt_price(value: float | None, currency: str) -> str:
@@ -54,27 +64,28 @@ def _build_message(alert: Alert) -> str:
         title += f" — {html.escape(company)}"
     lines = [title]
 
-    # Erwähnungen
+    # Nennungen. Bei der Frühwarnung sind die letzten Läufe die Bezugsgröße —
+    # der 30-Tage-Schnitt kann höher liegen und würde der Aussage widersprechen.
+    is_velocity = alert.reason == AlertReason.VELOCITY and spike.velocity_avg > 0
     if spike.is_new:
-        lines.append(f"📊 <b>{spike.current_mentions}</b> Erwähnungen · neu")
+        lines.append(f"📊 <b>{spike.current_mentions}</b> Nennungen · neu")
+    elif is_velocity:
+        lines.append(
+            f"📊 Ø {spike.velocity_avg:.0f} → <b>{spike.current_mentions}</b> Nennungen "
+            f"in den letzten Läufen ({spike.velocity_ratio:.1f}× so viele)"
+        )
     else:
         lines.append(
-            f"📊 <b>{spike.current_mentions}</b> Erwähnungen · "
-            f"Ø {spike.avg_mentions:.1f} ({spike.ratio:.1f}×) · +{spike.delta}"
-        )
-
-    # Beschleunigung (Frühwarn-Signal)
-    if spike.velocity_ratio > 0:
-        lines.append(
-            f"⚡ <b>{spike.velocity_ratio:.1f}×</b> gegenüber letzten Läufen "
-            f"(Ø {spike.velocity_avg:.1f})"
+            f"📊 <b>{spike.current_mentions}</b> Nennungen — "
+            f"{spike.ratio:.1f}× so viele wie sonst (Ø {spike.avg_mentions:.0f})"
         )
 
     # Stimmung + Engagement
     if spike.signal:
         sig = spike.signal
-        mood = _SENTIMENT_LABEL.get(sig.sentiment_label, "➖ Neutral")
-        lines.append(f"🧭 {mood} ({sig.sentiment:+.2f}) · Ø Score {sig.avg_score:.0f}")
+        mood = _SENTIMENT_LABEL.get(sig.sentiment_label, "➖ Gemischt")
+        strength = "" if sig.sentiment_label == "neutral" else f" ({_strength(sig.sentiment)})"
+        lines.append(f"🧭 {mood}{strength} · Ø {sig.avg_score:.0f} Upvotes")
 
     # Kurs
     if price:

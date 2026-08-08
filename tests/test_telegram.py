@@ -79,7 +79,7 @@ class TestBuildMessage:
         msg = _build_message(_alert())
         assert "$GME" in msg
         assert "GameStop Corp." in msg
-        assert "🐂 Bullish" in msg
+        assert "🐂 Positiv" in msg
         assert "8.0×" in msg
         assert "$42.00" in msg
 
