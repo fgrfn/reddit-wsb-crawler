@@ -2,10 +2,11 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
-## [Unreleased]
+## [3.2.0] - 2026-08-08
 
 ### Added
 
+- **Direktlinks im Alert**: Discord- und Telegram-Alerts enthalten jetzt eine Link-Zeile zu Yahoo Finance (Kurs), TradingView (Chart), Stocktwits und einer Reddit-Suche nach `$TICKER` in genau den überwachten Subreddits. Der Discord-Embed-Titel führt zusätzlich direkt zur Kursseite. Bisher musste der Ticker aus der Meldung abgetippt werden. Bewusst statische URL-Muster ohne zusätzlichen Netzwerk-Call, damit der Versand nicht davon abhängt.
 - **Erfolgskontrolle für Alerts**: Zu jedem Alert wird der Kurs 1 h und 24 h später nachgemessen (am Ende jedes Crawls, gedrosselt und ohne den Lauf gefährden zu können). Die Alerts-Seite zeigt daraus je Alert-Grund Durchschnitts-Entwicklung und Trefferquote — Schwellwerte lassen sich damit anhand von Daten statt nach Gefühl justieren. Neuer Endpunkt `GET /api/alerts/stats`.
 - **Schwellwert-Simulator**: `GET /api/alerts/simulate` spielt die gespeicherte Historie mit anderen Schwellwerten durch und zeigt sofort, wie viele Alerts dabei entstanden wären (inkl. Cooldown und Limit pro Lauf). In der Alerts-Seite als Formular mit Ergebnis-Übersicht. Bewusst eine Näherung: Kurs-/News-Anreicherung wird nicht simuliert.
 - **Ticker-Filter in der WebUI** (Sektion „Ticker-Filter“): eigene Wörter zusätzlich ignorieren (Fehlalarme selbst abstellen) und Ausnahmen von der eingebauten Blacklist erlauben (echte Ticker, die als normales Wort gefiltert werden, z.B. WEN für Wendy’s). Bisher war die Blacklist nur im Code änderbar. Eigene Einträge greifen auch bei $-Schreibweise; bei widersprüchlicher Angabe gewinnt die Ausnahme.

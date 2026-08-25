@@ -14,6 +14,7 @@ import html
 import httpx
 from loguru import logger
 
+from wsb_crawler.alerts.links import link_targets
 from wsb_crawler.config import Settings
 from wsb_crawler.models import Alert, AlertReason
 
@@ -52,7 +53,7 @@ def _fmt_change(pct: float | None) -> str:
     return f"{sign}{pct:.2f}%"
 
 
-def _build_message(alert: Alert) -> str:
+def _build_message(alert: Alert, subreddits: list[str] | None = None) -> str:
     """Baut eine HTML-Telegram-Nachricht aus einem Alert (spiegelt das Discord-Embed)."""
     spike = alert.spike
     price = spike.price_data
@@ -102,6 +103,13 @@ def _build_message(alert: Alert) -> str:
         url = html.escape(article.url, quote=True)
         lines.append(f'📰 <a href="{url}">{title_text}</a>')
 
+    # Direktlinks zu Kurs, Chart und Diskussion
+    links = " · ".join(
+        f'<a href="{html.escape(url, quote=True)}">{html.escape(label)}</a>'
+        for label, url in link_targets(alert.ticker, subreddits)
+    )
+    lines.append(f"🔗 {links}")
+
     return "\n".join(lines)
 
 
@@ -114,7 +122,7 @@ async def send_alert(alert: Alert, cfg: Settings, retries: int = 3) -> bool:
     url = f"{_API_BASE}/bot{tg.bot_token}/sendMessage"
     payload = {
         "chat_id": tg.chat_id,
-        "text": _build_message(alert),
+        "text": _build_message(alert, cfg.crawler.subreddits),
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
