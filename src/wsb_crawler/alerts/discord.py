@@ -16,6 +16,7 @@ import httpx
 from loguru import logger
 
 from wsb_crawler.__version__ import __version__
+from wsb_crawler.alerts.links import link_targets, quote_url
 from wsb_crawler.config import Settings, get_settings
 from wsb_crawler.models import Alert, AlertReason, MarketStatus, RunStatus, TrendEntry
 
@@ -103,6 +104,7 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
     """Erstellt ein Discord Rich Embed für einen Alert."""
     spike = alert.spike
     price = spike.price_data
+    subs = list(cfg.crawler.subreddits)
 
     # Farbe je nach Reason
     color = {
@@ -198,12 +200,26 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
             }
         )
 
+    # Direktlinks: von der Meldung aus mit einem Klick zum Kurs, Chart oder
+    # zur Diskussion — ohne den Ticker irgendwo abzutippen.
+    fields.append(
+        {
+            "name": "🔗 Nachschauen",
+            "value": " · ".join(
+                f"[{label}]({url})" for label, url in link_targets(alert.ticker, subs)
+            ),
+            "inline": False,
+        }
+    )
+
     # Footer
-    subreddits = ", ".join(f"r/{s}" for s in cfg.crawler.subreddits)
+    subreddits = ", ".join(f"r/{s}" for s in subs)
     footer = f"WSB-Crawler v{__version__} • {subreddits}"
 
     return {
         "title": title,
+        # Macht den Embed-Titel selbst anklickbar (führt zur Kursseite)
+        "url": quote_url(alert.ticker),
         "color": color,
         "fields": fields,
         "footer": {"text": footer},
