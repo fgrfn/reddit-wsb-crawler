@@ -277,6 +277,7 @@ class SpikeResult:
     is_new: bool  # Ticker noch nie gesehen?
     reason: AlertReason | None  # None = kein Alert
     price_data: PriceData | None = None
+    isin: str | None = None  # für die Suche in europäischen Brokern (TR, Scalable, …)
     news: list[NewsArticle] = field(default_factory=list)
     history: TickerHistory | None = None
     signal: TickerSignal | None = None  # Engagement + Sentiment (Ranking/Confidence)

@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,14 @@ from wsb_crawler.models import (
     TrendDirection,
     TrendEntry,
 )
+
+
+@dataclass(frozen=True)
+class CachedIsin:
+    """Gespeichertes Ergebnis einer ISIN-Suche. `isin=None` = erfolglos gesucht."""
+
+    isin: str | None
+    resolved_at: datetime
 
 
 def _utcnow() -> datetime:
@@ -47,7 +56,7 @@ def _parse_dt(value: str) -> datetime:
 
 
 # Schema-Version für Migrationen
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Nachträglich ergänzte Spalten pro Tabelle (Name → SQL-Typ). Werden per
 # ALTER TABLE nachgezogen, falls sie in einer bestehenden DB noch fehlen.
@@ -133,6 +142,15 @@ CREATE TABLE IF NOT EXISTS alert_history (
 );
 CREATE INDEX IF NOT EXISTS idx_alerts_ticker ON alert_history(ticker);
 CREATE INDEX IF NOT EXISTS idx_alerts_sent ON alert_history(sent_at);
+
+-- Ticker → ISIN. Dauerhafter Cache: eine ISIN ändert sich praktisch nie, also
+-- wird pro Ticker genau einmal nachgeschlagen. isin = NULL merkt sich eine
+-- erfolglose Suche, damit sie nicht bei jedem Lauf wiederholt wird.
+CREATE TABLE IF NOT EXISTS ticker_isin (
+    ticker      TEXT PRIMARY KEY,
+    isin        TEXT,
+    resolved_at TEXT NOT NULL
+);
 """
 
 
@@ -699,6 +717,39 @@ class Database:
             if not val:
                 return False
         return True
+
+    # ── ISIN-Cache ───────────────────────────────────────────────────────────
+
+    async def get_cached_isin(self, ticker: str, retry_after_days: int = 30) -> CachedIsin | None:
+        """Gespeicherte ISIN zu einem Ticker.
+
+        Gibt `None` zurück, wenn nichts gespeichert ist — und ebenso, wenn eine
+        *erfolglose* Suche länger als `retry_after_days` zurückliegt, damit ein
+        später gelisteter Ticker oder ein damaliger Ausfall der Quelle nicht
+        dauerhaft als "gibt es nicht" festgeschrieben bleibt. Ein gefundener
+        Eintrag läuft nie ab.
+        """
+        async with self.conn.execute(
+            "SELECT isin, resolved_at FROM ticker_isin WHERE ticker = ?", (ticker,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row is None:
+            return None
+
+        resolved_at = _parse_dt(row["resolved_at"])
+        if row["isin"] is None and _utcnow() - resolved_at > timedelta(days=retry_after_days):
+            return None
+        return CachedIsin(isin=row["isin"], resolved_at=resolved_at)
+
+    async def save_isin(self, ticker: str, isin: str | None) -> None:
+        """Speichert das Ergebnis einer ISIN-Suche (auch das leere)."""
+        await self.conn.execute(
+            """INSERT INTO ticker_isin (ticker, isin, resolved_at) VALUES (?, ?, ?)
+               ON CONFLICT(ticker) DO UPDATE SET isin = excluded.isin,
+                                                 resolved_at = excluded.resolved_at""",
+            (ticker, isin, _utcnow().isoformat()),
+        )
+        await self.conn.commit()
 
     # ── Alert History (API) ───────────────────────────────────────────────────
 

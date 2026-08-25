@@ -2,6 +2,12 @@
 
 Alle relevanten Änderungen an diesem Projekt werden hier dokumentiert.
 
+## [Unreleased]
+
+### Added
+
+- **ISIN im Alert**: Discord- und Telegram-Alerts zeigen die ISIN des Tickers als kopierbaren Wert (`US36467W1099`). US-Ticker sind an europäischen Brokern (Trade Republic, Scalable, Revolut) nutzlos — die suchen über die ISIN. Aufgelöst über denselben öffentlichen Endpunkt, den auch yfinance nutzt, mit Prüfziffernkontrolle gegen Fehlinterpretationen und dauerhaftem Cache in der DB (neue Tabelle `ticker_isin`, Schema-Version 3): pro Ticker genau eine Abfrage, nicht pro Alert. Strikt best-effort — schlägt die Auflösung fehl, fehlt nur die Zeile, der Alert geht trotzdem raus. Erfolglose Suchen werden nach 30 Tagen erneut versucht, gefundene nie.
+
 ## [3.3.1] - 2026-08-25
 
 ### Added

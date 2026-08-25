@@ -103,6 +103,10 @@ def _build_message(alert: Alert, subreddits: list[str] | None = None) -> str:
         url = html.escape(article.url, quote=True)
         lines.append(f'📰 <a href="{url}">{title_text}</a>')
 
+    # ISIN zum Kopieren in die Broker-Suche (US-Ticker helfen dort nicht weiter)
+    if spike.isin:
+        lines.append(f"🏦 ISIN <code>{html.escape(spike.isin)}</code>")
+
     # Direktlinks zu Kurs, Chart und Diskussion
     links = " · ".join(
         f'<a href="{html.escape(url, quote=True)}">{html.escape(label)}</a>'
