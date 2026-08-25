@@ -38,6 +38,15 @@ class TestDemoAlert:
         assert alert.spike.news  # eine Beispiel-Schlagzeile
         assert alert.spike.confidence > 0
 
+    def test_demo_isin_is_a_placeholder_not_a_real_looking_one(self) -> None:
+        from wsb_crawler.enrichment.isin import is_valid_isin
+
+        # Die Testnachricht lädt zum Kopieren in die Broker-Suche ein — ein
+        # ISIN-artiger Wert könnte dort ein echtes, falsches Papier treffen
+        placeholder = config_router._demo_alert().spike.isin
+        assert placeholder  # die Zeile erscheint …
+        assert not is_valid_isin(placeholder)  # … aber nicht als ISIN lesbar
+
 
 class TestTestMessage:
     async def _send(self, mention_targets: str | None = None) -> dict:
@@ -71,6 +80,8 @@ class TestTestMessage:
         assert "Was ist passiert?" in names
         assert "📊 Nennungen" in names
         assert "💰 Kurs" in names
+        # Die ISIN-Zeile gehört dazu, sonst zeigt der Test nicht, wie ein Alert aussieht
+        assert any("ISIN" in name for name in names)
 
     async def test_never_pings_even_with_targets_configured(self) -> None:
         payload = await self._send("123456789012345678, @here")
