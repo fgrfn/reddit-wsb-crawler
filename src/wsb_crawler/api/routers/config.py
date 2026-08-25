@@ -215,6 +215,10 @@ def _demo_alert() -> Alert:
             )
         ],
     )
+    # Kein ISIN-artiger Wert: Die Testnachricht lädt zum Kopieren in die
+    # Broker-Suche ein, eine erfundene ISIN könnte dort ein echtes, falsches
+    # Wertpapier treffen. Der Platzhalter zeigt die Zeile, ohne das zu riskieren.
+    spike.isin = "im echten Alert steht hier die ISIN"
     alert = Alert(ticker="DEMO", reason=AlertReason.SPIKE, spike=spike)
     alert.triggered_at = now
     return alert
