@@ -200,6 +200,17 @@ def _build_alert_embed(alert: Alert, cfg: Settings) -> dict[str, Any]:
             }
         )
 
+    # ISIN als Codeblock: US-Ticker sind bei europäischen Brokern nutzlos, die
+    # ISIN lässt sich dort in die Suche kopieren (Trade Republic, Scalable, …).
+    if spike.isin:
+        fields.append(
+            {
+                "name": "🏦 ISIN (für Broker-Suche)",
+                "value": f"`{spike.isin}`",
+                "inline": False,
+            }
+        )
+
     # Direktlinks: von der Meldung aus mit einem Klick zum Kurs, Chart oder
     # zur Diskussion — ohne den Ticker irgendwo abzutippen.
     fields.append(

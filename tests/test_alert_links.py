@@ -36,7 +36,7 @@ def _settings(subreddits: list[str] | None = None) -> Settings:
     )
 
 
-def _alert(ticker: str = "GME") -> Alert:
+def _alert(ticker: str = "GME", isin: str | None = None) -> Alert:
     spike = SpikeResult(
         ticker=ticker,
         current_mentions=40,
@@ -46,6 +46,7 @@ def _alert(ticker: str = "GME") -> Alert:
         is_new=False,
         reason=AlertReason.SPIKE,
         confidence=70,
+        isin=isin,
     )
     alert = Alert(ticker=ticker, reason=AlertReason.SPIKE, spike=spike)
     alert.triggered_at = datetime.now(tz=UTC)
@@ -110,6 +111,27 @@ class TestDiscordEmbedLinks:
         embed = _build_alert_embed(_alert(), _settings(["wallstreetbets", "stocks"]))
         field = next(f for f in embed["fields"] if f["name"] == "🔗 Nachschauen")
         assert "/r/wallstreetbets+stocks/search/" in field["value"]
+
+
+class TestIsinInAlerts:
+    ISIN = "US36467W1099"
+
+    def test_discord_shows_the_isin_as_code(self) -> None:
+        embed = _build_alert_embed(_alert(isin=self.ISIN), _settings())
+        field = next(f for f in embed["fields"] if "ISIN" in f["name"])
+        # Codeblock, damit sich der Wert in Discord mit einem Klick kopieren lässt
+        assert field["value"] == f"`{self.ISIN}`"
+
+    def test_discord_omits_the_field_without_an_isin(self) -> None:
+        embed = _build_alert_embed(_alert(), _settings())
+        assert not [f for f in embed["fields"] if "ISIN" in f["name"]]
+
+    def test_telegram_shows_the_isin(self) -> None:
+        text = _build_message(_alert(isin=self.ISIN), ["wallstreetbets"])
+        assert f"<code>{self.ISIN}</code>" in text
+
+    def test_telegram_omits_the_isin_when_missing(self) -> None:
+        assert "ISIN" not in _build_message(_alert(), ["wallstreetbets"])
 
 
 class TestTelegramMessageLinks:

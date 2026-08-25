@@ -12,6 +12,7 @@ import asyncio
 from loguru import logger
 
 from wsb_crawler.config import get_settings
+from wsb_crawler.enrichment.isin import get_isins_bulk
 from wsb_crawler.enrichment.news import get_news_bulk
 from wsb_crawler.enrichment.prices import get_prices_bulk
 from wsb_crawler.enrichment.resolver import resolve_names_bulk
@@ -366,11 +367,15 @@ async def analyze_mentions(
         progress=83,
     )
     news_map = await get_news_bulk(tickers_to_enrich, company_names=names)
+    # ISINs nach den Namen, weil die Suche mit dem Firmennamen zuverlässiger
+    # trifft. Dauerhaft gecacht — pro Ticker fällt das genau einmal an.
+    isin_map = await get_isins_bulk(tickers_to_enrich, company_names=names)
 
     for spike in active_candidates:
         t = spike.ticker
         price_data = prices.get(t)
         spike.price_data = price_data
+        spike.isin = isin_map.get(t)
         spike.news = news_map.get(t, [])
 
         # Optionaler Kurs-Alert Check
